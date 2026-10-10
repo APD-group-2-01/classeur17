@@ -3616,6 +3616,7 @@ const JOURNAL_DEFAUT = {
     document.querySelectorAll("table").forEach(function (t) {
       const p = t.parentElement;
       if (!p || p.classList.contains("mfx-scroll")) return;
+      if (t.closest && t.closest("#lv-zone, #livre, .page")) return;
       if (scrollable(p)) return;
       const d = document.createElement("div");
       d.className = "mfx-scroll";
@@ -7707,6 +7708,7 @@ var COUV_EPS = (function () {
     document.querySelectorAll("table").forEach(function (t) {
       const p = t.parentElement;
       if (!p || p.classList.contains("mfx-scroll")) return;
+      if (t.closest && t.closest("#lv-zone, #livre, .page")) return;
       if (scrollable(p)) return;
       const d = document.createElement("div");
       d.className = "mfx-scroll";
@@ -9152,6 +9154,20 @@ var COUV_EPS = (function () {
     add(blocTexte("Aperçu historique", et.historique));
     add(blocTexte("Situation géographique", et.situation));
     add(blocTexte("Contexte", et.contexte));
+    const sousTab = (titre, entetes, lignes) => {
+      const t = tableau(entetes, lignes); if (!t) return;
+      add(el(`<h4 class="section">${esc(titre)}</h4>`)); add(t);
+    };
+    sousTab("Infrastructures", ["Installation", "Quantité"],
+      (p.infrastructures || []).filter(i => !vide(i.nom)).map(i => [i.nom, vide(i.quantite) ? "—" : i.quantite]));
+    sousTab("Clubs de l'établissement", ["Club", "Domaine d'activité"],
+      (p.clubs || []).filter(c => !vide(c.nom)).map(c => [c.nom, c.domaine]));
+    if ((p.equipe || []).some(e => !vide(e.nom)) || (p.materiel || []).some(m => !vide(m.nom))) {
+      add({ chapitre: "Équipe pédagogique et moyens" });
+      sousTab("Équipe pédagogique", ["Nom", "Fonction"], (p.equipe || []).filter(e => !vide(e.nom)).map(e => [e.nom, e.fonction]));
+      sousTab("Inventaire du matériel sportif", ["Catégorie", "Matériel", "Quantité", "Bon état", "Usé"],
+        (p.materiel || []).filter(m => !vide(m.nom)).map(m => [m.categorie, m.nom, m.quantite, m.bon, m.use]));
+    }
 
     add({ chapitre: "Caractéristiques des élèves" });
     add(tableau(["Niveau", "Libellé", "Filles", "Garçons", "Total", "Classes"],
@@ -9210,6 +9226,10 @@ var COUV_EPS = (function () {
 
     add({ chapitre: "Axes du projet et diagnostic stratégique" });
     add(tableau(["Axe", "Description"], (p.axes || []).map(a => [a.titre, a.description])));
+    {
+      const tcv = tableau(["Axe", "Module", "Compétence de vie"], (p.competencesVie || []).filter(x => !vide(x.vie) || !vide(x.axe)).map(x => [x.axe, x.module, x.vie]));
+      if (tcv) { add(el('<h4 class="section">Compétences de vie</h4>')); add(tcv); }
+    }
     const sw = p.swot || {};
     ["forces", "faiblesses", "opportunites", "menaces"].forEach(k => {
       const titres = { forces: "Forces", faiblesses: "Faiblesses", opportunites: "Opportunités", menaces: "Menaces" };
@@ -16684,6 +16704,7 @@ window.XlsxLite = (function () {
     document.querySelectorAll("table").forEach(function (t) {
       const p = t.parentElement;
       if (!p || p.classList.contains("mfx-scroll")) return;
+      if (t.closest && t.closest("#lv-zone, #livre, .page")) return;
       if (scrollable(p)) return;
       const d = document.createElement("div");
       d.className = "mfx-scroll";
@@ -25050,6 +25071,7 @@ window.XlsxLite = (function () {
     document.querySelectorAll("table").forEach(function (t) {
       const p = t.parentElement;
       if (!p || p.classList.contains("mfx-scroll")) return;
+      if (t.closest && t.closest("#lv-zone, #livre, .page")) return;
       if (scrollable(p)) return;
       const d = document.createElement("div");
       d.className = "mfx-scroll";
@@ -60716,6 +60738,7 @@ window.XlsxLite = (function () {
     document.querySelectorAll("table").forEach(function (t) {
       const p = t.parentElement;
       if (!p || p.classList.contains("mfx-scroll")) return;
+      if (t.closest && t.closest("#lv-zone, #livre, .page")) return;
       if (scrollable(p)) return;
       const d = document.createElement("div");
       d.className = "mfx-scroll";
