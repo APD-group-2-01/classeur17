@@ -12146,9 +12146,22 @@ window.JSYNC = window.JSYNC || (function () {
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
       out[normNom(r.nom)] = o;
     });
+    // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
+    if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
-  function pour(map, nom) { return map[normNom(nom)] || null; }
+  function pour(map, nom) {
+    var o = map[normNom(nom)];
+    if (o) return o;
+    return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
+  }
+  /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
+  function aideComp(L, apsLib) {
+    var t = "tableau « " + (apsLib || "de l'APS") + " »";
+    if (!L || !L.ok) return ((L && L.raison) || "Cahier journalier indisponible.") + " Ajoutez la classe au cahier journalier : la note comportementale se note uniquement là.";
+    return L.bareme ? "Aucune séance notée dans le " + t + " du cahier journalier : la note comportementale sera calculée dès la première séance renseignée."
+      : "Note comportementale à noter dans le cahier journalier (" + t + "), ou activez le barème comportemental (codes AB, SN…) pour le calcul automatique.";
+  }
 
   /* écrit une ou deux notes d'un élève dans le tableau du cycle de la même APS */
   function ecrire(aps, classeNom, eleveNom, champs, nivPref) {
@@ -12185,7 +12198,7 @@ window.JSYNC = window.JSYNC || (function () {
     try { localStorage.setItem(t.k, JSON.stringify(t.data)); } catch (e) { return false; }
     return true;
   }
-  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE };
+  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE, aideComp: aideComp };
 })();
 
 @@SCRIPTCLOSE7f3a@@>
@@ -13354,7 +13367,7 @@ window.JSYNC = window.JSYNC || (function () {
     const I = smPart(sc, cl, "I", G.i), C = smPart(sc, cl, "C", G.c);
     const conc = smNum(e.sommative && e.sommative.conc);
     const cj = LJ && LJ.ok && LJ.compJ && LJ.compJ[e.id];
-    const comp = cj ? Number(cj.v) : smNum(e.sommative && e.sommative.comp);
+    const comp = cj ? Number(cj.v) : null;
     const parts = [I.note, C.note, conc, comp];
     const total = parts.every(p => p == null) ? null : Math.round(parts.reduce((t, p) => t + (p || 0), 0) * 100) / 100;
     // diagnostic initial : mêmes critères individuels, même maximum
@@ -13486,8 +13499,8 @@ window.JSYNC = window.JSYNC || (function () {
         </div>
         <p class="hint" style="margin:10px 0 0;">Chaque critère est noté 0 (à renforcer) · 1 (en cours) · 2 (acquis). La note individuelle et la note collective sont ramenées à leur maximum officiel avec les seuls critères retenus.</p>
         <p class="hint" style="margin:6px 0 0;">${LJ && LJ.ok
-          ? "📘 Comportemental repris automatiquement du cahier journalier (" + esc(LJ.niv) + " · classe " + esc(LJ.classe) + " · tableau " + esc(PV_CFG.aps) + (LJ.bareme ? ", barème comportemental" : "") + "). Le conceptuel saisi ici est reporté au cahier journalier."
-          : "⚠ " + esc((LJ && LJ.raison) || "Cahier journalier indisponible") + " Le comportemental se saisit alors ici."}</p>
+          ? "📘 Comportemental repris automatiquement du cahier journalier (" + esc(LJ.niv) + " · classe " + esc(LJ.classe) + " · tableau " + esc(PV_CFG.aps) + (LJ.bareme ? ", barème comportemental" : "") + "). Le conceptuel saisi ici est reporté au cahier journalier." + (cl.eleves.some(e => !(LJ.compJ && LJ.compJ[e.id])) ? " ⚠ " + esc(JSYNC.aideComp ? JSYNC.aideComp(LJ, PV_CFG.aps) : "") : "")
+          : "⚠ " + esc((LJ && LJ.raison) || "Cahier journalier indisponible") + " La note comportementale se note uniquement dans le cahier journalier."}</p>
         <p class="hint" style="margin:6px 0 0;">📷 Imprimez la « Feuille à scanner » (noms de la classe pré-remplis), noircissez les bulles au terrain, puis photographiez chaque page à plat (4 carrés noirs visibles) et importez les photos : l'application lit les bulles, vous vérifiez, puis les notes sont appliquées et transférées au cahier journalier. Ne changez pas les critères évalués entre l'impression et l'import.</p>
         <div id="sm-omr-etat" class="hint" style="margin:6px 0 0;font-weight:600;"></div>
         <details class="sm-crit" ${cl.sommativeInfo.critOuvert ? "open" : ""}><summary><b>Critères évalués</b> — choisissez pour chaque critère : Individuelle, Collective ou Non évalué</summary>
@@ -13518,7 +13531,7 @@ window.JSYNC = window.JSYNC || (function () {
                 ${KC.map(k => `<td>${selCrit(k, s)}</td>`).join("")}<td class="sm-n">${f(r.C.note)}</td>
                 <td><input class="input" style="width:54px;padding:3px 5px;" data-sm-n="conc" data-sm-el="${s.e.id}" value="${r.conc == null ? "" : f(r.conc)}" placeholder="/${G.conc}"></td>
                 <td>${r.compJ ? `<span class="sm-cj" title="${r.compJ.auto ? "Calculée par le barème comportemental du cahier journalier" : "Note du cahier journalier"}">${f(r.comp)} 📘</span>`
-                  : `<input class="input" style="width:54px;padding:3px 5px;" data-sm-n="comp" data-sm-el="${s.e.id}" value="${r.comp == null ? "" : f(r.comp)}" placeholder="/${G.comp}">`}</td>
+                  : `<span class="sm-cj" style="color:#B26A00;cursor:help" title="${esc(window.JSYNC && JSYNC.aideComp ? JSYNC.aideComp(LJ, PV_CFG.aps) : "Note du cahier journalier")}">— 📘</span>`}</td>
                 <td><b>${f(r.total)}</b></td>
                 <td>${f(r.dI)}</td>
                 <td class="${ec > 0 ? "sm-up" : ec < 0 ? "sm-down" : ""}">${ec == null ? "—" : (ec > 0 ? "+" : "") + f(ec)}</td>
@@ -13622,7 +13635,6 @@ window.JSYNC = window.JSYNC || (function () {
       if (r.I.note != null) ch.individ = r.I.note;
       if (r.C.note != null) ch.collec = r.C.note;
       if (r.conc != null) ch.conceptuelles = r.conc;
-      if (!r.compJ && r.comp != null) ch.comportementales = r.comp;
       if (Object.keys(ch).length && JSYNC.ecrire(SM_APS, cl.nom, e.nom, ch, pvNiveau(cl))) n++;
     });
     return n;
@@ -20497,9 +20509,22 @@ window.JSYNC = window.JSYNC || (function () {
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
       out[normNom(r.nom)] = o;
     });
+    // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
+    if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
-  function pour(map, nom) { return map[normNom(nom)] || null; }
+  function pour(map, nom) {
+    var o = map[normNom(nom)];
+    if (o) return o;
+    return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
+  }
+  /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
+  function aideComp(L, apsLib) {
+    var t = "tableau « " + (apsLib || "de l'APS") + " »";
+    if (!L || !L.ok) return ((L && L.raison) || "Cahier journalier indisponible.") + " Ajoutez la classe au cahier journalier : la note comportementale se note uniquement là.";
+    return L.bareme ? "Aucune séance notée dans le " + t + " du cahier journalier : la note comportementale sera calculée dès la première séance renseignée."
+      : "Note comportementale à noter dans le cahier journalier (" + t + "), ou activez le barème comportemental (codes AB, SN…) pour le calcul automatique.";
+  }
 
   /* écrit une ou deux notes d'un élève dans le tableau du cycle de la même APS */
   function ecrire(aps, classeNom, eleveNom, champs, nivPref) {
@@ -20536,7 +20561,7 @@ window.JSYNC = window.JSYNC || (function () {
     try { localStorage.setItem(t.k, JSON.stringify(t.data)); } catch (e) { return false; }
     return true;
   }
-  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE };
+  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE, aideComp: aideComp };
 })();
 
 @@SCRIPTCLOSE7f3a@@>
@@ -21708,7 +21733,7 @@ window.JSYNC = window.JSYNC || (function () {
     const I = smPart(sc, cl, "I", G.i), C = smPart(sc, cl, "C", G.c);
     const conc = smNum(e.sommative && e.sommative.conc);
     const cj = LJ && LJ.ok && LJ.compJ && LJ.compJ[e.id];
-    const comp = cj ? Number(cj.v) : smNum(e.sommative && e.sommative.comp);
+    const comp = cj ? Number(cj.v) : null;
     const parts = [I.note, C.note, conc, comp];
     const total = parts.every(p => p == null) ? null : Math.round(parts.reduce((t, p) => t + (p || 0), 0) * 100) / 100;
     // diagnostic initial : mêmes critères individuels, même maximum
@@ -21840,8 +21865,8 @@ window.JSYNC = window.JSYNC || (function () {
         </div>
         <p class="hint" style="margin:10px 0 0;">Chaque critère est noté 0 (à renforcer) · 1 (en cours) · 2 (acquis). La note individuelle et la note collective sont ramenées à leur maximum officiel avec les seuls critères retenus.</p>
         <p class="hint" style="margin:6px 0 0;">${LJ && LJ.ok
-          ? "📘 Comportemental repris automatiquement du cahier journalier (" + esc(LJ.niv) + " · classe " + esc(LJ.classe) + " · tableau " + esc(PV_CFG.aps) + (LJ.bareme ? ", barème comportemental" : "") + "). Le conceptuel saisi ici est reporté au cahier journalier."
-          : "⚠ " + esc((LJ && LJ.raison) || "Cahier journalier indisponible") + " Le comportemental se saisit alors ici."}</p>
+          ? "📘 Comportemental repris automatiquement du cahier journalier (" + esc(LJ.niv) + " · classe " + esc(LJ.classe) + " · tableau " + esc(PV_CFG.aps) + (LJ.bareme ? ", barème comportemental" : "") + "). Le conceptuel saisi ici est reporté au cahier journalier." + (cl.eleves.some(e => !(LJ.compJ && LJ.compJ[e.id])) ? " ⚠ " + esc(JSYNC.aideComp ? JSYNC.aideComp(LJ, PV_CFG.aps) : "") : "")
+          : "⚠ " + esc((LJ && LJ.raison) || "Cahier journalier indisponible") + " La note comportementale se note uniquement dans le cahier journalier."}</p>
         <p class="hint" style="margin:6px 0 0;">📷 Imprimez la « Feuille à scanner » (noms de la classe pré-remplis), noircissez les bulles au terrain, puis photographiez chaque page à plat (4 carrés noirs visibles) et importez les photos : l'application lit les bulles, vous vérifiez, puis les notes sont appliquées et transférées au cahier journalier. Ne changez pas les critères évalués entre l'impression et l'import.</p>
         <div id="sm-omr-etat" class="hint" style="margin:6px 0 0;font-weight:600;"></div>
         <details class="sm-crit" ${cl.sommativeInfo.critOuvert ? "open" : ""}><summary><b>Critères évalués</b> — choisissez pour chaque critère : Individuelle, Collective ou Non évalué</summary>
@@ -21872,7 +21897,7 @@ window.JSYNC = window.JSYNC || (function () {
                 ${KC.map(k => `<td>${selCrit(k, s)}</td>`).join("")}<td class="sm-n">${f(r.C.note)}</td>
                 <td><input class="input" style="width:54px;padding:3px 5px;" data-sm-n="conc" data-sm-el="${s.e.id}" value="${r.conc == null ? "" : f(r.conc)}" placeholder="/${G.conc}"></td>
                 <td>${r.compJ ? `<span class="sm-cj" title="${r.compJ.auto ? "Calculée par le barème comportemental du cahier journalier" : "Note du cahier journalier"}">${f(r.comp)} 📘</span>`
-                  : `<input class="input" style="width:54px;padding:3px 5px;" data-sm-n="comp" data-sm-el="${s.e.id}" value="${r.comp == null ? "" : f(r.comp)}" placeholder="/${G.comp}">`}</td>
+                  : `<span class="sm-cj" style="color:#B26A00;cursor:help" title="${esc(window.JSYNC && JSYNC.aideComp ? JSYNC.aideComp(LJ, PV_CFG.aps) : "Note du cahier journalier")}">— 📘</span>`}</td>
                 <td><b>${f(r.total)}</b></td>
                 <td>${f(r.dI)}</td>
                 <td class="${ec > 0 ? "sm-up" : ec < 0 ? "sm-down" : ""}">${ec == null ? "—" : (ec > 0 ? "+" : "") + f(ec)}</td>
@@ -21976,7 +22001,6 @@ window.JSYNC = window.JSYNC || (function () {
       if (r.I.note != null) ch.individ = r.I.note;
       if (r.C.note != null) ch.collec = r.C.note;
       if (r.conc != null) ch.conceptuelles = r.conc;
-      if (!r.compJ && r.comp != null) ch.comportementales = r.comp;
       if (Object.keys(ch).length && JSYNC.ecrire(SM_APS, cl.nom, e.nom, ch, pvNiveau(cl))) n++;
     });
     return n;
@@ -28853,9 +28877,22 @@ window.JSYNC = window.JSYNC || (function () {
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
       out[normNom(r.nom)] = o;
     });
+    // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
+    if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
-  function pour(map, nom) { return map[normNom(nom)] || null; }
+  function pour(map, nom) {
+    var o = map[normNom(nom)];
+    if (o) return o;
+    return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
+  }
+  /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
+  function aideComp(L, apsLib) {
+    var t = "tableau « " + (apsLib || "de l'APS") + " »";
+    if (!L || !L.ok) return ((L && L.raison) || "Cahier journalier indisponible.") + " Ajoutez la classe au cahier journalier : la note comportementale se note uniquement là.";
+    return L.bareme ? "Aucune séance notée dans le " + t + " du cahier journalier : la note comportementale sera calculée dès la première séance renseignée."
+      : "Note comportementale à noter dans le cahier journalier (" + t + "), ou activez le barème comportemental (codes AB, SN…) pour le calcul automatique.";
+  }
 
   /* écrit une ou deux notes d'un élève dans le tableau du cycle de la même APS */
   function ecrire(aps, classeNom, eleveNom, champs, nivPref) {
@@ -28892,7 +28929,7 @@ window.JSYNC = window.JSYNC || (function () {
     try { localStorage.setItem(t.k, JSON.stringify(t.data)); } catch (e) { return false; }
     return true;
   }
-  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE };
+  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE, aideComp: aideComp };
 })();
 
 @@SCRIPTCLOSE7f3a@@>
@@ -29989,7 +30026,7 @@ window.JSYNC = window.JSYNC || (function () {
     const I = smPart(sc, cl, "I", G.i), C = smPart(sc, cl, "C", G.c);
     const conc = smNum(e.sommative && e.sommative.conc);
     const cj = LJ && LJ.ok && LJ.compJ && LJ.compJ[e.id];
-    const comp = cj ? Number(cj.v) : smNum(e.sommative && e.sommative.comp);
+    const comp = cj ? Number(cj.v) : null;
     const parts = [I.note, C.note, conc, comp];
     const total = parts.every(p => p == null) ? null : Math.round(parts.reduce((t, p) => t + (p || 0), 0) * 100) / 100;
     // diagnostic initial : mêmes critères individuels, même maximum
@@ -30121,8 +30158,8 @@ window.JSYNC = window.JSYNC || (function () {
         </div>
         <p class="hint" style="margin:10px 0 0;">Chaque critère est noté 0 (à renforcer) · 1 (en cours) · 2 (acquis). La note individuelle et la note collective sont ramenées à leur maximum officiel avec les seuls critères retenus.</p>
         <p class="hint" style="margin:6px 0 0;">${LJ && LJ.ok
-          ? "📘 Comportemental repris automatiquement du cahier journalier (" + esc(LJ.niv) + " · classe " + esc(LJ.classe) + " · tableau " + esc(PV_CFG.aps) + (LJ.bareme ? ", barème comportemental" : "") + "). Le conceptuel saisi ici est reporté au cahier journalier."
-          : "⚠ " + esc((LJ && LJ.raison) || "Cahier journalier indisponible") + " Le comportemental se saisit alors ici."}</p>
+          ? "📘 Comportemental repris automatiquement du cahier journalier (" + esc(LJ.niv) + " · classe " + esc(LJ.classe) + " · tableau " + esc(PV_CFG.aps) + (LJ.bareme ? ", barème comportemental" : "") + "). Le conceptuel saisi ici est reporté au cahier journalier." + (cl.eleves.some(e => !(LJ.compJ && LJ.compJ[e.id])) ? " ⚠ " + esc(JSYNC.aideComp ? JSYNC.aideComp(LJ, PV_CFG.aps) : "") : "")
+          : "⚠ " + esc((LJ && LJ.raison) || "Cahier journalier indisponible") + " La note comportementale se note uniquement dans le cahier journalier."}</p>
         <p class="hint" style="margin:6px 0 0;">📷 Imprimez la « Feuille à scanner » (noms de la classe pré-remplis), noircissez les bulles au terrain, puis photographiez chaque page à plat (4 carrés noirs visibles) et importez les photos : l'application lit les bulles, vous vérifiez, puis les notes sont appliquées et transférées au cahier journalier. Ne changez pas les critères évalués entre l'impression et l'import.</p>
         <div id="sm-omr-etat" class="hint" style="margin:6px 0 0;font-weight:600;"></div>
         <details class="sm-crit" ${cl.sommativeInfo.critOuvert ? "open" : ""}><summary><b>Critères évalués</b> — choisissez pour chaque critère : Individuelle, Collective ou Non évalué</summary>
@@ -30153,7 +30190,7 @@ window.JSYNC = window.JSYNC || (function () {
                 ${KC.map(k => `<td>${selCrit(k, s)}</td>`).join("")}<td class="sm-n">${f(r.C.note)}</td>
                 <td><input class="input" style="width:54px;padding:3px 5px;" data-sm-n="conc" data-sm-el="${s.e.id}" value="${r.conc == null ? "" : f(r.conc)}" placeholder="/${G.conc}"></td>
                 <td>${r.compJ ? `<span class="sm-cj" title="${r.compJ.auto ? "Calculée par le barème comportemental du cahier journalier" : "Note du cahier journalier"}">${f(r.comp)} 📘</span>`
-                  : `<input class="input" style="width:54px;padding:3px 5px;" data-sm-n="comp" data-sm-el="${s.e.id}" value="${r.comp == null ? "" : f(r.comp)}" placeholder="/${G.comp}">`}</td>
+                  : `<span class="sm-cj" style="color:#B26A00;cursor:help" title="${esc(window.JSYNC && JSYNC.aideComp ? JSYNC.aideComp(LJ, PV_CFG.aps) : "Note du cahier journalier")}">— 📘</span>`}</td>
                 <td><b>${f(r.total)}</b></td>
                 <td>${f(r.dI)}</td>
                 <td class="${ec > 0 ? "sm-up" : ec < 0 ? "sm-down" : ""}">${ec == null ? "—" : (ec > 0 ? "+" : "") + f(ec)}</td>
@@ -30257,7 +30294,6 @@ window.JSYNC = window.JSYNC || (function () {
       if (r.I.note != null) ch.individ = r.I.note;
       if (r.C.note != null) ch.collec = r.C.note;
       if (r.conc != null) ch.conceptuelles = r.conc;
-      if (!r.compJ && r.comp != null) ch.comportementales = r.comp;
       if (Object.keys(ch).length && JSYNC.ecrire(SM_APS, cl.nom, e.nom, ch, pvNiveau(cl))) n++;
     });
     return n;
@@ -37228,9 +37264,22 @@ window.JSYNC = window.JSYNC || (function () {
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
       out[normNom(r.nom)] = o;
     });
+    // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
+    if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
-  function pour(map, nom) { return map[normNom(nom)] || null; }
+  function pour(map, nom) {
+    var o = map[normNom(nom)];
+    if (o) return o;
+    return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
+  }
+  /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
+  function aideComp(L, apsLib) {
+    var t = "tableau « " + (apsLib || "de l'APS") + " »";
+    if (!L || !L.ok) return ((L && L.raison) || "Cahier journalier indisponible.") + " Ajoutez la classe au cahier journalier : la note comportementale se note uniquement là.";
+    return L.bareme ? "Aucune séance notée dans le " + t + " du cahier journalier : la note comportementale sera calculée dès la première séance renseignée."
+      : "Note comportementale à noter dans le cahier journalier (" + t + "), ou activez le barème comportemental (codes AB, SN…) pour le calcul automatique.";
+  }
 
   /* écrit une ou deux notes d'un élève dans le tableau du cycle de la même APS */
   function ecrire(aps, classeNom, eleveNom, champs, nivPref) {
@@ -37267,7 +37316,7 @@ window.JSYNC = window.JSYNC || (function () {
     try { localStorage.setItem(t.k, JSON.stringify(t.data)); } catch (e) { return false; }
     return true;
   }
-  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE };
+  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE, aideComp: aideComp };
 })();
 
 @@SCRIPTCLOSE7f3a@@>
@@ -45122,7 +45171,7 @@ window.XlsxLite = (function () {
             '<td>' + champ(k, "temps", c.x.temps, 62, e.sexe === "F" ? "600 m" : "1000 m") + '</td><td><b>' + (c.nPerf != null ? fN(c.nPerf) : "—") + '</b></td>' +
             '<td>' + boutons(k, "qf", c.x.qf, ["A", "B", "C"], function (q) { return { A: "QF−", B: "QF=", C: "QF+" }[q]; }) + '</td><td><b>' + (c.nMot != null ? fN(c.nMot) : "—") + '</b></td>' +
             '<td>' + boutons(k, "conc", c.x.conc, valeursPas(concMax)) + '</td>' +
-            '<td>' + (LJ && LJ.ok ? (c.nComp != null ? '<b title="Note du cahier journalier">' + fN(c.nComp) + '</b> <span style="font-size:.7rem;color:#2E7D32">↔ cahier journalier</span>' : '<span style="font-size:.75rem;color:#B26A00">— à saisir dans le cahier journalier</span>') : boutons(k, "comp", c.x.comp, valeursPas(compMax))) + '</td>' +
+            '<td>' + (LJ && LJ.ok ? (c.nComp != null ? '<b title="Note du cahier journalier">' + fN(c.nComp) + '</b> <span style="font-size:.7rem;color:#2E7D32">↔ cahier journalier</span>' : '<span style="font-size:.75rem;color:#B26A00">— à saisir dans le cahier journalier</span>') : '<span style="font-size:.75rem;color:#B26A00">— cahier journalier</span>') + '</td>' +
             '<td style="font-size:1rem"><b>' + (c.total != null ? fN(c.total) : "—") + '</b>' + (c.total != null && !c.complet ? '<br><span style="color:#889;font-size:.7rem">incomplète</span>' : '') + '</td></tr>';
         }).join("") + '</tbody></table></div>' +
         (el.length ? '' : '<p style="color:#888">Aucun élève dans cette classe.</p>') : "");
@@ -46593,9 +46642,22 @@ window.JSYNC = window.JSYNC || (function () {
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
       out[normNom(r.nom)] = o;
     });
+    // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
+    if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
-  function pour(map, nom) { return map[normNom(nom)] || null; }
+  function pour(map, nom) {
+    var o = map[normNom(nom)];
+    if (o) return o;
+    return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
+  }
+  /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
+  function aideComp(L, apsLib) {
+    var t = "tableau « " + (apsLib || "de l'APS") + " »";
+    if (!L || !L.ok) return ((L && L.raison) || "Cahier journalier indisponible.") + " Ajoutez la classe au cahier journalier : la note comportementale se note uniquement là.";
+    return L.bareme ? "Aucune séance notée dans le " + t + " du cahier journalier : la note comportementale sera calculée dès la première séance renseignée."
+      : "Note comportementale à noter dans le cahier journalier (" + t + "), ou activez le barème comportemental (codes AB, SN…) pour le calcul automatique.";
+  }
 
   /* écrit une ou deux notes d'un élève dans le tableau du cycle de la même APS */
   function ecrire(aps, classeNom, eleveNom, champs, nivPref) {
@@ -46632,7 +46694,7 @@ window.JSYNC = window.JSYNC || (function () {
     try { localStorage.setItem(t.k, JSON.stringify(t.data)); } catch (e) { return false; }
     return true;
   }
-  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE };
+  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE, aideComp: aideComp };
 })();
 
 @@SCRIPTCLOSE7f3a@@>
@@ -49149,6 +49211,369 @@ EPS.ui = EPS.ui || {};
    être détruit par les re-render (goto) pendant qu'il tourne. */
 EPS._chrono = EPS._chrono || { studentId: null, running: false, startTs: null, elapsedMs: 0, bestMs: null, intervalId: null };
 
+/* ══════════════════════════════════════════════════════════════
+   COURSE DE VITESSE — GRILLE D'ÉVALUATION SOMMATIVE À SCANNER
+   A4 paysage, 4 carrés noirs (redressement), 11 élèves par page.
+   · Performance : chaque case porte un temps du barème officiel du
+     niveau (80 m garçons / 60 m filles) → noircir la 1re case dont le
+     temps est ≥ au chrono. Dernière case : au-delà du barème (= 0).
+   · Critères qualitatifs retenus (collège) ou السلوك الحركي (lycée),
+     puis conceptuel. Le comportemental vient du cahier journalier.
+   Signature « vitesse » : 2 bulles pleines en (214 ; 21) et (221 ; 21) mm.
+   ══════════════════════════════════════════════════════════════ */
+window.VTOMR = (function () {
+  "use strict";
+  const OG = { W: 297, H: 210, mk: 9, mkInset: 8, nameX: 14, x0: 64, pitch: 5, gap: 5, r: 2.0, y0: 58, rowH: 11.8, rows: 11,
+    codeX: 240, codeY: 21, codeGap: 7, chronoW: 19 };
+  const SIG = [{ x: 214, y: 21 }, { x: 221, y: 21 }];
+  const esc = (s) => String(s === undefined || s === null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const fr = (n) => String(n).replace(".", ",");
+  const range = (m) => Array.from({ length: m + 1 }, (_, i) => String(i));
+
+  function seuils(niv, genre) {
+    const b = EPS.reference.bareme && EPS.reference.bareme.course_vitesse, t = b && b[niv];
+    if (!t) return [];
+    return ((genre === "F" ? t.filles : t.garcons) || []).slice().sort((a, b2) => a.tempsMax - b2.tempsMax);
+  }
+  /* groupes de bulles d'une ligne (mêmes positions pour garçons et filles) */
+  function groupes(niv, exclus, genre) {
+    const cfg = EPS.reference.niveaux[niv] || EPS.reference.niveaux["1AC"];
+    const s = seuils(niv, genre), nPerf = Math.max(seuils(niv, "M").length, seuils(niv, "F").length) + 1;
+    const perf = s.map(x => fr(x.tempsMax));
+    if (perf.length) perf.push(">" + fr(s[s.length - 1].tempsMax));
+    const g = [{ id: "perf", lib: "Performance (s) — noircir la 1re case ≥ chrono", court: "Temps", vals: perf, sec: s, n: nPerf }];
+    if (cfg.qualitatifSimple) g.push({ id: "qualitatifNote", lib: "السلوك الحركي /" + cfg.qualitatifMax, court: "Comportement moteur", vals: range(cfg.qualitatifMax) });
+    else {
+      const rep = cfg.qualitatifRepartition || {};
+      [["reaction", "reactionScore", "Réaction", rep.reaction_signal], ["foulee", "fouleeScore", "Foulée", rep.qualite_foulee], ["ralentissement", "ralentissementScore", "Ralent.", rep.ralentissement_arrivee]]
+        .forEach(x => { if ((exclus || []).indexOf(x[0]) < 0 && x[3] > 0) g.push({ id: x[1], lib: x[2] + " /" + x[3], court: x[2], vals: range(x[3]) }); });
+    }
+    g.push({ id: "conceptuelNote", lib: "Conceptuel /" + cfg.conceptuelMax, court: "Conceptuel", vals: range(cfg.conceptuelMax) });
+    let x = OG.x0;
+    g.forEach(gr => { gr.n = gr.n || gr.vals.length; gr.x = x; x += gr.n * OG.pitch + OG.gap; });
+    g.fin = x;
+    return g;
+  }
+  function mkCentres() {
+    const a = OG.mkInset + OG.mk / 2;
+    return [{ x: a, y: a }, { x: OG.W - a, y: a }, { x: OG.W - a, y: OG.H - a }, { x: a, y: OG.H - a }];
+  }
+  const mm = (v) => v.toFixed(2) + "mm";
+
+  function feuille(ctx, page) {
+    const { classe, students, niv, exclus } = ctx, cfg = EPS.reference.niveaux[niv] || {};
+    const g0 = groupes(niv, exclus, "M"), chronoX = Math.min(g0.fin, OG.W - 14 - OG.chronoW);
+    let h = '<div class="vto">' + mkCentres().map(p => '<div class="vto-mk" style="left:' + mm(p.x - OG.mk / 2) + ';top:' + mm(p.y - OG.mk / 2) + ';width:' + OG.mk + 'mm;height:' + OG.mk + 'mm"></div>').join("") +
+      '<div class="vto-t" style="left:24mm;top:9mm">ÉVALUATION SOMMATIVE — COURSE DE VITESSE (80 m G / 60 m F)</div>' +
+      '<div class="vto-s" style="left:24mm;top:15.5mm;width:182mm">Classe : <b>' + esc(classe.nom) + '</b> · Niveau : <b>' + esc(niv) + '</b> · Page ' + (page + 1) +
+        ' · Date : ……………<br>Procédurale /' + ((cfg.perfMax || EPS.reference.performanceMax) + cfg.qualitatifMax) + ' + Conceptuel /' + cfg.conceptuelMax + ' + Comportemental /' + cfg.comportementalMax + ' (cahier journalier) = /20 · noircir une seule bulle par groupe</div>';
+    SIG.forEach(s => { h += '<div class="vto-b on" style="left:' + mm(s.x - 2.2) + ';top:' + mm(s.y - 2.2) + ';width:4.4mm;height:4.4mm"></div>'; });
+    h += '<div class="vto-s" style="left:' + mm(OG.codeX - 2.2) + ';top:' + mm(OG.codeY - 7) + '">code page</div>';
+    for (let b = 0; b < 4; b++) {
+      const on = ((page + 1) >> b) & 1;
+      h += '<div class="vto-b' + (on ? " on" : "") + '" style="left:' + mm(OG.codeX + b * OG.codeGap - 2.2) + ';top:' + mm(OG.codeY - 2.2) + ';width:4.4mm;height:4.4mm"></div>';
+    }
+    g0.forEach((gr, gi) => {
+      h += '<div class="vto-g" style="left:' + mm(gr.x - 2.5) + ';top:' + mm(OG.y0 - 17) + ';width:' + mm(gr.n * OG.pitch) + '">' + esc(gi === 0 ? gr.lib : gr.lib) + '</div>';
+      if (gi > 0) gr.vals.forEach((v, vi) => { h += '<div class="vto-d" style="left:' + mm(gr.x + vi * OG.pitch - 2.5) + ';top:' + mm(OG.y0 - 11) + '">' + v + '</div>'; });
+    });
+    h += '<div class="vto-g" style="left:' + mm(g0[0].x - 2.5) + ';top:' + mm(OG.y0 - 12) + ';width:' + mm(g0[0].n * OG.pitch) + ';border:0;font-weight:400;color:#444">plus rapide → note maximale ··· plus lent → note minimale (dernière case = au-delà du barème : 0)</div>';
+    h += '<div class="vto-g" style="left:' + mm(chronoX) + ';top:' + mm(OG.y0 - 17) + ';width:' + mm(OG.chronoW) + '">Chrono (écrit)</div>';
+    h += '<div class="vto-g" style="left:' + mm(OG.nameX) + ';top:' + mm(OG.y0 - 11) + ';width:44mm;text-align:left">N° · Élève</div>';
+    for (let i = 0; i < OG.rows; i++) {
+      const e = students[page * OG.rows + i], y = OG.y0 + i * OG.rowH;
+      h += '<div class="vto-l" style="left:' + mm(OG.nameX) + ';top:' + mm(y + 4.6) + ';width:' + mm(OG.W - OG.nameX - 14) + '"></div>';
+      h += '<div class="vto-n" style="left:' + mm(OG.nameX) + ';top:' + mm(y - 3.2) + '">' + (e ? (page * OG.rows + i + 1) + '. ' + esc(e.nom) + '<br><span style="color:#666;font-size:6.5pt">' + (e.genre === "F" ? "Fille · 60 m" : "Garçon · 80 m") + '</span>' : '') + '</div>';
+      if (!e) continue;
+      groupes(niv, exclus, e.genre).forEach((gr, gi) => {
+        gr.vals.forEach((v, vi) => {
+          const x = gr.x + vi * OG.pitch;
+          if (gi === 0) h += '<div class="vto-p" style="left:' + mm(x - 2.5) + ';top:' + mm(y - 5.6) + '">' + esc(v) + '</div>';
+          h += '<div class="vto-b" style="left:' + mm(x - OG.r) + ';top:' + mm(y - OG.r + 0.8) + ';width:' + mm(OG.r * 2) + ';height:' + mm(OG.r * 2) + '"></div>';
+        });
+      });
+      h += '<div class="vto-c" style="left:' + mm(chronoX) + ';top:' + mm(y - 3.4) + ';width:' + mm(OG.chronoW) + ';height:7.6mm">&nbsp;&nbsp;&nbsp;,&nbsp;&nbsp;&nbsp;s</div>';
+    }
+    h += '<div class="vto-s" style="left:24mm;top:' + mm(OG.H - 16) + ';width:246mm">Course de vitesse · photographier la feuille à plat, en paysage, les 4 carrés noirs visibles. La case « Chrono » sert à noter le temps exact (elle n\'est pas lue). Ne changez pas les critères évalués entre l\'impression et l\'import.</div></div>';
+    return h;
+  }
+  const CSS = '#vto-zone{display:none}' +
+    '#vto-zone .vto{position:relative;width:297mm;height:209mm;overflow:hidden;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#111}' +
+    '#vto-zone .vto + .vto{break-before:page;page-break-before:always}' +
+    '#vto-zone .vto > div{position:absolute;box-sizing:border-box}' +
+    '#vto-zone .vto-mk{background:#000}' +
+    '#vto-zone .vto-t{font-size:12.5pt;font-weight:700}' +
+    '#vto-zone .vto-s{font-size:8pt}' +
+    '#vto-zone .vto-g{font-size:6.6pt;font-weight:700;text-align:center;border-bottom:.3mm solid #444;line-height:1.1}' +
+    '#vto-zone .vto-d{font-size:7pt;width:5mm;text-align:center}' +
+    '#vto-zone .vto-p{font-size:4.6pt;width:5mm;text-align:center;letter-spacing:-.2pt;color:#222}' +
+    '#vto-zone .vto-c{border:.3mm solid #555;border-radius:1.5mm;font-size:9pt;text-align:center;line-height:7.6mm;color:#999}' +
+    '#vto-zone .vto-n{font-size:8pt;width:48mm;white-space:nowrap;overflow:hidden;line-height:1.15}' +
+    '#vto-zone .vto-l{border-bottom:.2mm dotted #999}' +
+    '#vto-zone .vto-b{border:.3mm solid #333;border-radius:50%}' +
+    '#vto-zone .vto-b.on{background:#000}' +
+    '#vto-zone *{-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+    '@media print{body.vto-printing > *:not(#vto-zone){display:none !important}body.vto-printing #vto-zone{display:block !important}}' +
+    '.vto-verif table td,.vto-verif table th{padding:4px 6px;text-align:center}.vto-verif td.nm{text-align:left;white-space:nowrap}' +
+    '.vto-verif td.doute{background:#FFF4E0}.vto-verif select,.vto-verif input{padding:3px 4px;font-size:.85rem}.vto-err{color:#B3261E;font-weight:600}' +
+    '.vx-cj-vide{color:#B26A00;font-weight:600;cursor:help}';
+  function style() {
+    if (document.getElementById("vto-style")) return;
+    const st = document.createElement("style"); st.id = "vto-style"; st.textContent = CSS; document.head.appendChild(st);
+  }
+  function imprimer(ctx) {
+    style();
+    if (!ctx.students.length) { alert("Aucun élève dans cette classe."); return; }
+    if (!seuils(ctx.niv, "M").length) { alert("Barème officiel introuvable pour le niveau " + ctx.niv + "."); return; }
+    let z = document.getElementById("vto-zone");
+    if (!z) { z = document.createElement("div"); z.id = "vto-zone"; document.body.appendChild(z); }
+    const pages = Math.ceil(ctx.students.length / OG.rows);
+    let h = ""; for (let p = 0; p < pages; p++) h += feuille(ctx, p);
+    z.innerHTML = h;
+    let pg = document.getElementById("vto-page");
+    if (!pg) { pg = document.createElement("style"); pg.id = "vto-page"; document.head.appendChild(pg); }
+    pg.textContent = "@page{size:A4 landscape;margin:0;}";
+    document.body.classList.add("vto-printing");
+    const fin = () => { document.body.classList.remove("vto-printing"); z.innerHTML = ""; pg.textContent = ""; window.removeEventListener("afterprint", fin); };
+    window.addEventListener("afterprint", fin);
+    setTimeout(() => window.print(), 80);
+  }
+
+  /* ---------- lecture optique ---------- */
+  function gris(img, maxW) {
+    const sc = Math.min(1, maxW / img.width), w = Math.round(img.width * sc), h = Math.round(img.height * sc);
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    const c2 = cv.getContext("2d"); c2.drawImage(img, 0, 0, w, h);
+    const dt = c2.getImageData(0, 0, w, h).data, g = new Uint8ClampedArray(w * h);
+    for (let i = 0, j = 0; i < dt.length; i += 4, j++) g[j] = (dt[i] * 0.299 + dt[i + 1] * 0.587 + dt[i + 2] * 0.114) | 0;
+    return { g, w, h };
+  }
+  function otsu(g) {
+    const hist = new Array(256).fill(0);
+    for (let i = 0; i < g.length; i++) hist[g[i]]++;
+    const total = g.length; let sum = 0; for (let t = 0; t < 256; t++) sum += t * hist[t];
+    let sumB = 0, wB = 0, best = 0, seuil = 128;
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t]; if (!wB) continue;
+      const wF = total - wB; if (!wF) break;
+      sumB += t * hist[t];
+      const mB = sumB / wB, mF = (sum - sumB) / wF, v = wB * wF * (mB - mF) * (mB - mF);
+      if (v > best) { best = v; seuil = t; }
+    }
+    return seuil;
+  }
+  function binariser(gr) {
+    const w = gr.w, h = gr.h, g = gr.g, I = new Float64Array((w + 1) * (h + 1)), seuil = otsu(g);
+    for (let y = 0; y < h; y++) { let s = 0; for (let x = 0; x < w; x++) { s += g[y * w + x]; I[(y + 1) * (w + 1) + x + 1] = I[y * (w + 1) + x + 1] + s; } }
+    const R = Math.max(20, Math.round(w / 22)), bin = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      const y0 = Math.max(0, y - R), y1 = Math.min(h, y + R + 1);
+      for (let x = 0; x < w; x++) {
+        const x0 = Math.max(0, x - R), x1 = Math.min(w, x + R + 1);
+        const m = (I[y1 * (w + 1) + x1] - I[y0 * (w + 1) + x1] - I[y1 * (w + 1) + x0] + I[y0 * (w + 1) + x0]) / ((x1 - x0) * (y1 - y0));
+        const v = g[y * w + x];
+        bin[y * w + x] = (v < m * 0.78 && v < m - 25) || v < Math.min(seuil, 60) ? 1 : 0;
+      }
+    }
+    gr.bin = bin;
+  }
+  function repere(bin, w, h, x0, y0, x1, y1) {
+    const W2 = x1 - x0, vus = new Uint8Array(W2 * (y1 - y0)); let best = null;
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      if (!bin[y * w + x] || vus[(y - y0) * W2 + x - x0]) continue;
+      let minx = x, maxx = x, miny = y, maxy = y, n = 0; const pile = [x, y];
+      vus[(y - y0) * W2 + x - x0] = 1;
+      while (pile.length) {
+        const py = pile.pop(), px = pile.pop(); n++;
+        if (px < minx) minx = px; if (px > maxx) maxx = px; if (py < miny) miny = py; if (py > maxy) maxy = py;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = px + dx, ny = py + dy;
+          if (nx < x0 || ny < y0 || nx >= x1 || ny >= y1) continue;
+          if (!bin[ny * w + nx] || vus[(ny - y0) * W2 + nx - x0]) continue;
+          vus[(ny - y0) * W2 + nx - x0] = 1; pile.push(nx, ny);
+        }
+      }
+      const bw = maxx - minx + 1, bh = maxy - miny + 1, aire = bw * bh, ratio = bw / bh, plein = n / aire;
+      if (aire < w * h * 0.00015 || aire > w * h * 0.02) continue;
+      if (ratio < 0.6 || ratio > 1.7 || plein < 0.65) continue;
+      if (!best || n > best.n) best = { n, cx: (minx + maxx) / 2, cy: (miny + maxy) / 2 };
+    }
+    return best;
+  }
+  function homog(src, dst) {
+    const A = [], b = [];
+    for (let i = 0; i < 4; i++) {
+      const x = src[i].x, y = src[i].y, X = dst[i].x, Y = dst[i].y;
+      A.push([x, y, 1, 0, 0, 0, -x * X, -y * X]); b.push(X);
+      A.push([0, 0, 0, x, y, 1, -x * Y, -y * Y]); b.push(Y);
+    }
+    for (let i = 0; i < 8; i++) {
+      let piv = i;
+      for (let k = i + 1; k < 8; k++) if (Math.abs(A[k][i]) > Math.abs(A[piv][i])) piv = k;
+      if (Math.abs(A[piv][i]) < 1e-9) return null;
+      [A[i], A[piv]] = [A[piv], A[i]]; [b[i], b[piv]] = [b[piv], b[i]];
+      for (let k = 0; k < 8; k++) { if (k === i) continue; const f = A[k][i] / A[i][i]; for (let j = i; j < 8; j++) A[k][j] -= f * A[i][j]; b[k] -= f * b[i]; }
+    }
+    const p = b.map((v, ii) => v / A[ii][ii]);
+    return [p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], 1];
+  }
+  function proj(H, x, y) { const d = H[6] * x + H[7] * y + H[8]; return { x: (H[0] * x + H[1] * y + H[2]) / d, y: (H[3] * x + H[4] * y + H[5]) / d }; }
+  function taux(gr, H, xmm, ymm, rmm) {
+    const c = proj(H, xmm, ymm), e = proj(H, xmm + rmm, ymm), rp = Math.max(2.5, Math.hypot(e.x - c.x, e.y - c.y) * 0.72);
+    let n = 0, s = 0;
+    for (let dy = -rp; dy <= rp; dy++) for (let dx = -rp; dx <= rp; dx++) {
+      if (dx * dx + dy * dy > rp * rp) continue;
+      const x = Math.round(c.x + dx), y = Math.round(c.y + dy);
+      if (x < 0 || y < 0 || x >= gr.w || y >= gr.h) continue;
+      n++; if (gr.bin[y * gr.w + x]) s++;
+    }
+    return n ? s / n : 0;
+  }
+  function lireImage(img, ctx) {
+    const gr = gris(img, 1600); binariser(gr);
+    const W = gr.w, H2 = gr.h, qx = Math.round(W * 0.42), qy = Math.round(H2 * 0.42);
+    const coins = [repere(gr.bin, W, H2, 0, 0, qx, qy), repere(gr.bin, W, H2, W - qx, 0, W, qy), repere(gr.bin, W, H2, W - qx, H2 - qy, W, H2), repere(gr.bin, W, H2, 0, H2 - qy, qx, H2)];
+    if (coins.some(c => !c)) return { erreur: "Les 4 carrés noirs n'ont pas été retrouvés : reprenez la photo à plat, feuille entière, bien éclairée." };
+    const larg = Math.hypot(coins[1].cx - coins[0].cx, coins[1].cy - coins[0].cy), haut = Math.hypot(coins[3].cx - coins[0].cx, coins[3].cy - coins[0].cy);
+    if (larg < haut) return { erreur: "La grille doit être photographiée en paysage (le titre en haut)." };
+    const H = homog(mkCentres(), coins.map(c => ({ x: c.cx, y: c.cy })));
+    if (!H) return { erreur: "Impossible de redresser l'image." };
+    if (SIG.some(s => taux(gr, H, s.x, s.y, 2.2) < 0.45)) return { erreur: "Ce n'est pas la grille d'évaluation sommative de Course de vitesse : imprimez la « Grille d'évaluation (à scanner) » de cette page." };
+    let page = 0;
+    for (let b = 0; b < 4; b++) if (taux(gr, H, OG.codeX + b * OG.codeGap, OG.codeY, 2.2) > 0.5) page |= (1 << b);
+    page = page || 1;
+    const lignes = [];
+    for (let i = 0; i < OG.rows; i++) {
+      const e = ctx.students[(page - 1) * OG.rows + i]; if (!e) continue;
+      const y = OG.y0 + i * OG.rowH + 0.8, L = { sid: e.id, vals: {}, temps: null, perfCase: "", doutes: [] };
+      let vide = true;
+      groupes(ctx.niv, ctx.exclus, e.genre).forEach(grp => {
+        const t = grp.vals.map((v, vi) => taux(gr, H, grp.x + vi * OG.pitch, y, OG.r));
+        const max = Math.max.apply(null, t), idx = t.indexOf(max), second = t.slice().sort((a, b2) => b2 - a)[1] || 0;
+        if (max < 0.22) return;
+        vide = false;
+        if (max - second < 0.12 || second >= 0.22) L.doutes.push(grp.id);
+        if (grp.id === "perf") {
+          const s = grp.sec;
+          L.temps = idx < s.length ? s[idx].tempsMax : Math.round((s[s.length - 1].tempsMax + 0.1) * 10) / 10;
+          L.perfCase = grp.vals[idx];
+        } else L.vals[grp.id] = idx;
+      });
+      if (!vide) lignes.push(L);
+    }
+    return { page, lignes };
+  }
+  function chargerImage(f) {
+    return new Promise((ok, ko) => {
+      const fr2 = new FileReader();
+      fr2.onerror = () => ko(new Error("lecture impossible"));
+      fr2.onload = () => { const img = new Image(); img.onload = () => ok(img); img.onerror = () => ko(new Error("image illisible")); img.src = fr2.result; };
+      fr2.readAsDataURL(f);
+    });
+  }
+
+  /* ---------- CSV ---------- */
+  const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9؀-ۿ]+/g, " ").trim();
+  function csvLignes(txt) {
+    const t = String(txt || "").replace(/^﻿/, ""), l0 = t.split(/\r?\n/)[0] || "";
+    const sep = (l0.match(/;/g) || []).length >= (l0.match(/,/g) || []).length ? ";" : ",";
+    return t.split(/\r?\n/).filter(l => l.trim()).map(l => {
+      const out = []; let cur = "", q = false;
+      for (let i = 0; i < l.length; i++) {
+        const ch = l[i];
+        if (q) { if (ch === '"' && l[i + 1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; }
+        else if (ch === '"' && cur === "") q = true; else if (ch === sep) { out.push(cur); cur = ""; } else cur += ch;
+      }
+      out.push(cur); return out.map(x => x.trim());
+    });
+  }
+  const COLS = [["temps", /^(temps|perf|chrono)/], ["reactionScore", /^reac/], ["fouleeScore", /^foul/], ["ralentissementScore", /^ralen/],
+    ["qualitatifNote", /^(qualit|comportement moteur|السلوك)/], ["conceptuelNote", /^concept/]];
+  function modeleCSV(ctx, grades) {
+    const g = groupes(ctx.niv, ctx.exclus, "M").filter(x => x.id !== "perf");
+    const L = [["Eleve", "Sexe", "Temps (s)"].concat(g.map(x => x.lib))];
+    ctx.students.forEach(s => {
+      const r = grades[s.id] || {};
+      L.push([s.nom, s.genre === "F" ? "F" : "G", r.tempsSec != null && r.tempsSec !== "" ? fr(r.tempsSec) : ""].concat(g.map(x => r[x.id] != null ? r[x.id] : "")));
+    });
+    const txt = "﻿" + L.map(r => r.map(x => { x = String(x); return /[;"\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; }).join(";")).join("\r\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" }));
+    a.download = "sommative_vitesse_" + String(ctx.classe.nom).replace(/[^\w-]+/g, "_") + ".csv";
+    document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 300);
+  }
+  function lireCSV(txt, ctx) {
+    const L = csvLignes(txt); if (L.length < 2) return { erreur: "Fichier CSV vide." };
+    const h = L[0].map(norm), cN = h.findIndex(x => /^(eleve|nom|name|التلميذ|الاسم)/.test(x));
+    if (cN < 0) return { erreur: "Colonne « Eleve » introuvable : utilisez le « Modèle CSV »." };
+    const g = groupes(ctx.niv, ctx.exclus, "M"), ids = g.map(x => x.id === "perf" ? "temps" : x.id), max = {};
+    g.forEach(x => { if (x.id !== "perf") max[x.id] = x.vals.length - 1; });
+    const col = {}; COLS.forEach(([id, re]) => { if (ids.indexOf(id) < 0) return; const i = h.findIndex(x => re.test(x)); if (i >= 0) col[id] = i; });
+    const idx = {}; ctx.students.forEach(s => { idx[norm(s.nom)] = s; });
+    const lignes = [], inconnus = [];
+    for (let i = 1; i < L.length; i++) {
+      const r = L[i], nom = r[cN]; if (!nom) continue;
+      const s = idx[norm(nom)]; if (!s) { inconnus.push(nom); continue; }
+      const X = { sid: s.id, vals: {}, temps: null, perfCase: "", doutes: [] };
+      Object.keys(col).forEach(id => {
+        const v = String(r[col[id]] || "").replace(",", ".").trim(); if (v === "") return;
+        const n = Number(v);
+        if (id === "temps") { if (isNaN(n) || n <= 0) X.doutes.push("perf"); else X.temps = n; return; }
+        if (isNaN(n) || n < 0 || n > max[id]) { X.doutes.push(id); return; }
+        X.vals[id] = Math.round(n);
+      });
+      lignes.push(X);
+    }
+    return { lignes, inconnus, colonnes: Object.keys(col).length };
+  }
+
+  /* ---------- vérification avant application ---------- */
+  function verifHTML(imp, ctx) {
+    const g = groupes(ctx.niv, ctx.exclus, "M"), ids = Object.keys(imp.lignes);
+    const nD = ids.reduce((t, k) => t + imp.lignes[k].doutes.length, 0);
+    return '<div class="card vto-verif"><div class="card-title">🔎 Vérification de l\'import (' + esc(imp.src) + ') — ' + ids.length + ' élève(s) lu(s)' +
+      (imp.pages.length ? ' · page(s) ' + imp.pages.slice().sort((a, b) => a - b).join(", ") : '') + '</div>' +
+      (imp.erreurs.length ? '<p class="vto-err">⚠ ' + imp.erreurs.map(esc).join('<br>⚠ ') + '</p>' : '') +
+      '<p class="hint">' + (nD ? '<b>' + nD + ' case(s) douteuse(s)</b> surlignée(s) en orange : vérifiez-les sur la feuille. ' : 'Aucune case douteuse. ') +
+      'Corrigez si besoin (le temps lu sur la grille est la limite de la case : remplacez-le par le chrono exact s\'il est noté), puis appliquez.</p>' +
+      '<div class="table-scroll"><table class="data-table"><thead><tr><th style="text-align:left">Élève</th><th>Temps (s)</th>' +
+      g.filter(x => x.id !== "perf").map(x => '<th>' + esc(x.lib) + '</th>').join("") + '</tr></thead><tbody>' +
+      ctx.students.filter(s => imp.lignes[s.id]).map(s => {
+        const L = imp.lignes[s.id];
+        return '<tr><td class="nm">' + esc(s.nom) + '</td><td class="' + (L.doutes.indexOf("perf") >= 0 ? "doute" : "") + '"><input data-vtv="' + s.id + '" data-vtc="temps" value="' + (L.temps != null ? fr(L.temps) : "") + '" style="width:70px">' +
+          (L.perfCase ? ' <span class="muted" style="font-size:.72rem">case ' + esc(L.perfCase) + '</span>' : '') + '</td>' +
+          g.filter(x => x.id !== "perf").map(x => '<td class="' + (L.doutes.indexOf(x.id) >= 0 ? "doute" : "") + '"><select data-vtv="' + s.id + '" data-vtc="' + x.id + '"><option value="">—</option>' +
+            x.vals.map((v, k) => '<option value="' + k + '"' + (L.vals[x.id] === k ? " selected" : "") + '>' + k + '</option>').join("") + '</select></td>').join("") + '</tr>';
+      }).join("") + '</tbody></table></div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">' +
+        '<button class="btn btn-primary" id="vtv-ok">✔ Appliquer et transférer au cahier journalier</button>' +
+        '<button class="btn btn-outline" id="vtv-ok2">Appliquer sans transférer</button>' +
+        '<button class="btn btn-outline" id="vtv-no">✕ Annuler l\'import</button></div></div>';
+  }
+  function fusion(imp, res) {
+    res.forEach(x => {
+      if (x.erreur) { imp.erreurs.push((x.nom ? x.nom + " : " : "") + x.erreur); return; }
+      if (x.page) imp.pages.push(x.page);
+      x.lignes.forEach(L => { imp.lignes[L.sid] = L; });
+    });
+    return imp;
+  }
+  /* écrit les lignes vérifiées dans les notes sommatives de l'évaluation */
+  async function appliquer(imp, current, apsId) {
+    let n = 0;
+    for (const sid of Object.keys(imp.lignes)) {
+      const L = imp.lignes[sid], id = "grade_" + current.id + "_" + sid;
+      let g; try { g = await EPS.db.get("summative_grades", id); } catch (e) { g = null; }
+      g = g || { id, evaluationId: current.id, studentId: sid, apsId };
+      if (L.temps != null) g.tempsSec = L.temps;
+      Object.keys(L.vals).forEach(k => { if (L.vals[k] != null) g[k] = L.vals[k]; });
+      g.updatedAt = Date.now();
+      await EPS.db.put("summative_grades", g); n++;
+    }
+    return n;
+  }
+  return { OG, groupes, seuils, imprimer, lireImage, chargerImage, lireCSV, modeleCSV, verifHTML, fusion, appliquer, style };
+})();
+
 EPS.ui.summative = {
   async render(container) {
     const classeId = EPS.state.classeId;
@@ -49173,11 +49598,12 @@ EPS.ui.summative = {
     // notes conceptuelles / comportementales venant du cahier journalier (tableau Course de vitesse)
     const lienJ = window.JSYNC ? JSYNC.lien("vitesse", classe.nom, niveauCode) : null;
     const vxCompJ = {};   // élèves dont la note comportementale vient du cahier journalier
+    const vxCompV = {};   // valeur lue dans le cahier journalier
     if (current && lienJ && lienJ.ok) {
       const mJ = JSYNC.lire("vitesse", classe.nom, niveauCode);
       for (const s of students) {
         const j = JSYNC.pour(mJ, s.nom); if (!j) continue;
-        if (j.comportementales != null && !isNaN(j.comportementales)) vxCompJ[s.id] = j.compAuto ? "auto" : "journal";
+        if (j.comportementales != null && !isNaN(j.comportementales)) { vxCompJ[s.id] = j.compAuto ? "auto" : "journal"; vxCompV[s.id] = j.comportementales; }
         const id = "grade_" + current.id + "_" + s.id;
         const g = byStudentGrade[s.id] || { id, evaluationId: current.id, studentId: s.id, apsId };
         let ch = false;
@@ -49200,7 +49626,7 @@ EPS.ui.summative = {
         fouleeScore: g.fouleeScore || 0,
         ralentissementScore: g.ralentissementScore || 0,
         conceptuelNote: g.conceptuelNote || 0,
-        comportementalScore: g.comportementalScore || 0
+        comportementalScore: vxCompV[s.id] != null ? vxCompV[s.id] : 0
       }, niveauCfg);
       return { student: s, raw: g, tempsSec, res };
     }) : [];
@@ -49221,6 +49647,28 @@ EPS.ui.summative = {
       });
     }
     const stats = current ? notation.classStats(computedRows.map((r) => r.res)) : null;
+    VTOMR.style();
+    const vtAideComp = window.JSYNC && JSYNC.aideComp ? JSYNC.aideComp(lienJ, "Course de vitesse") : "Cahier journalier indisponible.";
+    const vtCtx = { classe, students, niv: niveauCode, exclus: niveauCfg.qualitatifSimple ? [] : vxExclus };
+    /* performance, comportement moteur et conceptuel vers le cahier journalier (le comportemental n'est jamais renvoyé) */
+    const vtTransferer = () => {
+      if (!window.JSYNC || !lienJ || !lienJ.ok) return null;
+      let n = 0;
+      computedRows.forEach((r) => {
+        const g = r.raw || {};
+        const saisi = r.tempsSec !== null || ["reactionScore", "fouleeScore", "ralentissementScore", "qualitatifNote", "conceptuelNote"].some(k => g[k] !== undefined && g[k] !== null && g[k] !== "");
+        if (!saisi) return;
+        if (JSYNC.ecrire("vitesse", classe.nom, r.student.nom, { habilite: r.tempsSec !== null ? r.res.perf : "", comportementMoteur: r.res.qualitative, conceptuelles: r.res.conc }, niveauCode)) n++;
+      });
+      return n;
+    };
+    const vtToast = (t) => { if (EPS.toast) EPS.toast(t); else { const z = document.getElementById("vto-etat"); if (z) z.textContent = t; } };
+    if (current && EPS._vtTransfert) {
+      EPS._vtTransfert = false;
+      const n = vtTransferer();
+      EPS._vtMsg = (EPS._vtMsg || "") + (n == null ? " · cahier journalier : " + ((lienJ && lienJ.raison) || "indisponible") : " · " + n + " élève(s) transféré(s) au cahier journalier");
+    }
+    const vtImp = EPS._vtImport && current && EPS._vtImport.evalId === current.id ? EPS._vtImport : null;
 
     /* Chronomètre multi-couloirs : l'état vit hors du rendu (comme EPS._chrono) */
     const M = EPS._multi = EPS._multi || { lanes: Array.from({ length: 4 }, () => ({ studentId: "", timeMs: null })), running: false, startTs: null, elapsed: 0, intervalId: null };
@@ -49331,7 +49779,8 @@ EPS.ui.summative = {
         </div>
         ${niveauCfg.qualitatifSimple ? "" : `<div class="vx-crit"><b>Critères qualitatifs évalués</b> <span class="hint" style="margin:0;">— décochez ceux que vous n'évaluez pas : le qualitatif /${niveauCfg.qualitatifMax} est recalculé sur les critères retenus.</span>
           <div>${VX.map(x => `<label><input type="checkbox" data-vx="${x[0]}" ${vxOff(x[0]) ? "" : "checked"}> ${x[2]} /${rep[x[1]]}</label>`).join("")}</div></div>`}
-        ${lienJ && lienJ.ok ? `<p class="hint" style="margin:8px 0 0;">📘 Comportemental repris automatiquement du cahier journalier (tableau Course de vitesse${lienJ.bareme ? ", barème comportemental" : ""}).</p>` : ""}
+        <p class="hint" style="margin:8px 0 0;">📘 La note comportementale est reprise automatiquement du cahier journalier (tableau Course de vitesse${lienJ && lienJ.bareme ? ", barème comportemental" : ""}) : elle se note uniquement là.</p>
+        ${students.some(s => !vxCompJ[s.id]) ? `<p class="hint" style="margin:4px 0 0;color:#B26A00;">⚠ ${vtAideComp}</p>` : ""}
 
         <div class="table-scroll" style="margin-top:16px;">
         <table class="data-table cycle-table notation-table">
@@ -49361,7 +49810,7 @@ EPS.ui.summative = {
                    <td class="ro-cell">${r.res.qualitative}</td>`}
               <td class="ro-cell"><strong>${r.res.procedurale}</strong></td>
               <td>${scoreButtons(r.res.conc, niveauCfg.conceptuelMax, "conceptuelNote", r.student.id)}</td>
-              <td>${vxCompJ[r.student.id] ? `<span class="vx-cj" title="${vxCompJ[r.student.id] === "auto" ? "Calculée par le barème comportemental du cahier journalier" : "Note du cahier journalier"}">${r.res.comp} 📘</span>` : scoreButtons(r.res.comp, niveauCfg.comportementalMax, "comportementalScore", r.student.id)}</td>
+              <td>${vxCompJ[r.student.id] ? `<span class="vx-cj" title="${vxCompJ[r.student.id] === "auto" ? "Calculée par le barème comportemental du cahier journalier" : "Note du cahier journalier"}">${r.res.comp} 📘</span>` : `<span class="vx-cj vx-cj-vide" title="${vtAideComp.replace(/"/g, "&quot;")}">— 📘</span>`}</td>
               <td class="ro-cell"><strong>${r.res.finale}</strong></td>
               <td><span class="tag ${r.res.finale >= 10 ? "tag-green" : "tag-red"}">${notation.appreciation(r.res.finale)}</span></td>
             </tr>`).join("")}
@@ -49369,6 +49818,24 @@ EPS.ui.summative = {
         </table>
         </div>
       </div>
+
+      <div class="card">
+        <div class="card-title">📄 Grille d'évaluation — imprimer, remplir au terrain, importer</div>
+        <p class="hint">Imprimez la grille (noms de la classe pré-remplis, barème officiel ${niveauCode} imprimé dans les cases de performance), noircissez une bulle par groupe pendant l'épreuve,
+          puis photographiez chaque page à plat (les 4 carrés noirs visibles) et importez les photos. L'application lit les bulles, vous vérifiez, puis les notes sont appliquées
+          et transférées au cahier journalier (performance, comportement moteur, conceptuel). La note comportementale reste celle du cahier journalier.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn btn-outline" id="vtoPrint">🖨 Grille d'évaluation (à scanner)</button>
+          <button class="btn btn-outline" id="vtoPhoto">📷 Importer la grille remplie (photos)</button>
+          <input type="file" id="vtoPhotoFile" accept="image/*" multiple hidden>
+          <button class="btn btn-outline" id="vtoCsvMod">📥 Modèle CSV</button>
+          <button class="btn btn-outline" id="vtoCsv">📂 Importer CSV</button>
+          <input type="file" id="vtoCsvFile" accept=".csv,.txt" hidden>
+          <button class="btn btn-primary" id="vtoJournal" ${lienJ && lienJ.ok ? "" : "disabled"} title="${lienJ && lienJ.ok ? "" : String((lienJ && lienJ.raison) || "").replace(/"/g, "&quot;")}">📤 Transférer au cahier journalier</button>
+        </div>
+        <div id="vto-etat" class="hint" style="margin:8px 0 0;font-weight:600;">${EPS._vtMsg ? EPS._vtMsg : ""}</div>
+      </div>
+      ${vtImp ? VTOMR.verifHTML(vtImp, vtCtx) : ""}
 
       ${stats ? `
       <div class="card">
@@ -49447,6 +49914,71 @@ EPS.ui.summative = {
     });
 
     if (!current) return;
+    EPS._vtMsg = "";
+
+    {
+      const etat = (t) => { const z = document.getElementById("vto-etat"); if (z) z.textContent = t; };
+      const voir = () => { const v = container.querySelector(".vto-verif"); if (v) v.scrollIntoView({ behavior: "smooth", block: "start" }); };
+      const nouveau = (src) => ({ evalId: current.id, src, lignes: {}, pages: [], erreurs: [] });
+      document.getElementById("vtoPrint").addEventListener("click", () => VTOMR.imprimer(vtCtx));
+      document.getElementById("vtoPhoto").addEventListener("click", () => document.getElementById("vtoPhotoFile").click());
+      document.getElementById("vtoPhotoFile").addEventListener("change", async (ev) => {
+        const fichiers = Array.from(ev.target.files || []); ev.target.value = "";
+        if (!fichiers.length) return;
+        etat("Lecture de " + fichiers.length + " photo(s)…");
+        const res = [];
+        for (const f of fichiers) {
+          try { const img = await VTOMR.chargerImage(f); const r = VTOMR.lireImage(img, vtCtx); r.nom = f.name; res.push(r); }
+          catch (e) { res.push({ nom: f.name, erreur: e.message }); }
+        }
+        const imp = VTOMR.fusion(nouveau("photo"), res);
+        if (!Object.keys(imp.lignes).length) { etat("⚠ Aucune bulle lue. " + imp.erreurs.join(" · ")); return; }
+        EPS._vtImport = imp;
+        const y = window.scrollY; await EPS.ui.summative.render(container); window.scrollTo(0, y); voir();
+      });
+      document.getElementById("vtoCsvMod").addEventListener("click", () => VTOMR.modeleCSV(vtCtx, byStudentGrade));
+      document.getElementById("vtoCsv").addEventListener("click", () => document.getElementById("vtoCsvFile").click());
+      document.getElementById("vtoCsvFile").addEventListener("change", (ev) => {
+        const f = ev.target.files[0]; ev.target.value = ""; if (!f) return;
+        const fr = new FileReader();
+        fr.onload = async () => {
+          const r = VTOMR.lireCSV(fr.result, vtCtx);
+          if (r.erreur) { etat("⚠ " + r.erreur); return; }
+          const imp = VTOMR.fusion(nouveau("CSV"), [{ lignes: r.lignes }]);
+          if (r.inconnus.length) imp.erreurs.push("Élèves absents de la classe (ignorés) : " + r.inconnus.join(", "));
+          if (!r.colonnes) imp.erreurs.push("Aucune colonne reconnue : utilisez le « Modèle CSV ».");
+          EPS._vtImport = imp;
+          const y = window.scrollY; await EPS.ui.summative.render(container); window.scrollTo(0, y); voir();
+        };
+        fr.readAsText(f, "utf-8");
+      });
+      document.getElementById("vtoJournal").addEventListener("click", () => {
+        const n = vtTransferer();
+        etat(n == null ? "⚠ Cahier journalier : " + ((lienJ && lienJ.raison) || "indisponible") : "✅ " + n + " élève(s) transféré(s) au cahier journalier (performance, comportement moteur, conceptuel).");
+      });
+      if (vtImp) {
+        container.querySelectorAll("[data-vtv]").forEach((c) => c.addEventListener("change", () => {
+          const L = vtImp.lignes[c.dataset.vtv], k = c.dataset.vtc, v = c.value.trim().replace(",", ".");
+          if (k === "temps") {
+            const n = v === "" ? null : Number(v);
+            if (n !== null && (isNaN(n) || n <= 0)) { c.value = L.temps != null ? String(L.temps).replace(".", ",") : ""; return; }
+            L.temps = n; L.doutes = L.doutes.filter(x => x !== "perf");
+          } else { if (v === "") delete L.vals[k]; else L.vals[k] = Number(v); L.doutes = L.doutes.filter(x => x !== k); }
+          c.parentNode.classList.remove("doute");
+        }));
+        const appliquer = async (transf) => {
+          const n = await VTOMR.appliquer(vtImp, current, apsId);
+          EPS._vtImport = null;
+          EPS._vtMsg = "✅ " + n + " élève(s) mis à jour depuis l'import (" + vtImp.src + ")";
+          EPS._vtTransfert = !!transf;
+          EPS.saveIndicator && EPS.saveIndicator();
+          goto("summative");
+        };
+        document.getElementById("vtv-ok").addEventListener("click", () => appliquer(true));
+        document.getElementById("vtv-ok2").addEventListener("click", () => appliquer(false));
+        document.getElementById("vtv-no").addEventListener("click", () => { EPS._vtImport = null; goto("summative"); });
+      }
+    }
 
     if (EPS._chrono.running) {
       if (EPS._chrono.intervalId) clearInterval(EPS._chrono.intervalId);
@@ -61511,9 +62043,22 @@ window.JSYNC = window.JSYNC || (function () {
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
       out[normNom(r.nom)] = o;
     });
+    // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
+    if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
-  function pour(map, nom) { return map[normNom(nom)] || null; }
+  function pour(map, nom) {
+    var o = map[normNom(nom)];
+    if (o) return o;
+    return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
+  }
+  /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
+  function aideComp(L, apsLib) {
+    var t = "tableau « " + (apsLib || "de l'APS") + " »";
+    if (!L || !L.ok) return ((L && L.raison) || "Cahier journalier indisponible.") + " Ajoutez la classe au cahier journalier : la note comportementale se note uniquement là.";
+    return L.bareme ? "Aucune séance notée dans le " + t + " du cahier journalier : la note comportementale sera calculée dès la première séance renseignée."
+      : "Note comportementale à noter dans le cahier journalier (" + t + "), ou activez le barème comportemental (codes AB, SN…) pour le calcul automatique.";
+  }
 
   /* écrit une ou deux notes d'un élève dans le tableau du cycle de la même APS */
   function ecrire(aps, classeNom, eleveNom, champs, nivPref) {
@@ -61550,7 +62095,7 @@ window.JSYNC = window.JSYNC || (function () {
     try { localStorage.setItem(t.k, JSON.stringify(t.data)); } catch (e) { return false; }
     return true;
   }
-  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE };
+  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE, aideComp: aideComp };
 })();
 
 @@SCRIPTCLOSE7f3a@@>
@@ -62612,7 +63157,7 @@ window.DISC = {
   function totalFinal(c, ev, e) {
     var n = niv(c), L = ligneCalc(c, ev, e), x = L.x, js = jsLire(c), j = (window.JSYNC && JSYNC.pour(js, e.nom)) || {};
     var conc = x.conc !== undefined && x.conc !== "" ? Number(String(x.conc).replace(",", ".")) : (j.conceptuelles != null ? j.conceptuelles : null);
-    var comp = j.comportementales != null ? j.comportementales : (x.comp !== undefined && x.comp !== "" ? Number(String(x.comp).replace(",", ".")) : null);
+    var comp = j.comportementales != null ? j.comportementales : null;
     var parts = [L.np, L.nm, conc, comp];
     var total = parts.every(function (p) { return p == null; }) ? null : parts.reduce(function (a, p) { return a + (p || 0); }, 0);
     return { L: L, conc: conc, comp: comp, compJournal: j.comportementales != null, compAuto: !!j.compAuto, total: total == null ? null : Math.round(total * 100) / 100 };
@@ -62629,7 +63174,7 @@ window.DISC = {
         (fin ? '<button class="btn pri" id="g-journal">📤 Transférer au cahier journalier</button>' : '<button class="btn pri" id="g-ana">📊 Analyser</button>') + '</div>' +
         (fin ? '<div class="crit-sel"><b>Critères évalués</b> <span class="muted">— décochez ceux que vous n\'évaluez pas : la note de comportement moteur est recalculée sur les critères retenus.</span><div>' +
           N.criteres.map(function (k) { return '<label><input type="checkbox" data-ck="' + k.id + '"' + (cs.indexOf(k) >= 0 ? " checked" : "") + '> <b>' + k.id + '</b> ' + esc(k.t) + '</label>'; }).join("") + '</div></div>' : "") +
-        (fin ? '<p class="' + (lk.ok ? "ok-t" : "warn") + '">' + (lk.ok ? "Liaison cahier journalier : classe « " + esc(lk.classe) + " » (" + lk.niv + "), tableau « " + D.nom + " ». Le comportemental est repris du cahier journalier quand il y est saisi (📘), sinon saisissez-le ici." : "Cahier journalier : " + esc(lk.raison) + " Saisissez le comportemental ici si besoin.") + '</p>' : "") +
+        (fin ? '<p class="' + (lk.ok ? "ok-t" : "warn") + '">' + (lk.ok ? "Liaison cahier journalier : classe « " + esc(lk.classe) + " » (" + lk.niv + "), tableau « " + D.nom + " ». La note comportementale est reprise automatiquement du cahier journalier (📘) : elle se note uniquement là." : "Cahier journalier : " + esc(lk.raison) + " La note comportementale se note uniquement dans le cahier journalier.") + '</p>' : "") +
       '</div>' +
       '<div class="card"><div class="tw"><table class="t grille"><thead><tr><th rowspan="2">#</th><th rowspan="2" class="l">Élève</th><th rowspan="2">S</th><th colspan="3">Essais (m)</th><th rowspan="2">Meilleure</th><th rowspan="2">Perf. /' + G.perf + '</th>' +
         '<th colspan="' + cs.length + '">Critères de réalisation (0 · 1 · 2)</th><th rowspan="2">Mot. /' + G.mot + '</th>' +
@@ -62657,7 +63202,7 @@ window.DISC = {
         tr.querySelector(".np").textContent = L.np != null ? fr(L.np) : "—";
         tr.querySelector(".nm").textContent = L.nm != null ? fr(L.nm) : "—";
         var cpj = tr.querySelector(".cpj"), cmi = tr.querySelector(".cm");
-        cpj.textContent = T.compJournal ? fr(T.comp) + " 📘" : ""; cpj.title = T.compAuto ? "Calculée par le barème comportemental du cahier journalier" : "Note saisie dans le cahier journalier"; cpj.style.display = T.compJournal ? "" : "none"; cmi.style.display = T.compJournal ? "none" : "";
+        cpj.textContent = T.compJournal ? fr(T.comp) + " 📘" : "— 📘"; cpj.title = T.compJournal ? (T.compAuto ? "Calculée par le barème comportemental du cahier journalier" : "Note saisie dans le cahier journalier") : (window.JSYNC && JSYNC.aideComp ? JSYNC.aideComp(lk, D.nom) : ""); cpj.style.color = T.compJournal ? "" : "#B26A00"; cpj.style.display = ""; cmi.style.display = "none";
         tr.querySelector(".tot").textContent = T.total != null ? fr(T.total) : "—";
       } else {
         var L2 = ligneCalc(c, ev, e);
@@ -62711,7 +63256,6 @@ window.DISC = {
       if (T.L.np != null) ch.habilite = T.L.np;
       if (T.L.nm != null) ch.comportementMoteur = T.L.nm;
       if (T.conc != null) ch.conceptuelles = T.conc;
-      if (!T.compJournal && T.comp != null) ch.comportementales = T.comp;
       if (JSYNC.ecrire(D.id, c.nom, e.nom, ch, niv(c))) n++;
     });
     ev.transfereLe = new Date().toISOString(); sauverEval(ev);
@@ -63506,9 +64050,22 @@ window.JSYNC = window.JSYNC || (function () {
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
       out[normNom(r.nom)] = o;
     });
+    // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
+    if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
-  function pour(map, nom) { return map[normNom(nom)] || null; }
+  function pour(map, nom) {
+    var o = map[normNom(nom)];
+    if (o) return o;
+    return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
+  }
+  /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
+  function aideComp(L, apsLib) {
+    var t = "tableau « " + (apsLib || "de l'APS") + " »";
+    if (!L || !L.ok) return ((L && L.raison) || "Cahier journalier indisponible.") + " Ajoutez la classe au cahier journalier : la note comportementale se note uniquement là.";
+    return L.bareme ? "Aucune séance notée dans le " + t + " du cahier journalier : la note comportementale sera calculée dès la première séance renseignée."
+      : "Note comportementale à noter dans le cahier journalier (" + t + "), ou activez le barème comportemental (codes AB, SN…) pour le calcul automatique.";
+  }
 
   /* écrit une ou deux notes d'un élève dans le tableau du cycle de la même APS */
   function ecrire(aps, classeNom, eleveNom, champs, nivPref) {
@@ -63545,7 +64102,7 @@ window.JSYNC = window.JSYNC || (function () {
     try { localStorage.setItem(t.k, JSON.stringify(t.data)); } catch (e) { return false; }
     return true;
   }
-  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE };
+  return { COMP_MAX: COMP_MAX, lien: lien, lire: lire, pour: pour, ecrire: ecrire, normNom: normNom, normClasse: normClasse, CYCLE: CYCLE, aideComp: aideComp };
 })();
 
 @@SCRIPTCLOSE7f3a@@>
@@ -64602,7 +65159,7 @@ window.DISC = {
   function totalFinal(c, ev, e) {
     var n = niv(c), L = ligneCalc(c, ev, e), x = L.x, js = jsLire(c), j = (window.JSYNC && JSYNC.pour(js, e.nom)) || {};
     var conc = x.conc !== undefined && x.conc !== "" ? Number(String(x.conc).replace(",", ".")) : (j.conceptuelles != null ? j.conceptuelles : null);
-    var comp = j.comportementales != null ? j.comportementales : (x.comp !== undefined && x.comp !== "" ? Number(String(x.comp).replace(",", ".")) : null);
+    var comp = j.comportementales != null ? j.comportementales : null;
     var parts = [L.np, L.nm, conc, comp];
     var total = parts.every(function (p) { return p == null; }) ? null : parts.reduce(function (a, p) { return a + (p || 0); }, 0);
     return { L: L, conc: conc, comp: comp, compJournal: j.comportementales != null, compAuto: !!j.compAuto, total: total == null ? null : Math.round(total * 100) / 100 };
@@ -64619,7 +65176,7 @@ window.DISC = {
         (fin ? '<button class="btn pri" id="g-journal">📤 Transférer au cahier journalier</button>' : '<button class="btn pri" id="g-ana">📊 Analyser</button>') + '</div>' +
         (fin ? '<div class="crit-sel"><b>Critères évalués</b> <span class="muted">— décochez ceux que vous n\'évaluez pas : la note de comportement moteur est recalculée sur les critères retenus.</span><div>' +
           N.criteres.map(function (k) { return '<label><input type="checkbox" data-ck="' + k.id + '"' + (cs.indexOf(k) >= 0 ? " checked" : "") + '> <b>' + k.id + '</b> ' + esc(k.t) + '</label>'; }).join("") + '</div></div>' : "") +
-        (fin ? '<p class="' + (lk.ok ? "ok-t" : "warn") + '">' + (lk.ok ? "Liaison cahier journalier : classe « " + esc(lk.classe) + " » (" + lk.niv + "), tableau « " + D.nom + " ». Le comportemental est repris du cahier journalier quand il y est saisi (📘), sinon saisissez-le ici." : "Cahier journalier : " + esc(lk.raison) + " Saisissez le comportemental ici si besoin.") + '</p>' : "") +
+        (fin ? '<p class="' + (lk.ok ? "ok-t" : "warn") + '">' + (lk.ok ? "Liaison cahier journalier : classe « " + esc(lk.classe) + " » (" + lk.niv + "), tableau « " + D.nom + " ». La note comportementale est reprise automatiquement du cahier journalier (📘) : elle se note uniquement là." : "Cahier journalier : " + esc(lk.raison) + " La note comportementale se note uniquement dans le cahier journalier.") + '</p>' : "") +
       '</div>' +
       '<div class="card"><div class="tw"><table class="t grille"><thead><tr><th rowspan="2">#</th><th rowspan="2" class="l">Élève</th><th rowspan="2">S</th><th colspan="3">Essais (m)</th><th rowspan="2">Meilleure</th><th rowspan="2">Perf. /' + G.perf + '</th>' +
         '<th colspan="' + cs.length + '">Critères de réalisation (0 · 1 · 2)</th><th rowspan="2">Mot. /' + G.mot + '</th>' +
@@ -64647,7 +65204,7 @@ window.DISC = {
         tr.querySelector(".np").textContent = L.np != null ? fr(L.np) : "—";
         tr.querySelector(".nm").textContent = L.nm != null ? fr(L.nm) : "—";
         var cpj = tr.querySelector(".cpj"), cmi = tr.querySelector(".cm");
-        cpj.textContent = T.compJournal ? fr(T.comp) + " 📘" : ""; cpj.title = T.compAuto ? "Calculée par le barème comportemental du cahier journalier" : "Note saisie dans le cahier journalier"; cpj.style.display = T.compJournal ? "" : "none"; cmi.style.display = T.compJournal ? "none" : "";
+        cpj.textContent = T.compJournal ? fr(T.comp) + " 📘" : "— 📘"; cpj.title = T.compJournal ? (T.compAuto ? "Calculée par le barème comportemental du cahier journalier" : "Note saisie dans le cahier journalier") : (window.JSYNC && JSYNC.aideComp ? JSYNC.aideComp(lk, D.nom) : ""); cpj.style.color = T.compJournal ? "" : "#B26A00"; cpj.style.display = ""; cmi.style.display = "none";
         tr.querySelector(".tot").textContent = T.total != null ? fr(T.total) : "—";
       } else {
         var L2 = ligneCalc(c, ev, e);
@@ -64701,7 +65258,6 @@ window.DISC = {
       if (T.L.np != null) ch.habilite = T.L.np;
       if (T.L.nm != null) ch.comportementMoteur = T.L.nm;
       if (T.conc != null) ch.conceptuelles = T.conc;
-      if (!T.compJournal && T.comp != null) ch.comportementales = T.comp;
       if (JSYNC.ecrire(D.id, c.nom, e.nom, ch, niv(c))) n++;
     });
     ev.transfereLe = new Date().toISOString(); sauverEval(ev);
