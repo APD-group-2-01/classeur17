@@ -46277,6 +46277,10 @@ button { font-family: inherit; cursor:pointer; }
 .vx-cj { font-weight:700; color:#1E5A8C; white-space:nowrap; }
 .vt-mat-l { display:flex; gap:22px; flex-wrap:wrap; }
 .vt-mat-l label { display:flex; gap:8px; align-items:center; font-weight:600; }
+.vt-plan-l { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+.vt-plan-l label { display:flex; flex-direction:column; gap:4px; font-weight:700; font-size:.82rem; color:var(--bleu); }
+.vt-plan-l input { width:110px; padding:8px; border:1.5px solid var(--gris2); border-radius:10px; font-size:1rem; text-align:center; }
+.vt-plan-tot { margin-inline-start:auto; font-size:.9rem; padding:8px 12px; background:var(--gris1); border-radius:10px; }
 .import-zone { background: var(--gris1); border:1px dashed var(--gris3); border-radius: var(--radius); padding:12px 14px; margin:14px 0; font-size:.82rem; }
 .import-zone textarea { width:100%; margin-top:8px; border:1.5px solid var(--gris2); border-radius:10px; padding:8px; font-family: inherit; font-size:.82rem; }
 
@@ -47536,8 +47540,8 @@ EPS.engines.cycleGenerator = (function () {
   }
 
   /* Construit la liste ordonnée des séances (objets éditables) à partir de l'allocation */
-  function buildSessions(apsRef, sequenceWeights, totalSeances) {
-    const { allocation, reserveEval } = allocateSessions(totalSeances, sequenceWeights);
+  function buildSessions(apsRef, sequenceWeights, totalSeances, allocationFixe) {
+    const { allocation, reserveEval } = allocationFixe ? { allocation: allocationFixe, reserveEval: 1 } : allocateSessions(totalSeances, sequenceWeights);
     const sessions = [{
       id: EPS.db.uid("seance"),
       numero: 1,
@@ -48422,8 +48426,31 @@ EPS.OTC_VITESSE = {
   "TC": ["seq3", "seq2"], "1BAC": ["seq1", "seq3"], "2BAC": ["seq4", "seq3"]
 };
 /* séquences retenues pour le cycle : choix de l'enseignant, sinon celles de l'OTC du niveau, sinon toutes */
+/* plan de cycle commun à un niveau scolaire : { seq1: 2, seq3: 4 } (0 = séquence non retenue) */
+EPS.planNiveau = function (niv, plan) {
+  const cle = "vitesse::planNiveau::" + (niv || "");
+  if (arguments.length > 1) {
+    try { if (plan) localStorage.setItem(cle, JSON.stringify(plan)); else localStorage.removeItem(cle); } catch (e) {}
+    return plan;
+  }
+  try { const p = JSON.parse(localStorage.getItem(cle) || "null"); return p && Object.keys(p).some(k => p[k] > 0) ? p : null; } catch (e) { return null; }
+};
+/* construit et enregistre le projet d'une classe à partir du plan de son niveau */
+EPS.projetDepuisPlan = async function (classe, apsRef, plan, ancien) {
+  const weights = apsRef.sequences.filter(s => plan[s.id] > 0).map(s => ({ sequence: s, weight: plan[s.id] }));
+  const alloc = {}; weights.forEach(w => { alloc[w.sequence.id] = plan[w.sequence.id]; });
+  const total = 2 + weights.reduce((t, w) => t + plan[w.sequence.id], 0);
+  const sessions = EPS.engines.cycleGenerator.buildSessions(apsRef, weights, total, alloc);
+  const project = { id: (ancien && ancien.id) || EPS.db.uid("cycle"), classeId: classe.id, apsId: EPS.state.apsId,
+    moduleNum: (ancien && ancien.moduleNum) || "", moduleLibre: ancien && ancien.moduleLibre,
+    totalSeances: total, sessions, planNiveau: true, updatedAt: Date.now() };
+  await EPS.db.put("cycle_projects", project);
+  return project;
+};
 EPS.sequencesRetenues = function (classe, apsRef) {
   const ids = apsRef.sequences.map(s => s.id);
+  const plan = classe && EPS.planNiveau(classe.niveauScolaire);
+  if (plan) return ids.filter(id => plan[id] > 0);
   if (classe && Array.isArray(classe.sequencesChoisies)) {
     const ok = classe.sequencesChoisies.filter(id => ids.indexOf(id) !== -1);
     if (ok.length) return ok;
@@ -48643,6 +48670,11 @@ EPS.ui.cycle = {
     }
 
     const vtMat = (() => { try { return JSON.parse(localStorage.getItem("vitesse::materiel") || "{}") || {}; } catch (e) { return {}; } })();
+    const nivPlan = (classe && classe.niveauScolaire) || "";
+    const planNiv = EPS.planNiveau(nivPlan);
+    const nbProjet = {}; (project && project.sessions || []).forEach(s2 => { if (s2.sequenceId) nbProjet[s2.sequenceId] = (nbProjet[s2.sequenceId] || 0) + 1; });
+    const nbAff = (id) => planNiv ? (planNiv[id] || 0) : (nbProjet[id] || 0);
+    const totalPlan = 2 + apsRef.sequences.reduce((t, sq) => t + nbAff(sq.id), 0);
     container.innerHTML = `
       <div class="card vt-mat">
         <div class="card-title">🧰 Matériel disponible dans l'établissement</div>
@@ -48652,10 +48684,25 @@ EPS.ui.cycle = {
           <label><input type="checkbox" data-vt-mat="piste" ${vtMat.piste ? "checked" : ""}> Piste avec couloirs tracés</label>
         </div>
       </div>
+      <div class="card vt-plan">
+        <div class="card-title">🗂 Séances par séquence${nivPlan ? " — niveau " + nivPlan : ""}</div>
+        <p class="hint" style="margin:0 0 10px;">${planNiv
+          ? "Plan commun du niveau " + nivPlan + " : toutes les classes de ce niveau suivent cette répartition."
+          : "Choisissez le nombre de séances de chaque séquence (0 = séquence non retenue). Sans plan commun, la répartition est calculée d'après le diagnostic."}</p>
+        <div class="vt-plan-l">
+          ${apsRef.sequences.map(sq => `<label><span>${sq.principe}</span><input type="number" min="0" max="12" data-vt-plan="${sq.id}" value="${nbAff(sq.id)}"></label>`).join("")}
+          <div class="vt-plan-tot">S1 diagnostic + <b id="vtPlanSomme">${totalPlan - 2}</b> séances + sommative = <b id="vtPlanTotal">${totalPlan}</b> séances</div>
+        </div>
+        <div class="form-row" style="margin-top:10px;">
+          <div class="form-group form-group-btn"><button class="btn btn-primary" id="vtPlanNiveau" ${nivPlan ? "" : "disabled"}>✔ Appliquer à toutes les classes ${nivPlan ? "de " + nivPlan : "(niveau à définir)"}</button></div>
+          <div class="form-group form-group-btn"><button class="btn btn-outline" id="vtPlanClasse">Appliquer à cette classe seulement</button></div>
+          ${planNiv ? `<div class="form-group form-group-btn"><button class="btn btn-outline" id="vtPlanSuppr">Revenir au calcul automatique</button></div>` : ""}
+        </div>
+      </div>
       <div class="card">
         <div class="card-title">Projet de cycle — ${classe.nom}</div>
         <div class="form-row">
-          <div class="form-group"><label>Nombre total de séances <small class="muted">(S1 diagnostique, dernière sommative)</small></label><input type="number" id="fTotalSeances" min="4" max="30" value="${project?.totalSeances || 12}"></div>
+          <div class="form-group"><label>Nombre total de séances <small class="muted">(S1 diagnostique, dernière sommative)</small></label><input type="number" id="fTotalSeances" min="4" max="30" value="${planNiv ? totalPlan : (project?.totalSeances || 12)}" ${planNiv ? 'disabled title="Défini par le plan commun du niveau (séances par séquence)"' : ""}></div>
           <div class="form-group"><label>Module</label><select id="fModule">${(() => {
             const niv = classe && classe.niveauScolaire;
             const l = (window.RefOfficiel && RefOfficiel.modules && niv) ? RefOfficiel.modules(niv) : [];
@@ -48866,6 +48913,8 @@ EPS.ui.cycle = {
     });
 
     document.getElementById("btnGenerate").addEventListener("click", async () => {
+      const planN = classe && EPS.planNiveau(classe.niveauScolaire);
+      if (planN) { await EPS.projetDepuisPlan(classe, apsRef, planN, project); EPS.saveIndicator(); goto("cycle"); return; }
       const total = parseInt(document.getElementById("fTotalSeances").value, 10) || 12;
       let sessions = await EPS.engines.diagnostic.getSessionsForClasse(classeId);
       sessions.sort((a, b) => b.createdAt - a.createdAt);
@@ -48903,6 +48952,41 @@ EPS.ui.cycle = {
       goto("cycle");
     });
 
+    const lirePlan = () => { const p = {}; container.querySelectorAll("[data-vt-plan]").forEach(i => { p[i.dataset.vtPlan] = Math.max(0, Math.min(12, parseInt(i.value, 10) || 0)); }); return p; };
+    container.querySelectorAll("[data-vt-plan]").forEach(i => i.addEventListener("input", () => {
+      const s = Object.values(lirePlan()).reduce((t, x) => t + x, 0);
+      document.getElementById("vtPlanSomme").textContent = s; document.getElementById("vtPlanTotal").textContent = s + 2;
+    }));
+    const planValide = (p) => { if (!Object.values(p).some(x => x > 0)) { alert("Mettez au moins une séance dans une séquence."); return false; } return true; };
+    const bPN = document.getElementById("vtPlanNiveau");
+    if (bPN) bPN.addEventListener("click", async () => {
+      const p = lirePlan(); if (!planValide(p)) return;
+      const toutes = (await EPS.db.getAll("classes")).filter(k => k.niveauScolaire === nivPlan);
+      if (!confirm("Appliquer cette répartition aux " + toutes.length + " classe(s) de " + nivPlan + " (" + toutes.map(k => k.nom).join(", ") + ") ?\nLeurs projets de cycle seront régénérés (les séances déjà validées restent dans le cahier de texte).")) return;
+      EPS.planNiveau(nivPlan, p);
+      for (const k of toutes) {
+        const anc = (await EPS.db.getByIndex("cycle_projects", "classeId", k.id))[0] || null;
+        await EPS.projetDepuisPlan(k, apsRef, p, anc);
+      }
+      EPS.toast && EPS.toast("Plan appliqué à " + toutes.length + " classe(s) de " + nivPlan);
+      goto("cycle");
+    });
+    const bPC = document.getElementById("vtPlanClasse");
+    if (bPC) bPC.addEventListener("click", async () => {
+      const p = lirePlan(); if (!planValide(p)) return;
+      if (planNiv && !confirm("Cette classe suit le plan commun du niveau " + nivPlan + ". Le modifier pour cette classe seulement supprime le plan commun (les autres classes gardent leur projet actuel). Continuer ?")) return;
+      if (planNiv) EPS.planNiveau(nivPlan, null);
+      classe.sequencesChoisies = Object.keys(p).filter(id => p[id] > 0); await EPS.db.put("classes", classe);
+      project = await EPS.projetDepuisPlan(classe, apsRef, p, project);
+      project.planNiveau = false; await EPS.db.put("cycle_projects", project);
+      EPS.toast && EPS.toast("Répartition appliquée à " + classe.nom);
+      goto("cycle");
+    });
+    const bPS = document.getElementById("vtPlanSuppr");
+    if (bPS) bPS.addEventListener("click", () => {
+      if (!confirm("Supprimer le plan commun du niveau " + nivPlan + " ? Les projets existants sont conservés ; une régénération utilisera de nouveau le diagnostic.")) return;
+      EPS.planNiveau(nivPlan, null); goto("cycle");
+    });
     container.querySelectorAll("[data-vt-mat]").forEach(cb => cb.addEventListener("change", () => {
       const m = vtMaterielCourant(); m[cb.dataset.vtMat] = cb.checked;
       try { localStorage.setItem("vitesse::materiel", JSON.stringify(m)); } catch (e) {}
@@ -48912,7 +48996,8 @@ EPS.ui.cycle = {
     if (project && !EPS._regenAuto) {
       const choisies = EPS.sequencesRetenues(classe, apsRef);
       const presentes = [...new Set((project.sessions || []).filter(s => s.sequenceId).map(s => s.sequenceId))];
-      if (choisies.length !== presentes.length || choisies.some(id => presentes.indexOf(id) === -1)) {
+      const ecartPlan = planNiv && apsRef.sequences.some(sq => (planNiv[sq.id] || 0) !== (nbProjet[sq.id] || 0));
+      if (ecartPlan || choisies.length !== presentes.length || choisies.some(id => presentes.indexOf(id) === -1)) {
         EPS._regenAuto = true;
         setTimeout(() => { EPS._regenAuto = false; }, 3000);
         document.getElementById("btnGenerate").click();
