@@ -38698,7 +38698,10 @@ var state = {
 };
 
 /* ── INITIALISATION ─────────────────────────────────────────── */
-window.onload = function() {
+var __ddOnloadFait = false;
+function ddOnload() {
+  if (__ddOnloadFait) return;
+  __ddOnloadFait = true;
   // Année scolaire : mise à jour de l'affichage + bannière si besoin
   updateYearUI();
   document.getElementById("sy-year-select").addEventListener("change", function (e) {
@@ -38717,7 +38720,12 @@ window.onload = function() {
     document.getElementById("cl-date").value = new Date().toISOString().slice(0, 10);
   }
   updateSlider();
-};
+}
+window.ddOnload = ddOnload;
+window.addEventListener("load", ddOnload);
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { setTimeout(ddOnload, 0); });
+else setTimeout(ddOnload, 0);
+setTimeout(ddOnload, 900);   // filet de sécurité : document écrit par le classeur
 
 /* ══════════════════════════════════════════════════════════════
    GESTION DES LIGNES DE SAISIE
@@ -46796,10 +46804,9 @@ window.OMRKIT = window.OMRKIT || (function () {
   }
 
   function demarrer() {
-    initialiser();
-    rendre();
-    rendreProjet();
-    rendreSommative();
+    [["initialisation", initialiser], ["tableau de bord", rendre], ["projet", rendreProjet], ["sommative", rendreSommative]].forEach(function (x) {
+      try { x[1](); } catch (e) { console.warn("DI-DUR — " + x[0] + " :", e); }
+    });
     try { installerLayout(); } catch (e) { console.warn("Mise en page DI-DUR :", e); }
     // le nom saisi dans « Classe / Groupe » renomme la classe active
     var g = document.getElementById("cl-groupe");
@@ -46814,8 +46821,16 @@ window.OMRKIT = window.OMRKIT || (function () {
       clearTimeout(t); t = setTimeout(function () { rendre(); }, 1200);
     });
   }
-  if (document.readyState === "complete") setTimeout(demarrer, 50);
-  else window.addEventListener("load", function () { setTimeout(demarrer, 50); });
+  var ddLance = false;
+  function lancer() {
+    if (ddLance) return; ddLance = true;
+    try { if (window.ddOnload) window.ddOnload(); } catch (e) { console.warn("DI-DUR :", e); }
+    demarrer();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { setTimeout(lancer, 50); });
+  else setTimeout(lancer, 50);
+  window.addEventListener("load", function () { setTimeout(lancer, 50); });
+  setTimeout(lancer, 1200);   // filet de sécurité : document écrit par le classeur (l'événement « load » peut ne jamais arriver)
 })();
 
 @@SCRIPTCLOSE7f3a@@>
