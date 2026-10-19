@@ -3162,7 +3162,7 @@ const JOURNAL_DEFAUT = {
       // rafraîchit la note comportementale affichée après un code saisi
       function refreshBcCells() {
         if (bcInput) {
-          bcInput.value = row[BC_KEY] === undefined ? "" : row[BC_KEY];
+          bcInput.value = row[BC_KEY] === undefined ? "" : String(row[BC_KEY]).replace(".", ",");
           const d = bcDetailRow(row);
           bcInput.title = bcActif() ? ("Calculée automatiquement" + (d.total ? " — retraits : −" + fmtPts(d.total) : "")) : "";
         }
@@ -48948,7 +48948,7 @@ EPS.engines.notation = (function () {
       qualitative, qualitativeMax,
       procedurale, proceduraleMax,
       conc, comp, concMax: niveauCfg.conceptuelMax, compMax: niveauCfg.comportementalMax,
-      finale: round1(finale)
+      finale: Math.round(finale * 100) / 100
     };
   }
 
@@ -50763,7 +50763,7 @@ EPS.ui.summative = {
         const q = vxActifs.reduce((t, x) => t + (r.res[x[0]] || 0), 0);
         r.res.qualitative = mSel ? Math.round(q / mSel * r.res.qualitativeMax * 2) / 2 : 0;
         r.res.procedurale = Math.round((r.res.perf + r.res.qualitative) * 100) / 100;
-        r.res.finale = Math.round(Math.min(20, r.res.procedurale + r.res.conc + r.res.comp) * 10) / 10;
+        r.res.finale = Math.round(Math.min(20, r.res.procedurale + r.res.conc + r.res.comp) * 100) / 100;
       });
     }
     const stats = current ? notation.classStats(computedRows.map((r) => r.res)) : null;
