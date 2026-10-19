@@ -1902,7 +1902,11 @@ const JOURNAL_DEFAUT = {
           if (!nd.cycles[classeName]) nd.cycles[classeName] = {};
           CYCLES.forEach(cfg => {
             const cd = nd.cycles[classeName][cfg.id];
-            if (!cd || !cd.rows || cd.rows.length !== cfg.rows) nd.cycles[classeName][cfg.id] = makeCycleData(cfg);
+            if (!cd || !Array.isArray(cd.rows)) nd.cycles[classeName][cfg.id] = makeCycleData(cfg);
+            else if (cd.rows.length < cfg.rows) {
+              const vierge = makeCycleData(cfg).rows;
+              while (cd.rows.length < cfg.rows) cd.rows.push(vierge[cd.rows.length]);
+            }
           });
           if (!nd.aptitudes[classeName] || !nd.aptitudes[classeName].rows || nd.aptitudes[classeName].rows.length !== 48) {
             nd.aptitudes[classeName] = makeAptitudesData();
@@ -3135,10 +3139,10 @@ const JOURNAL_DEFAUT = {
         const anyFilled = allCols.some(c => row[c.key] !== "" && row[c.key] !== undefined && row[c.key] !== null);
         if (!anyFilled) { row.noteFinale = ""; noteInput.value = ""; return; }
         let total = 0;
-        allCols.forEach(c => { const v = parseFloat(row[c.key]); if (!isNaN(v)) total += v; });
+        allCols.forEach(c => { const v = parseFloat(String(row[c.key] == null ? "" : row[c.key]).replace(",", ".")); if (!isNaN(v)) total += v; });
         total = Math.round(total * 100) / 100;
         row.noteFinale = total;
-        noteInput.value = total;
+        noteInput.value = String(total).replace(".", ",");
       }
 
       let bcInput = null;
@@ -3258,7 +3262,7 @@ const JOURNAL_DEFAUT = {
     const anyFilled = allCols.some(c => row[c.key] !== "" && row[c.key] !== undefined && row[c.key] !== null);
     if (!anyFilled) { row.noteFinale = ""; return; }
     let total = 0;
-    allCols.forEach(c => { const v = parseFloat(row[c.key]); if (!isNaN(v)) total += v; });
+    allCols.forEach(c => { const v = parseFloat(String(row[c.key] == null ? "" : row[c.key]).replace(",", ".")); if (!isNaN(v)) total += v; });
     row.noteFinale = Math.round(total * 100) / 100;
   }
 
