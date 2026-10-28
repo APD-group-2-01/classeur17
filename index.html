@@ -12446,7 +12446,9 @@ window.JSYNC = window.JSYNC || (function () {
     var out = {}, t = lireTout(), cy = CYCLE[aps];
     if (!t || !t.data || !cy) return out;
     var f = trouver(t.data, classeNom, nivPref);
-    if (!f || !f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
+    if (!f) return out;
+    try { Object.defineProperty(out, "__max", { value: COMP_MAX[f.niv] || 3, enumerable: false }); } catch (e) {}
+    if (!f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
     var rows = f.nd.cycles[f.cl][cy].rows || [], idx = bcIndex(t.data), max = COMP_MAX[f.niv] || 3;
     // le cycle a commencé dès qu'une séance est renseignée pour un élève de la classe
     var commence = rows.some(function (r) { return (r.sessions || []).some(function (v) { return String(v || "").trim() !== ""; }); });
@@ -12486,9 +12488,11 @@ window.JSYNC = window.JSYNC || (function () {
   }
   function pour(map, nom) {
     var o = map[normNom(nom)];
-    if (o) return o;
+    if (o && o.comportementales != null) return o;
     var kp = cleProche(Object.keys(map || {}), normNom(nom));
-    if (kp) return map[kp];
+    if (kp) o = map[kp];
+    if (o) return o.comportementales == null && map.__max != null ? { conceptuelles: o.conceptuelles, comportementales: map.__max, compAuto: true, compDefaut: true } : o;
+    if (map && map.__defComp == null && map.__max != null) return { conceptuelles: null, comportementales: map.__max, compAuto: true, compDefaut: true, absent: true };
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -21965,7 +21969,9 @@ window.JSYNC = window.JSYNC || (function () {
     var out = {}, t = lireTout(), cy = CYCLE[aps];
     if (!t || !t.data || !cy) return out;
     var f = trouver(t.data, classeNom, nivPref);
-    if (!f || !f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
+    if (!f) return out;
+    try { Object.defineProperty(out, "__max", { value: COMP_MAX[f.niv] || 3, enumerable: false }); } catch (e) {}
+    if (!f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
     var rows = f.nd.cycles[f.cl][cy].rows || [], idx = bcIndex(t.data), max = COMP_MAX[f.niv] || 3;
     // le cycle a commencé dès qu'une séance est renseignée pour un élève de la classe
     var commence = rows.some(function (r) { return (r.sessions || []).some(function (v) { return String(v || "").trim() !== ""; }); });
@@ -22005,9 +22011,11 @@ window.JSYNC = window.JSYNC || (function () {
   }
   function pour(map, nom) {
     var o = map[normNom(nom)];
-    if (o) return o;
+    if (o && o.comportementales != null) return o;
     var kp = cleProche(Object.keys(map || {}), normNom(nom));
-    if (kp) return map[kp];
+    if (kp) o = map[kp];
+    if (o) return o.comportementales == null && map.__max != null ? { conceptuelles: o.conceptuelles, comportementales: map.__max, compAuto: true, compDefaut: true } : o;
+    if (map && map.__defComp == null && map.__max != null) return { conceptuelles: null, comportementales: map.__max, compAuto: true, compDefaut: true, absent: true };
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -31487,7 +31495,9 @@ window.JSYNC = window.JSYNC || (function () {
     var out = {}, t = lireTout(), cy = CYCLE[aps];
     if (!t || !t.data || !cy) return out;
     var f = trouver(t.data, classeNom, nivPref);
-    if (!f || !f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
+    if (!f) return out;
+    try { Object.defineProperty(out, "__max", { value: COMP_MAX[f.niv] || 3, enumerable: false }); } catch (e) {}
+    if (!f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
     var rows = f.nd.cycles[f.cl][cy].rows || [], idx = bcIndex(t.data), max = COMP_MAX[f.niv] || 3;
     // le cycle a commencé dès qu'une séance est renseignée pour un élève de la classe
     var commence = rows.some(function (r) { return (r.sessions || []).some(function (v) { return String(v || "").trim() !== ""; }); });
@@ -31527,9 +31537,11 @@ window.JSYNC = window.JSYNC || (function () {
   }
   function pour(map, nom) {
     var o = map[normNom(nom)];
-    if (o) return o;
+    if (o && o.comportementales != null) return o;
     var kp = cleProche(Object.keys(map || {}), normNom(nom));
-    if (kp) return map[kp];
+    if (kp) o = map[kp];
+    if (o) return o.comportementales == null && map.__max != null ? { conceptuelles: o.conceptuelles, comportementales: map.__max, compAuto: true, compDefaut: true } : o;
+    if (map && map.__defComp == null && map.__max != null) return { conceptuelles: null, comportementales: map.__max, compAuto: true, compDefaut: true, absent: true };
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -41008,7 +41020,9 @@ window.JSYNC = window.JSYNC || (function () {
     var out = {}, t = lireTout(), cy = CYCLE[aps];
     if (!t || !t.data || !cy) return out;
     var f = trouver(t.data, classeNom, nivPref);
-    if (!f || !f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
+    if (!f) return out;
+    try { Object.defineProperty(out, "__max", { value: COMP_MAX[f.niv] || 3, enumerable: false }); } catch (e) {}
+    if (!f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
     var rows = f.nd.cycles[f.cl][cy].rows || [], idx = bcIndex(t.data), max = COMP_MAX[f.niv] || 3;
     // le cycle a commencé dès qu'une séance est renseignée pour un élève de la classe
     var commence = rows.some(function (r) { return (r.sessions || []).some(function (v) { return String(v || "").trim() !== ""; }); });
@@ -41048,9 +41062,11 @@ window.JSYNC = window.JSYNC || (function () {
   }
   function pour(map, nom) {
     var o = map[normNom(nom)];
-    if (o) return o;
+    if (o && o.comportementales != null) return o;
     var kp = cleProche(Object.keys(map || {}), normNom(nom));
-    if (kp) return map[kp];
+    if (kp) o = map[kp];
+    if (o) return o.comportementales == null && map.__max != null ? { conceptuelles: o.conceptuelles, comportementales: map.__max, compAuto: true, compDefaut: true } : o;
+    if (map && map.__defComp == null && map.__max != null) return { conceptuelles: null, comportementales: map.__max, compAuto: true, compDefaut: true, absent: true };
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -50550,7 +50566,9 @@ window.JSYNC = window.JSYNC || (function () {
     var out = {}, t = lireTout(), cy = CYCLE[aps];
     if (!t || !t.data || !cy) return out;
     var f = trouver(t.data, classeNom, nivPref);
-    if (!f || !f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
+    if (!f) return out;
+    try { Object.defineProperty(out, "__max", { value: COMP_MAX[f.niv] || 3, enumerable: false }); } catch (e) {}
+    if (!f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
     var rows = f.nd.cycles[f.cl][cy].rows || [], idx = bcIndex(t.data), max = COMP_MAX[f.niv] || 3;
     // le cycle a commencé dès qu'une séance est renseignée pour un élève de la classe
     var commence = rows.some(function (r) { return (r.sessions || []).some(function (v) { return String(v || "").trim() !== ""; }); });
@@ -50590,9 +50608,11 @@ window.JSYNC = window.JSYNC || (function () {
   }
   function pour(map, nom) {
     var o = map[normNom(nom)];
-    if (o) return o;
+    if (o && o.comportementales != null) return o;
     var kp = cleProche(Object.keys(map || {}), normNom(nom));
-    if (kp) return map[kp];
+    if (kp) o = map[kp];
+    if (o) return o.comportementales == null && map.__max != null ? { conceptuelles: o.conceptuelles, comportementales: map.__max, compAuto: true, compDefaut: true } : o;
+    if (map && map.__defComp == null && map.__max != null) return { conceptuelles: null, comportementales: map.__max, compAuto: true, compDefaut: true, absent: true };
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -61544,7 +61564,9 @@ window.JSYNC = window.JSYNC || (function () {
     var out = {}, t = lireTout(), cy = CYCLE[aps];
     if (!t || !t.data || !cy) return out;
     var f = trouver(t.data, classeNom, nivPref);
-    if (!f || !f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
+    if (!f) return out;
+    try { Object.defineProperty(out, "__max", { value: COMP_MAX[f.niv] || 3, enumerable: false }); } catch (e) {}
+    if (!f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
     var rows = f.nd.cycles[f.cl][cy].rows || [], idx = bcIndex(t.data), max = COMP_MAX[f.niv] || 3;
     // le cycle a commencé dès qu'une séance est renseignée pour un élève de la classe
     var commence = rows.some(function (r) { return (r.sessions || []).some(function (v) { return String(v || "").trim() !== ""; }); });
@@ -61584,9 +61606,11 @@ window.JSYNC = window.JSYNC || (function () {
   }
   function pour(map, nom) {
     var o = map[normNom(nom)];
-    if (o) return o;
+    if (o && o.comportementales != null) return o;
     var kp = cleProche(Object.keys(map || {}), normNom(nom));
-    if (kp) return map[kp];
+    if (kp) o = map[kp];
+    if (o) return o.comportementales == null && map.__max != null ? { conceptuelles: o.conceptuelles, comportementales: map.__max, compAuto: true, compDefaut: true } : o;
+    if (map && map.__defComp == null && map.__max != null) return { conceptuelles: null, comportementales: map.__max, compAuto: true, compDefaut: true, absent: true };
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -65263,7 +65287,8 @@ EPS.ui.summative = {
       const mJ = JSYNC.lire("vitesse", classe.nom, niveauCode);
       for (const s of students) {
         const j = JSYNC.pour(mJ, s.nom); if (!j) { vxAbsent[s.id] = 1; continue; }
-        if (j.comportementales != null && !isNaN(j.comportementales)) { vxCompJ[s.id] = j.compAuto ? "auto" : "journal"; vxCompV[s.id] = j.comportementales; }
+        if (j.absent) vxAbsent[s.id] = 1;
+        if (j.comportementales != null && !isNaN(j.comportementales)) { vxCompJ[s.id] = j.compDefaut ? "defaut" : j.compAuto ? "auto" : "journal"; vxCompV[s.id] = j.comportementales; }
         const id = "grade_" + current.id + "_" + s.id;
         const g = byStudentGrade[s.id] || { id, evaluationId: current.id, studentId: s.id, apsId };
         let ch = false;
@@ -65470,7 +65495,7 @@ EPS.ui.summative = {
                    <td class="ro-cell">${r.res.qualitative}</td>`}
               <td class="ro-cell"><strong>${r.res.procedurale}</strong></td>
               <td>${scoreButtons(r.res.conc, niveauCfg.conceptuelMax, "conceptuelNote", r.student.id)}</td>
-              <td>${vxCompJ[r.student.id] ? `<span class="vx-cj" title="${vxCompJ[r.student.id] === "auto" ? "Calculée par le barème comportemental du cahier journalier" : "Note du cahier journalier"}">${r.res.comp} 📘</span>` : `<span class="vx-cj vx-cj-vide" title="${(vxAbsent[r.student.id] ? "Élève introuvable dans le tableau « Course de vitesse » du cahier journalier (classe " + classe.nom + ") : vérifiez que le nom est le même dans les deux listes." : vtAideComp).replace(/"/g, "&quot;")}">${vxAbsent[r.student.id] ? "? 📘" : "— 📘"}</span>`}</td>
+              <td>${vxCompJ[r.student.id] ? `<span class="vx-cj" title="${vxCompJ[r.student.id] === "defaut" ? "Note maximale par défaut : aucune note comportementale pour cet élève dans le tableau « Course de vitesse » du cahier journalier (à modifier là-bas si besoin)" : vxCompJ[r.student.id] === "auto" ? "Calculée par le barème comportemental du cahier journalier" : "Note du cahier journalier"}">${r.res.comp} ${vxCompJ[r.student.id] === "defaut" ? "<small style=\"color:#94A3B8\">(défaut)</small>" : "📘"}</span>` : `<span class="vx-cj vx-cj-vide" title="${(vxAbsent[r.student.id] ? "Élève introuvable dans le tableau « Course de vitesse » du cahier journalier (classe " + classe.nom + ") : vérifiez que le nom est le même dans les deux listes." : vtAideComp).replace(/"/g, "&quot;")}">${vxAbsent[r.student.id] ? "? 📘" : "— 📘"}</span>`}</td>
               <td class="ro-cell"><strong>${r.res.finale}</strong></td>
               <td><span class="tag ${r.res.finale >= 10 ? "tag-green" : "tag-red"}">${notation.appreciation(r.res.finale)}</span></td>
             </tr>`).join("")}
@@ -78727,7 +78752,9 @@ window.JSYNC = window.JSYNC || (function () {
     var out = {}, t = lireTout(), cy = CYCLE[aps];
     if (!t || !t.data || !cy) return out;
     var f = trouver(t.data, classeNom, nivPref);
-    if (!f || !f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
+    if (!f) return out;
+    try { Object.defineProperty(out, "__max", { value: COMP_MAX[f.niv] || 3, enumerable: false }); } catch (e) {}
+    if (!f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
     var rows = f.nd.cycles[f.cl][cy].rows || [], idx = bcIndex(t.data), max = COMP_MAX[f.niv] || 3;
     // le cycle a commencé dès qu'une séance est renseignée pour un élève de la classe
     var commence = rows.some(function (r) { return (r.sessions || []).some(function (v) { return String(v || "").trim() !== ""; }); });
@@ -78767,9 +78794,11 @@ window.JSYNC = window.JSYNC || (function () {
   }
   function pour(map, nom) {
     var o = map[normNom(nom)];
-    if (o) return o;
+    if (o && o.comportementales != null) return o;
     var kp = cleProche(Object.keys(map || {}), normNom(nom));
-    if (kp) return map[kp];
+    if (kp) o = map[kp];
+    if (o) return o.comportementales == null && map.__max != null ? { conceptuelles: o.conceptuelles, comportementales: map.__max, compAuto: true, compDefaut: true } : o;
+    if (map && map.__defComp == null && map.__max != null) return { conceptuelles: null, comportementales: map.__max, compAuto: true, compDefaut: true, absent: true };
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -81552,7 +81581,9 @@ window.JSYNC = window.JSYNC || (function () {
     var out = {}, t = lireTout(), cy = CYCLE[aps];
     if (!t || !t.data || !cy) return out;
     var f = trouver(t.data, classeNom, nivPref);
-    if (!f || !f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
+    if (!f) return out;
+    try { Object.defineProperty(out, "__max", { value: COMP_MAX[f.niv] || 3, enumerable: false }); } catch (e) {}
+    if (!f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
     var rows = f.nd.cycles[f.cl][cy].rows || [], idx = bcIndex(t.data), max = COMP_MAX[f.niv] || 3;
     // le cycle a commencé dès qu'une séance est renseignée pour un élève de la classe
     var commence = rows.some(function (r) { return (r.sessions || []).some(function (v) { return String(v || "").trim() !== ""; }); });
@@ -81592,9 +81623,11 @@ window.JSYNC = window.JSYNC || (function () {
   }
   function pour(map, nom) {
     var o = map[normNom(nom)];
-    if (o) return o;
+    if (o && o.comportementales != null) return o;
     var kp = cleProche(Object.keys(map || {}), normNom(nom));
-    if (kp) return map[kp];
+    if (kp) o = map[kp];
+    if (o) return o.comportementales == null && map.__max != null ? { conceptuelles: o.conceptuelles, comportementales: map.__max, compAuto: true, compDefaut: true } : o;
+    if (map && map.__defComp == null && map.__max != null) return { conceptuelles: null, comportementales: map.__max, compAuto: true, compDefaut: true, absent: true };
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -84502,7 +84535,9 @@ window.JSYNC = window.JSYNC || (function () {
     var out = {}, t = lireTout(), cy = CYCLE[aps];
     if (!t || !t.data || !cy) return out;
     var f = trouver(t.data, classeNom, nivPref);
-    if (!f || !f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
+    if (!f) return out;
+    try { Object.defineProperty(out, "__max", { value: COMP_MAX[f.niv] || 3, enumerable: false }); } catch (e) {}
+    if (!f.nd.cycles || !f.nd.cycles[f.cl] || !f.nd.cycles[f.cl][cy]) return out;
     var rows = f.nd.cycles[f.cl][cy].rows || [], idx = bcIndex(t.data), max = COMP_MAX[f.niv] || 3;
     // le cycle a commencé dès qu'une séance est renseignée pour un élève de la classe
     var commence = rows.some(function (r) { return (r.sessions || []).some(function (v) { return String(v || "").trim() !== ""; }); });
@@ -84542,9 +84577,11 @@ window.JSYNC = window.JSYNC || (function () {
   }
   function pour(map, nom) {
     var o = map[normNom(nom)];
-    if (o) return o;
+    if (o && o.comportementales != null) return o;
     var kp = cleProche(Object.keys(map || {}), normNom(nom));
-    if (kp) return map[kp];
+    if (kp) o = map[kp];
+    if (o) return o.comportementales == null && map.__max != null ? { conceptuelles: o.conceptuelles, comportementales: map.__max, compAuto: true, compDefaut: true } : o;
+    if (map && map.__defComp == null && map.__max != null) return { conceptuelles: null, comportementales: map.__max, compAuto: true, compDefaut: true, absent: true };
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
