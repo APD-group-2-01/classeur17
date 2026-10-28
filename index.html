@@ -12392,7 +12392,7 @@ window.JSYNC = window.JSYNC || (function () {
   function normClasse(s) { return String(s || "").toLowerCase().replace(/\s+/g, "").replace(/[-_.\\|]/g, "/").replace(/^0+/, ""); }
   function normNom(s) {
     return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي")
+      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإٱ]/g, "ا").replace(/ة/g, "ه").replace(/[ىی]/g, "ي").replace(/ک/g, "ك").replace(/ھ/g, "ه")
       .replace(/[^a-z0-9؀-ۿ]+/g, " ").trim();
   }
   function vide(v) { return v === undefined || v === null || String(v).trim() === ""; }
@@ -12461,9 +12461,23 @@ window.JSYNC = window.JSYNC || (function () {
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
+  /* clé du même élève écrite autrement : mots dans un autre ordre, ou un mot en plus / en moins (unique) */
+  function cleProche(cles, k) {
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, kt = tri(k), c = cles.filter(function (x) { return tri(x) === kt; });
+    if (c.length === 1) return c[0];
+    if (c.length) return null;
+    var mk = k.split(" ").filter(function (w) { return w.length > 1; });
+    c = cles.filter(function (x) {
+      var mx = x.split(" ").filter(function (w) { return w.length > 1; }), p = mk.length <= mx.length ? mk : mx, g = p === mk ? mx : mk;
+      return p.length >= 2 && p.every(function (w) { return g.indexOf(w) >= 0; });
+    });
+    return c.length === 1 ? c[0] : null;
+  }
   function pour(map, nom) {
     var o = map[normNom(nom)];
     if (o) return o;
+    var kp = cleProche(Object.keys(map || {}), normNom(nom));
+    if (kp) return map[kp];
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -12486,6 +12500,7 @@ window.JSYNC = window.JSYNC || (function () {
     cd.rows = cd.rows || [];
     var nn = normNom(eleveNom);
     var row = cd.rows.filter(function (r) { return normNom(r.nom) === nn; })[0];
+    if (!row) { var kp = cleProche(cd.rows.filter(function (r) { return !vide(r.nom); }).map(function (r) { return normNom(r.nom); }), nn); if (kp) row = cd.rows.filter(function (r) { return normNom(r.nom) === kp; })[0]; }
     if (!row) {
       row = cd.rows.filter(function (r) { return vide(r.nom); })[0];
       if (!row) { row = { nom: "", sessions: ["", "", "", "", "", "", "", "", "", "", "", ""], noteFinale: "" }; cd.rows.push(row); }
@@ -12639,9 +12654,11 @@ window.JSYNC = window.JSYNC || (function () {
     if (/\+\s*1\s*partenaire/.test(t)) r.j = 1;
     var mv = /(\d+)\s*voleurs?/.exec(t); if (mv) r.voleurs = +mv[1];
     if (/chacun (son ballon|sa balle)|atelier par groupe|travail individuel/.test(t)) r.indiv = true;
+    var so = /par (\d)\s*,?\s*sans opposition/.exec(t); if (so) { r.a = +so[1]; r.d = 0; }
     var wv = /vagues? de (\d+)/.exec(t);
     var m = /(\d+)\s*(?:attaquants?|joueurs?(?: de champ)?)?\s*(?:\+\s*(?:gb|1 gardien|gardien|1))?\s*contre\s*(\d+)/.exec(t);
-    if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
+    if (so) { /* effectif déjà fixé : pas de défenseur */ }
+    else if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
     else if (m) { r.a = +m[1]; r.d = +m[2]; }
     if (!m && !wv) {
       var R = {}, re = /(\d+)\s*(defenseurs?|attaquants?|passeurs?|serveurs?|receptionneurs?|lanceurs?|contreurs?|ramasseurs?)/g, x;
@@ -15136,6 +15153,7 @@ window.JSYNC = window.JSYNC || (function () {
                 <td>${k.eleves.length}</td>
                 <td style="text-align:right;white-space:nowrap">
                   <button class="btn btn-sm" data-cl-sel="${k.id}" ${cl && k.id === cl.id ? "disabled" : ""}>${cl && k.id === cl.id ? "✓ Active" : "Sélectionner"}</button>
+                  <button class="btn btn-sm" data-cl-ren="${k.id}" title="Corriger le nom de la classe">✎ Renommer</button>
                   <button class="btn btn-sm btn-danger" data-cl-del="${k.id}">Supprimer</button>
                 </td></tr>`).join("")}</tbody>
             </table></div>
@@ -15209,6 +15227,13 @@ window.JSYNC = window.JSYNC || (function () {
     c.querySelectorAll("[data-cl-niv]").forEach(s => s.onchange = () => {
       const k = data.classes.find(x => x.id === s.dataset.clNiv); if (!k) return;
       k.niveauScolaire = s.value || undefined; k.moduleNum = ""; save(); toast("Niveau scolaire : " + (s.value || "auto")); render();
+    });
+    c.querySelectorAll("[data-cl-ren]").forEach(b => b.onclick = () => {
+      const k = data.classes.find(x => x.id === b.dataset.clRen); if (!k) return;
+      const nv = (prompt("Nouveau nom de la classe « " + k.nom + " » :", k.nom) || "").trim();
+      if (!nv || nv === k.nom) return;
+      if (data.classes.some(x => x !== k && x.nom.trim().toLowerCase() === nv.toLowerCase())) { toast("Une autre classe porte déjà le nom « " + nv + " »"); return; }
+      k.nom = nv; save(); toast("Classe renommée : " + nv); render();
     });
     c.querySelectorAll("[data-cl-del]").forEach(b => b.onclick = () => {
       const k = data.classes.find(x => x.id === b.dataset.clDel); if (!k) return;
@@ -19549,7 +19574,7 @@ window.XlsxLite = (function () {
           cons: ["Un défenseur sur le porteur, l'autre entre le receveur et le ballon.", "Orienter le dribbleur vers la ligne de touche.", "Récupération = changement de rôle."],
           crit: ["Moins d'une traversée sur 3 tentatives.", "Au moins 1 interception par rotation."],
           plus: ["3 contre 3."], moins: ["Attaquants limités à 2 dribbles."], jeu: "2 contre 2" },
-        { t: "Jeu à thème : défense tout terrain", but: "Récupérer le ballon avant la ligne médiane.",
+        { t: "Jeu à thème : défense tout terrain", espace: "Terrain de basket entier (28 × 15 m)", but: "Récupérer le ballon avant la ligne médiane.",
           cons: ["Chacun prend un joueur dès la remise en jeu.", "Balle récupérée avant la médiane = 2 points.", "Faute = lancer franc adverse."],
           crit: ["Au moins 2 récupérations hautes par rotation.", "Pas plus de 3 fautes par équipe."],
           plus: ["Temps de défense limité à 8 s avant de reculer."], moins: ["Défense seulement dans son demi-terrain."] }
@@ -19882,7 +19907,7 @@ window.XlsxLite = (function () {
           { p: [2, 3], t: "Transition 1re et 2e vague (3 contre 2 puis 5 contre 4)", but: "Marquer en contre-attaque ou enchaîner avec la 2e vague avant le repli complet.",
             cons: ["1re vague : 3 attaquants en couloirs, tir en moins de 6 s.", "Si le tir n'est pas possible : 2e vague (2 joueurs) en appui pour un 5 contre 4.", "Les défenseurs perdants se replient dès la perte."],
             crit: ["Tir en moins de 6 s sur 50 % des transitions.", "La 2e vague arrive avant le 5e défenseur."],
-            plus: ["Le 5e défenseur revient plus tôt."], moins: ["Défenseurs de la 1re vague passifs."], jeu: "vagues de 3 puis 5 contre 4" }
+            plus: ["Le 5e défenseur revient plus tôt."], moins: ["Défenseurs de la 1re vague passifs."], jeu: "3 contre 2 puis 5 contre 4 (2e vague)" }
         ],
         marquer: [
           { p: [3], t: "Écran direct (pick and roll) et jeu intérieur-extérieur", but: "Marquer en utilisant l'écran direct et le choix intérieur / extérieur.",
@@ -19897,7 +19922,7 @@ window.XlsxLite = (function () {
             plus: ["Attaque avec un tireur extérieur à 3 points."], moins: ["Attaque limitée à 4 passes."], jeu: "5 contre 5 sur demi-terrain" }
         ],
         opposer: [
-          { p: [3], t: "Presse tout terrain puis repli organisé", but: "Réduire l'espace de jeu adverse et récupérer avant la ligne médiane.",
+          { p: [3], t: "Presse tout terrain puis repli organisé", espace: "Terrain de basket entier (28 × 15 m)", but: "Réduire l'espace de jeu adverse et récupérer avant la ligne médiane.",
             cons: ["Trappe à deux sur le porteur près de la ligne de touche.", "Les autres anticipent les lignes de passe.", "Si la balle passe la médiane : repli immédiat en défense placée."],
             crit: ["Au moins 2 récupérations avant la médiane par rotation.", "Repli complet en moins de 5 s."],
             plus: ["Presse sur toute la durée de la possession."], moins: ["Presse seulement sur la remise en jeu."], jeu: "5 contre 5 tout terrain" }
@@ -20251,7 +20276,7 @@ window.XlsxLite = (function () {
           cons: ["Changement de direction ou de rythme pour déborder le défenseur.", "Protection du ballon avec l'avant-bras libre (sans pousser).", "Sortie du couloir = perte."],
           crit: ["3 traversées réussies sur 5.", "Au moins un changement de main par traversée."],
           plus: ["Couloir de 4 m."], moins: ["Défenseur qui ne fait que gêner (sans voler)."], jeu: "1 contre 1" },
-        { p: [3], t: "1 contre 1 sous pression tout terrain (prise à deux possible)", but: "Conserver le ballon jusqu'à la ligne médiane face à une défense pressante.",
+        { p: [3], t: "1 contre 1 sous pression tout terrain (prise à deux possible)", espace: "Terrain de basket entier (28 × 15 m)", but: "Conserver le ballon jusqu'à la ligne médiane face à une défense pressante.",
           cons: ["Dribble de protection, feinte et changement de direction.", "Un second défenseur peut venir faire prise à deux.", "Sortir de la prise à deux par un pivot ou un dribble arrière."],
           crit: ["Moins d'une perte sur 5 remontées.", "Aucune faute de marcher ou de 8 secondes."],
           plus: ["Temps limité à 6 s."], moins: ["Pas de prise à deux."], jeu: "1 contre 1 puis 1 contre 2" }
@@ -20555,6 +20580,46 @@ window.XlsxLite = (function () {
     }
 
     /* ---------- les deux situations de la séance ---------- */
+    /* ---------- situation du projet reprise avec un modèle de la banque : on aligne la tâche (effectif),
+       le terrain, les consignes et les critères sur le titre de la situation (le titre fait foi) ---------- */
+    function accorderSituation(sit, apsId) {
+      const t = nrm(sit.t || ""), out = Object.assign({}, sit);
+      const m = /(\d+)\s*(?:\+\s*gb\s*)?(?:attaquants?\s*)?contre\s*(\d+)/.exec(t);
+      const sansOpp = !m && /sans opposition|sans defenseur|miroir|^ateliers?\b|^parcours|^passe a (2|deux)|^relais passe|jonglage|concours|^tirs?\b|^tir\b|^frappes?\b|^relance et course|^course en couloirs|^montee de balle en couloirs|^receptions?\b/.test(t);
+      const gb = (apsId === "hand" || apsId === "foot") && /gardien|face au but|finition|\btirs?\b|frappe|cible/.test(t);
+      if (m) {
+        const a = +m[1], d = +m[2], m2 = /puis (\d+)\s*contre\s*(\d+)|et (\d+)\s*contre\s*(\d+)/.exec(t);
+        let j = apsId === "volley" ? a + " contre " + d : a + " attaquant" + (a > 1 ? "s" : "") + " contre " + d + " défenseur" + (d > 1 ? "s" : "") + (gb ? " + gardien" : "");
+        if (m2) j += " puis " + (m2[1] || m2[3]) + " contre " + (m2[2] || m2[4]);
+        const ap = /(\d+)\s*appuis/.exec(t); if (ap) j += " + " + ap[1] + " appuis neutres";
+        if (/defenseur de retour/.test(t)) j += " + 1 défenseur qui revient";
+        out.jeu = j;
+      } else if (sansOpp) {
+        const sg = (apsId === "hand" || apsId === "foot") && /sans opposition|sans defenseur/.test(t) ? ", sans gardien" : "";
+        out.jeu = apsId === "volley" ? "2 réceptionneurs, 1 lanceur" : (/^(ateliers?|reception)/.test(t) ? "par 3, sans opposition" + sg + " (1 ballon par groupe)" : "par 2, sans opposition" + sg + " (1 ballon pour 2)");
+      } else out.jeu = undefined;          // jeu de l'APS (profil) : 4 contre 4…
+      // terrain : celui que le titre annonce
+      const ent = { basket: "Terrain de basket entier (28 × 15 m)", hand: "Terrain de handball entier (40 × 20 m)", foot: "Terrain de football réduit entier (40 × 20 m)" }[apsId];
+      const es = nrm(sit.espace || "");
+      if (/demi-terrain|demi terrain/.test(t)) out.espace = undefined;
+      else if (/tout terrain|terrain entier/.test(t)) out.espace = ent;
+      else if (/carre/.test(t)) out.espace = /carre/.test(es) ? sit.espace : "Carré de 15 × 15 m balisé par 4 plots";
+      else if (/couloir/.test(t)) out.espace = /couloir/.test(es) ? sit.espace : "Couloirs de 5 m tracés sur la longueur du terrain";
+      else if (/zones? de progression|\d zones|trois zones/.test(t)) out.espace = /zone/.test(es) ? sit.espace : undefined;
+      else if (/carre|couloir|zones?|postes de tir|largeur de couloir|depart ligne/.test(es)) out.espace = undefined;
+      // consignes et critères du modèle qui contredisent le titre (effectif, espace, rôles) : retirés
+      const contraire = (c) => { const x = nrm(c);
+        return /\d+\s*(contre|attaquants?|defenseurs?|joueurs?|jokers?|appuis?)\b|un attaquant a chaque|les \d+ defenseurs|chaque attaquant occupe|carre|couloir|zone de|zones?\b|joker|remplacant/.test(x) ||
+          (sansOpp && /defens|intercept|oppos|pressing|adversaire/.test(x)) || (!gb && /gardien/.test(x)) ||
+          (m && +m[1] === 1 && /entre deux|partenaire|passeur|\btouches?\b|j.ai|passes?\b/.test(x)); };
+      out.cons = (sit.cons || []).filter((c, i) => i === 0 || !contraire(c));
+      if (out.cons.length < 2) out.cons.push(sansOpp ? "Passages à tour de rôle ; le partenaire observe et donne un conseil." : apsId === "volley" ? "Rotation des rôles à chaque point ; balle hors du terrain = point pour l'adversaire." : "Changement de rôle (attaquant ↔ défenseur) à chaque rotation ; contacts interdits.");
+      out.crit = (sit.crit || []).filter((c, i) => i === 0 || !contraire(c));
+      out.plus = (sit.plus || []).filter(c => !contraire(c)); if (!out.plus.length) out.plus = [sansOpp ? "Ajouter un défenseur passif." : "Ajouter un défenseur ou réduire l'espace."];
+      out.moins = (sit.moins || []).filter(c => !contraire(c)); if (!out.moins.length) out.moins = [sansOpp ? "Réduire la distance et la vitesse d'exécution." : "Retirer un défenseur ou agrandir l'espace."];
+      return out;
+    }
+
     function situationsSeance(ctx) {
       const apsId = profilDepuis(ctx);
       if (!apsId) return null;
@@ -20572,8 +20637,8 @@ window.XlsxLite = (function () {
         if (s.situation && /^(basket|hand|volley|foot)$/.test(apsId)) {
           const t0 = nrm(s.situation); let f = null;
           Object.keys(banque).some(k => { f = banque[k].find(x => t0.indexOf(nrm(x.t)) === 0) || null; return !!f; });
-          premiere = f || Object.assign({}, premiere, { t: String(s.situation).split(" — ")[0], but: s.objectif || premiere.but,
-            cons: [s.regle || ""].concat(premiere.cons.slice(1, 3)).filter(Boolean), crit: [s.critere || ""].concat(premiere.crit.slice(0, 1)).filter(Boolean) });
+          premiere = f || accorderSituation(Object.assign({}, premiere, { t: String(s.situation).split(" — ")[0], but: s.objectif || premiere.but,
+            cons: [s.regle || ""].concat(premiere.cons.slice(1, 4)).filter(Boolean), crit: [s.critere || ""].concat(premiere.crit.slice(0, 2)).filter(Boolean) }), apsId);
         }
         return { apsId, th, sits: [premiere, banque.diagnostic[0]] };
       }
@@ -20641,11 +20706,11 @@ window.XlsxLite = (function () {
       // situation du projet absente de la banque : on la reprend telle quelle (cohérence projet ↔ fiche)
       if (!refS && s.situation && !/^(diagnostic|sommative|projet|demicooper)$/.test(th) && /^(basket|hand|volley|foot)$/.test(apsId)) {
         const modele = pris[0] || liste[0] || {};
-        refS = { t: String(s.situation).split(" — ")[0], but: s.objectif || modele.but || "",
+        refS = accorderSituation({ t: String(s.situation).split(" — ")[0], but: s.objectif || modele.but || "",
           espace: modele.espace, jeu: modele.jeu,
-          cons: [s.regle || ""].concat((modele.cons || []).slice(1, 3)).filter(Boolean),
-          crit: [s.critere || ""].concat((modele.crit || []).slice(0, 1)).filter(Boolean),
-          plus: modele.plus || ["Augmenter l'opposition."], moins: modele.moins || ["Réduire l'opposition."] };
+          cons: [s.regle || ""].concat((modele.cons || []).slice(1, 4)).filter(Boolean),
+          crit: [s.critere || ""].concat((modele.crit || []).slice(0, 2)).filter(Boolean),
+          plus: modele.plus || ["Augmenter l'opposition."], moins: modele.moins || ["Réduire l'opposition."] }, apsId);
       }
       if (refS) {
         const reste = pris.filter(x => x.t.indexOf(refS.t) !== 0);
@@ -20677,6 +20742,7 @@ window.XlsxLite = (function () {
       return { score, otcColl, coll, indiv, communs };
     }
     function ligneCoherence(ctx, sit, th, apsId) {
+      return "";   // ligne « Cohérence / OTC » retirée des fiches
       // séances d'évaluation : pas de ligne de cohérence (la situation de référence est imposée)
       if (/^(diagnostic|sommative|demicooper)$/.test(th || "")) return "";
       const c = coherence(ctx, sit), s = ctx.seance || {};
@@ -21834,7 +21900,7 @@ window.JSYNC = window.JSYNC || (function () {
   function normClasse(s) { return String(s || "").toLowerCase().replace(/\s+/g, "").replace(/[-_.\\|]/g, "/").replace(/^0+/, ""); }
   function normNom(s) {
     return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي")
+      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإٱ]/g, "ا").replace(/ة/g, "ه").replace(/[ىی]/g, "ي").replace(/ک/g, "ك").replace(/ھ/g, "ه")
       .replace(/[^a-z0-9؀-ۿ]+/g, " ").trim();
   }
   function vide(v) { return v === undefined || v === null || String(v).trim() === ""; }
@@ -21903,9 +21969,23 @@ window.JSYNC = window.JSYNC || (function () {
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
+  /* clé du même élève écrite autrement : mots dans un autre ordre, ou un mot en plus / en moins (unique) */
+  function cleProche(cles, k) {
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, kt = tri(k), c = cles.filter(function (x) { return tri(x) === kt; });
+    if (c.length === 1) return c[0];
+    if (c.length) return null;
+    var mk = k.split(" ").filter(function (w) { return w.length > 1; });
+    c = cles.filter(function (x) {
+      var mx = x.split(" ").filter(function (w) { return w.length > 1; }), p = mk.length <= mx.length ? mk : mx, g = p === mk ? mx : mk;
+      return p.length >= 2 && p.every(function (w) { return g.indexOf(w) >= 0; });
+    });
+    return c.length === 1 ? c[0] : null;
+  }
   function pour(map, nom) {
     var o = map[normNom(nom)];
     if (o) return o;
+    var kp = cleProche(Object.keys(map || {}), normNom(nom));
+    if (kp) return map[kp];
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -21928,6 +22008,7 @@ window.JSYNC = window.JSYNC || (function () {
     cd.rows = cd.rows || [];
     var nn = normNom(eleveNom);
     var row = cd.rows.filter(function (r) { return normNom(r.nom) === nn; })[0];
+    if (!row) { var kp = cleProche(cd.rows.filter(function (r) { return !vide(r.nom); }).map(function (r) { return normNom(r.nom); }), nn); if (kp) row = cd.rows.filter(function (r) { return normNom(r.nom) === kp; })[0]; }
     if (!row) {
       row = cd.rows.filter(function (r) { return vide(r.nom); })[0];
       if (!row) { row = { nom: "", sessions: ["", "", "", "", "", "", "", "", "", "", "", ""], noteFinale: "" }; cd.rows.push(row); }
@@ -22081,9 +22162,11 @@ window.JSYNC = window.JSYNC || (function () {
     if (/\+\s*1\s*partenaire/.test(t)) r.j = 1;
     var mv = /(\d+)\s*voleurs?/.exec(t); if (mv) r.voleurs = +mv[1];
     if (/chacun (son ballon|sa balle)|atelier par groupe|travail individuel/.test(t)) r.indiv = true;
+    var so = /par (\d)\s*,?\s*sans opposition/.exec(t); if (so) { r.a = +so[1]; r.d = 0; }
     var wv = /vagues? de (\d+)/.exec(t);
     var m = /(\d+)\s*(?:attaquants?|joueurs?(?: de champ)?)?\s*(?:\+\s*(?:gb|1 gardien|gardien|1))?\s*contre\s*(\d+)/.exec(t);
-    if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
+    if (so) { /* effectif déjà fixé : pas de défenseur */ }
+    else if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
     else if (m) { r.a = +m[1]; r.d = +m[2]; }
     if (!m && !wv) {
       var R = {}, re = /(\d+)\s*(defenseurs?|attaquants?|passeurs?|serveurs?|receptionneurs?|lanceurs?|contreurs?|ramasseurs?)/g, x;
@@ -24581,6 +24664,7 @@ window.JSYNC = window.JSYNC || (function () {
                 <td>${k.eleves.length}</td>
                 <td style="text-align:right;white-space:nowrap">
                   <button class="btn btn-sm" data-cl-sel="${k.id}" ${cl && k.id === cl.id ? "disabled" : ""}>${cl && k.id === cl.id ? "✓ Active" : "Sélectionner"}</button>
+                  <button class="btn btn-sm" data-cl-ren="${k.id}" title="Corriger le nom de la classe">✎ Renommer</button>
                   <button class="btn btn-sm btn-danger" data-cl-del="${k.id}">Supprimer</button>
                 </td></tr>`).join("")}</tbody>
             </table></div>
@@ -24654,6 +24738,13 @@ window.JSYNC = window.JSYNC || (function () {
     c.querySelectorAll("[data-cl-niv]").forEach(s => s.onchange = () => {
       const k = data.classes.find(x => x.id === s.dataset.clNiv); if (!k) return;
       k.niveauScolaire = s.value || undefined; k.moduleNum = ""; save(); toast("Niveau scolaire : " + (s.value || "auto")); render();
+    });
+    c.querySelectorAll("[data-cl-ren]").forEach(b => b.onclick = () => {
+      const k = data.classes.find(x => x.id === b.dataset.clRen); if (!k) return;
+      const nv = (prompt("Nouveau nom de la classe « " + k.nom + " » :", k.nom) || "").trim();
+      if (!nv || nv === k.nom) return;
+      if (data.classes.some(x => x !== k && x.nom.trim().toLowerCase() === nv.toLowerCase())) { toast("Une autre classe porte déjà le nom « " + nv + " »"); return; }
+      k.nom = nv; save(); toast("Classe renommée : " + nv); render();
     });
     c.querySelectorAll("[data-cl-del]").forEach(b => b.onclick = () => {
       const k = data.classes.find(x => x.id === b.dataset.clDel); if (!k) return;
@@ -28994,7 +29085,7 @@ window.XlsxLite = (function () {
           cons: ["Un défenseur sur le porteur, l'autre entre le receveur et le ballon.", "Orienter le dribbleur vers la ligne de touche.", "Récupération = changement de rôle."],
           crit: ["Moins d'une traversée sur 3 tentatives.", "Au moins 1 interception par rotation."],
           plus: ["3 contre 3."], moins: ["Attaquants limités à 2 dribbles."], jeu: "2 contre 2" },
-        { t: "Jeu à thème : défense tout terrain", but: "Récupérer le ballon avant la ligne médiane.",
+        { t: "Jeu à thème : défense tout terrain", espace: "Terrain de basket entier (28 × 15 m)", but: "Récupérer le ballon avant la ligne médiane.",
           cons: ["Chacun prend un joueur dès la remise en jeu.", "Balle récupérée avant la médiane = 2 points.", "Faute = lancer franc adverse."],
           crit: ["Au moins 2 récupérations hautes par rotation.", "Pas plus de 3 fautes par équipe."],
           plus: ["Temps de défense limité à 8 s avant de reculer."], moins: ["Défense seulement dans son demi-terrain."] }
@@ -29327,7 +29418,7 @@ window.XlsxLite = (function () {
           { p: [2, 3], t: "Transition 1re et 2e vague (3 contre 2 puis 5 contre 4)", but: "Marquer en contre-attaque ou enchaîner avec la 2e vague avant le repli complet.",
             cons: ["1re vague : 3 attaquants en couloirs, tir en moins de 6 s.", "Si le tir n'est pas possible : 2e vague (2 joueurs) en appui pour un 5 contre 4.", "Les défenseurs perdants se replient dès la perte."],
             crit: ["Tir en moins de 6 s sur 50 % des transitions.", "La 2e vague arrive avant le 5e défenseur."],
-            plus: ["Le 5e défenseur revient plus tôt."], moins: ["Défenseurs de la 1re vague passifs."], jeu: "vagues de 3 puis 5 contre 4" }
+            plus: ["Le 5e défenseur revient plus tôt."], moins: ["Défenseurs de la 1re vague passifs."], jeu: "3 contre 2 puis 5 contre 4 (2e vague)" }
         ],
         marquer: [
           { p: [3], t: "Écran direct (pick and roll) et jeu intérieur-extérieur", but: "Marquer en utilisant l'écran direct et le choix intérieur / extérieur.",
@@ -29342,7 +29433,7 @@ window.XlsxLite = (function () {
             plus: ["Attaque avec un tireur extérieur à 3 points."], moins: ["Attaque limitée à 4 passes."], jeu: "5 contre 5 sur demi-terrain" }
         ],
         opposer: [
-          { p: [3], t: "Presse tout terrain puis repli organisé", but: "Réduire l'espace de jeu adverse et récupérer avant la ligne médiane.",
+          { p: [3], t: "Presse tout terrain puis repli organisé", espace: "Terrain de basket entier (28 × 15 m)", but: "Réduire l'espace de jeu adverse et récupérer avant la ligne médiane.",
             cons: ["Trappe à deux sur le porteur près de la ligne de touche.", "Les autres anticipent les lignes de passe.", "Si la balle passe la médiane : repli immédiat en défense placée."],
             crit: ["Au moins 2 récupérations avant la médiane par rotation.", "Repli complet en moins de 5 s."],
             plus: ["Presse sur toute la durée de la possession."], moins: ["Presse seulement sur la remise en jeu."], jeu: "5 contre 5 tout terrain" }
@@ -29696,7 +29787,7 @@ window.XlsxLite = (function () {
           cons: ["Changement de direction ou de rythme pour déborder le défenseur.", "Protection du ballon avec l'avant-bras libre (sans pousser).", "Sortie du couloir = perte."],
           crit: ["3 traversées réussies sur 5.", "Au moins un changement de main par traversée."],
           plus: ["Couloir de 4 m."], moins: ["Défenseur qui ne fait que gêner (sans voler)."], jeu: "1 contre 1" },
-        { p: [3], t: "1 contre 1 sous pression tout terrain (prise à deux possible)", but: "Conserver le ballon jusqu'à la ligne médiane face à une défense pressante.",
+        { p: [3], t: "1 contre 1 sous pression tout terrain (prise à deux possible)", espace: "Terrain de basket entier (28 × 15 m)", but: "Conserver le ballon jusqu'à la ligne médiane face à une défense pressante.",
           cons: ["Dribble de protection, feinte et changement de direction.", "Un second défenseur peut venir faire prise à deux.", "Sortir de la prise à deux par un pivot ou un dribble arrière."],
           crit: ["Moins d'une perte sur 5 remontées.", "Aucune faute de marcher ou de 8 secondes."],
           plus: ["Temps limité à 6 s."], moins: ["Pas de prise à deux."], jeu: "1 contre 1 puis 1 contre 2" }
@@ -30000,6 +30091,46 @@ window.XlsxLite = (function () {
     }
 
     /* ---------- les deux situations de la séance ---------- */
+    /* ---------- situation du projet reprise avec un modèle de la banque : on aligne la tâche (effectif),
+       le terrain, les consignes et les critères sur le titre de la situation (le titre fait foi) ---------- */
+    function accorderSituation(sit, apsId) {
+      const t = nrm(sit.t || ""), out = Object.assign({}, sit);
+      const m = /(\d+)\s*(?:\+\s*gb\s*)?(?:attaquants?\s*)?contre\s*(\d+)/.exec(t);
+      const sansOpp = !m && /sans opposition|sans defenseur|miroir|^ateliers?\b|^parcours|^passe a (2|deux)|^relais passe|jonglage|concours|^tirs?\b|^tir\b|^frappes?\b|^relance et course|^course en couloirs|^montee de balle en couloirs|^receptions?\b/.test(t);
+      const gb = (apsId === "hand" || apsId === "foot") && /gardien|face au but|finition|\btirs?\b|frappe|cible/.test(t);
+      if (m) {
+        const a = +m[1], d = +m[2], m2 = /puis (\d+)\s*contre\s*(\d+)|et (\d+)\s*contre\s*(\d+)/.exec(t);
+        let j = apsId === "volley" ? a + " contre " + d : a + " attaquant" + (a > 1 ? "s" : "") + " contre " + d + " défenseur" + (d > 1 ? "s" : "") + (gb ? " + gardien" : "");
+        if (m2) j += " puis " + (m2[1] || m2[3]) + " contre " + (m2[2] || m2[4]);
+        const ap = /(\d+)\s*appuis/.exec(t); if (ap) j += " + " + ap[1] + " appuis neutres";
+        if (/defenseur de retour/.test(t)) j += " + 1 défenseur qui revient";
+        out.jeu = j;
+      } else if (sansOpp) {
+        const sg = (apsId === "hand" || apsId === "foot") && /sans opposition|sans defenseur/.test(t) ? ", sans gardien" : "";
+        out.jeu = apsId === "volley" ? "2 réceptionneurs, 1 lanceur" : (/^(ateliers?|reception)/.test(t) ? "par 3, sans opposition" + sg + " (1 ballon par groupe)" : "par 2, sans opposition" + sg + " (1 ballon pour 2)");
+      } else out.jeu = undefined;          // jeu de l'APS (profil) : 4 contre 4…
+      // terrain : celui que le titre annonce
+      const ent = { basket: "Terrain de basket entier (28 × 15 m)", hand: "Terrain de handball entier (40 × 20 m)", foot: "Terrain de football réduit entier (40 × 20 m)" }[apsId];
+      const es = nrm(sit.espace || "");
+      if (/demi-terrain|demi terrain/.test(t)) out.espace = undefined;
+      else if (/tout terrain|terrain entier/.test(t)) out.espace = ent;
+      else if (/carre/.test(t)) out.espace = /carre/.test(es) ? sit.espace : "Carré de 15 × 15 m balisé par 4 plots";
+      else if (/couloir/.test(t)) out.espace = /couloir/.test(es) ? sit.espace : "Couloirs de 5 m tracés sur la longueur du terrain";
+      else if (/zones? de progression|\d zones|trois zones/.test(t)) out.espace = /zone/.test(es) ? sit.espace : undefined;
+      else if (/carre|couloir|zones?|postes de tir|largeur de couloir|depart ligne/.test(es)) out.espace = undefined;
+      // consignes et critères du modèle qui contredisent le titre (effectif, espace, rôles) : retirés
+      const contraire = (c) => { const x = nrm(c);
+        return /\d+\s*(contre|attaquants?|defenseurs?|joueurs?|jokers?|appuis?)\b|un attaquant a chaque|les \d+ defenseurs|chaque attaquant occupe|carre|couloir|zone de|zones?\b|joker|remplacant/.test(x) ||
+          (sansOpp && /defens|intercept|oppos|pressing|adversaire/.test(x)) || (!gb && /gardien/.test(x)) ||
+          (m && +m[1] === 1 && /entre deux|partenaire|passeur|\btouches?\b|j.ai|passes?\b/.test(x)); };
+      out.cons = (sit.cons || []).filter((c, i) => i === 0 || !contraire(c));
+      if (out.cons.length < 2) out.cons.push(sansOpp ? "Passages à tour de rôle ; le partenaire observe et donne un conseil." : apsId === "volley" ? "Rotation des rôles à chaque point ; balle hors du terrain = point pour l'adversaire." : "Changement de rôle (attaquant ↔ défenseur) à chaque rotation ; contacts interdits.");
+      out.crit = (sit.crit || []).filter((c, i) => i === 0 || !contraire(c));
+      out.plus = (sit.plus || []).filter(c => !contraire(c)); if (!out.plus.length) out.plus = [sansOpp ? "Ajouter un défenseur passif." : "Ajouter un défenseur ou réduire l'espace."];
+      out.moins = (sit.moins || []).filter(c => !contraire(c)); if (!out.moins.length) out.moins = [sansOpp ? "Réduire la distance et la vitesse d'exécution." : "Retirer un défenseur ou agrandir l'espace."];
+      return out;
+    }
+
     function situationsSeance(ctx) {
       const apsId = profilDepuis(ctx);
       if (!apsId) return null;
@@ -30017,8 +30148,8 @@ window.XlsxLite = (function () {
         if (s.situation && /^(basket|hand|volley|foot)$/.test(apsId)) {
           const t0 = nrm(s.situation); let f = null;
           Object.keys(banque).some(k => { f = banque[k].find(x => t0.indexOf(nrm(x.t)) === 0) || null; return !!f; });
-          premiere = f || Object.assign({}, premiere, { t: String(s.situation).split(" — ")[0], but: s.objectif || premiere.but,
-            cons: [s.regle || ""].concat(premiere.cons.slice(1, 3)).filter(Boolean), crit: [s.critere || ""].concat(premiere.crit.slice(0, 1)).filter(Boolean) });
+          premiere = f || accorderSituation(Object.assign({}, premiere, { t: String(s.situation).split(" — ")[0], but: s.objectif || premiere.but,
+            cons: [s.regle || ""].concat(premiere.cons.slice(1, 4)).filter(Boolean), crit: [s.critere || ""].concat(premiere.crit.slice(0, 2)).filter(Boolean) }), apsId);
         }
         return { apsId, th, sits: [premiere, banque.diagnostic[0]] };
       }
@@ -30086,11 +30217,11 @@ window.XlsxLite = (function () {
       // situation du projet absente de la banque : on la reprend telle quelle (cohérence projet ↔ fiche)
       if (!refS && s.situation && !/^(diagnostic|sommative|projet|demicooper)$/.test(th) && /^(basket|hand|volley|foot)$/.test(apsId)) {
         const modele = pris[0] || liste[0] || {};
-        refS = { t: String(s.situation).split(" — ")[0], but: s.objectif || modele.but || "",
+        refS = accorderSituation({ t: String(s.situation).split(" — ")[0], but: s.objectif || modele.but || "",
           espace: modele.espace, jeu: modele.jeu,
-          cons: [s.regle || ""].concat((modele.cons || []).slice(1, 3)).filter(Boolean),
-          crit: [s.critere || ""].concat((modele.crit || []).slice(0, 1)).filter(Boolean),
-          plus: modele.plus || ["Augmenter l'opposition."], moins: modele.moins || ["Réduire l'opposition."] };
+          cons: [s.regle || ""].concat((modele.cons || []).slice(1, 4)).filter(Boolean),
+          crit: [s.critere || ""].concat((modele.crit || []).slice(0, 2)).filter(Boolean),
+          plus: modele.plus || ["Augmenter l'opposition."], moins: modele.moins || ["Réduire l'opposition."] }, apsId);
       }
       if (refS) {
         const reste = pris.filter(x => x.t.indexOf(refS.t) !== 0);
@@ -30122,6 +30253,7 @@ window.XlsxLite = (function () {
       return { score, otcColl, coll, indiv, communs };
     }
     function ligneCoherence(ctx, sit, th, apsId) {
+      return "";   // ligne « Cohérence / OTC » retirée des fiches
       // séances d'évaluation : pas de ligne de cohérence (la situation de référence est imposée)
       if (/^(diagnostic|sommative|demicooper)$/.test(th || "")) return "";
       const c = coherence(ctx, sit), s = ctx.seance || {};
@@ -31279,7 +31411,7 @@ window.JSYNC = window.JSYNC || (function () {
   function normClasse(s) { return String(s || "").toLowerCase().replace(/\s+/g, "").replace(/[-_.\\|]/g, "/").replace(/^0+/, ""); }
   function normNom(s) {
     return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي")
+      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإٱ]/g, "ا").replace(/ة/g, "ه").replace(/[ىی]/g, "ي").replace(/ک/g, "ك").replace(/ھ/g, "ه")
       .replace(/[^a-z0-9؀-ۿ]+/g, " ").trim();
   }
   function vide(v) { return v === undefined || v === null || String(v).trim() === ""; }
@@ -31348,9 +31480,23 @@ window.JSYNC = window.JSYNC || (function () {
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
+  /* clé du même élève écrite autrement : mots dans un autre ordre, ou un mot en plus / en moins (unique) */
+  function cleProche(cles, k) {
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, kt = tri(k), c = cles.filter(function (x) { return tri(x) === kt; });
+    if (c.length === 1) return c[0];
+    if (c.length) return null;
+    var mk = k.split(" ").filter(function (w) { return w.length > 1; });
+    c = cles.filter(function (x) {
+      var mx = x.split(" ").filter(function (w) { return w.length > 1; }), p = mk.length <= mx.length ? mk : mx, g = p === mk ? mx : mk;
+      return p.length >= 2 && p.every(function (w) { return g.indexOf(w) >= 0; });
+    });
+    return c.length === 1 ? c[0] : null;
+  }
   function pour(map, nom) {
     var o = map[normNom(nom)];
     if (o) return o;
+    var kp = cleProche(Object.keys(map || {}), normNom(nom));
+    if (kp) return map[kp];
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -31373,6 +31519,7 @@ window.JSYNC = window.JSYNC || (function () {
     cd.rows = cd.rows || [];
     var nn = normNom(eleveNom);
     var row = cd.rows.filter(function (r) { return normNom(r.nom) === nn; })[0];
+    if (!row) { var kp = cleProche(cd.rows.filter(function (r) { return !vide(r.nom); }).map(function (r) { return normNom(r.nom); }), nn); if (kp) row = cd.rows.filter(function (r) { return normNom(r.nom) === kp; })[0]; }
     if (!row) {
       row = cd.rows.filter(function (r) { return vide(r.nom); })[0];
       if (!row) { row = { nom: "", sessions: ["", "", "", "", "", "", "", "", "", "", "", ""], noteFinale: "" }; cd.rows.push(row); }
@@ -31526,9 +31673,11 @@ window.JSYNC = window.JSYNC || (function () {
     if (/\+\s*1\s*partenaire/.test(t)) r.j = 1;
     var mv = /(\d+)\s*voleurs?/.exec(t); if (mv) r.voleurs = +mv[1];
     if (/chacun (son ballon|sa balle)|atelier par groupe|travail individuel/.test(t)) r.indiv = true;
+    var so = /par (\d)\s*,?\s*sans opposition/.exec(t); if (so) { r.a = +so[1]; r.d = 0; }
     var wv = /vagues? de (\d+)/.exec(t);
     var m = /(\d+)\s*(?:attaquants?|joueurs?(?: de champ)?)?\s*(?:\+\s*(?:gb|1 gardien|gardien|1))?\s*contre\s*(\d+)/.exec(t);
-    if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
+    if (so) { /* effectif déjà fixé : pas de défenseur */ }
+    else if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
     else if (m) { r.a = +m[1]; r.d = +m[2]; }
     if (!m && !wv) {
       var R = {}, re = /(\d+)\s*(defenseurs?|attaquants?|passeurs?|serveurs?|receptionneurs?|lanceurs?|contreurs?|ramasseurs?)/g, x;
@@ -34023,6 +34172,7 @@ window.JSYNC = window.JSYNC || (function () {
                 <td>${k.eleves.length}</td>
                 <td style="text-align:right;white-space:nowrap">
                   <button class="btn btn-sm" data-cl-sel="${k.id}" ${cl && k.id === cl.id ? "disabled" : ""}>${cl && k.id === cl.id ? "✓ Active" : "Sélectionner"}</button>
+                  <button class="btn btn-sm" data-cl-ren="${k.id}" title="Corriger le nom de la classe">✎ Renommer</button>
                   <button class="btn btn-sm btn-danger" data-cl-del="${k.id}">Supprimer</button>
                 </td></tr>`).join("")}</tbody>
             </table></div>
@@ -34096,6 +34246,13 @@ window.JSYNC = window.JSYNC || (function () {
     c.querySelectorAll("[data-cl-niv]").forEach(s => s.onchange = () => {
       const k = data.classes.find(x => x.id === s.dataset.clNiv); if (!k) return;
       k.niveauScolaire = s.value || undefined; k.moduleNum = ""; save(); toast("Niveau scolaire : " + (s.value || "auto")); render();
+    });
+    c.querySelectorAll("[data-cl-ren]").forEach(b => b.onclick = () => {
+      const k = data.classes.find(x => x.id === b.dataset.clRen); if (!k) return;
+      const nv = (prompt("Nouveau nom de la classe « " + k.nom + " » :", k.nom) || "").trim();
+      if (!nv || nv === k.nom) return;
+      if (data.classes.some(x => x !== k && x.nom.trim().toLowerCase() === nv.toLowerCase())) { toast("Une autre classe porte déjà le nom « " + nv + " »"); return; }
+      k.nom = nv; save(); toast("Classe renommée : " + nv); render();
     });
     c.querySelectorAll("[data-cl-del]").forEach(b => b.onclick = () => {
       const k = data.classes.find(x => x.id === b.dataset.clDel); if (!k) return;
@@ -38436,7 +38593,7 @@ window.XlsxLite = (function () {
           cons: ["Un défenseur sur le porteur, l'autre entre le receveur et le ballon.", "Orienter le dribbleur vers la ligne de touche.", "Récupération = changement de rôle."],
           crit: ["Moins d'une traversée sur 3 tentatives.", "Au moins 1 interception par rotation."],
           plus: ["3 contre 3."], moins: ["Attaquants limités à 2 dribbles."], jeu: "2 contre 2" },
-        { t: "Jeu à thème : défense tout terrain", but: "Récupérer le ballon avant la ligne médiane.",
+        { t: "Jeu à thème : défense tout terrain", espace: "Terrain de basket entier (28 × 15 m)", but: "Récupérer le ballon avant la ligne médiane.",
           cons: ["Chacun prend un joueur dès la remise en jeu.", "Balle récupérée avant la médiane = 2 points.", "Faute = lancer franc adverse."],
           crit: ["Au moins 2 récupérations hautes par rotation.", "Pas plus de 3 fautes par équipe."],
           plus: ["Temps de défense limité à 8 s avant de reculer."], moins: ["Défense seulement dans son demi-terrain."] }
@@ -38769,7 +38926,7 @@ window.XlsxLite = (function () {
           { p: [2, 3], t: "Transition 1re et 2e vague (3 contre 2 puis 5 contre 4)", but: "Marquer en contre-attaque ou enchaîner avec la 2e vague avant le repli complet.",
             cons: ["1re vague : 3 attaquants en couloirs, tir en moins de 6 s.", "Si le tir n'est pas possible : 2e vague (2 joueurs) en appui pour un 5 contre 4.", "Les défenseurs perdants se replient dès la perte."],
             crit: ["Tir en moins de 6 s sur 50 % des transitions.", "La 2e vague arrive avant le 5e défenseur."],
-            plus: ["Le 5e défenseur revient plus tôt."], moins: ["Défenseurs de la 1re vague passifs."], jeu: "vagues de 3 puis 5 contre 4" }
+            plus: ["Le 5e défenseur revient plus tôt."], moins: ["Défenseurs de la 1re vague passifs."], jeu: "3 contre 2 puis 5 contre 4 (2e vague)" }
         ],
         marquer: [
           { p: [3], t: "Écran direct (pick and roll) et jeu intérieur-extérieur", but: "Marquer en utilisant l'écran direct et le choix intérieur / extérieur.",
@@ -38784,7 +38941,7 @@ window.XlsxLite = (function () {
             plus: ["Attaque avec un tireur extérieur à 3 points."], moins: ["Attaque limitée à 4 passes."], jeu: "5 contre 5 sur demi-terrain" }
         ],
         opposer: [
-          { p: [3], t: "Presse tout terrain puis repli organisé", but: "Réduire l'espace de jeu adverse et récupérer avant la ligne médiane.",
+          { p: [3], t: "Presse tout terrain puis repli organisé", espace: "Terrain de basket entier (28 × 15 m)", but: "Réduire l'espace de jeu adverse et récupérer avant la ligne médiane.",
             cons: ["Trappe à deux sur le porteur près de la ligne de touche.", "Les autres anticipent les lignes de passe.", "Si la balle passe la médiane : repli immédiat en défense placée."],
             crit: ["Au moins 2 récupérations avant la médiane par rotation.", "Repli complet en moins de 5 s."],
             plus: ["Presse sur toute la durée de la possession."], moins: ["Presse seulement sur la remise en jeu."], jeu: "5 contre 5 tout terrain" }
@@ -39138,7 +39295,7 @@ window.XlsxLite = (function () {
           cons: ["Changement de direction ou de rythme pour déborder le défenseur.", "Protection du ballon avec l'avant-bras libre (sans pousser).", "Sortie du couloir = perte."],
           crit: ["3 traversées réussies sur 5.", "Au moins un changement de main par traversée."],
           plus: ["Couloir de 4 m."], moins: ["Défenseur qui ne fait que gêner (sans voler)."], jeu: "1 contre 1" },
-        { p: [3], t: "1 contre 1 sous pression tout terrain (prise à deux possible)", but: "Conserver le ballon jusqu'à la ligne médiane face à une défense pressante.",
+        { p: [3], t: "1 contre 1 sous pression tout terrain (prise à deux possible)", espace: "Terrain de basket entier (28 × 15 m)", but: "Conserver le ballon jusqu'à la ligne médiane face à une défense pressante.",
           cons: ["Dribble de protection, feinte et changement de direction.", "Un second défenseur peut venir faire prise à deux.", "Sortir de la prise à deux par un pivot ou un dribble arrière."],
           crit: ["Moins d'une perte sur 5 remontées.", "Aucune faute de marcher ou de 8 secondes."],
           plus: ["Temps limité à 6 s."], moins: ["Pas de prise à deux."], jeu: "1 contre 1 puis 1 contre 2" }
@@ -39442,6 +39599,46 @@ window.XlsxLite = (function () {
     }
 
     /* ---------- les deux situations de la séance ---------- */
+    /* ---------- situation du projet reprise avec un modèle de la banque : on aligne la tâche (effectif),
+       le terrain, les consignes et les critères sur le titre de la situation (le titre fait foi) ---------- */
+    function accorderSituation(sit, apsId) {
+      const t = nrm(sit.t || ""), out = Object.assign({}, sit);
+      const m = /(\d+)\s*(?:\+\s*gb\s*)?(?:attaquants?\s*)?contre\s*(\d+)/.exec(t);
+      const sansOpp = !m && /sans opposition|sans defenseur|miroir|^ateliers?\b|^parcours|^passe a (2|deux)|^relais passe|jonglage|concours|^tirs?\b|^tir\b|^frappes?\b|^relance et course|^course en couloirs|^montee de balle en couloirs|^receptions?\b/.test(t);
+      const gb = (apsId === "hand" || apsId === "foot") && /gardien|face au but|finition|\btirs?\b|frappe|cible/.test(t);
+      if (m) {
+        const a = +m[1], d = +m[2], m2 = /puis (\d+)\s*contre\s*(\d+)|et (\d+)\s*contre\s*(\d+)/.exec(t);
+        let j = apsId === "volley" ? a + " contre " + d : a + " attaquant" + (a > 1 ? "s" : "") + " contre " + d + " défenseur" + (d > 1 ? "s" : "") + (gb ? " + gardien" : "");
+        if (m2) j += " puis " + (m2[1] || m2[3]) + " contre " + (m2[2] || m2[4]);
+        const ap = /(\d+)\s*appuis/.exec(t); if (ap) j += " + " + ap[1] + " appuis neutres";
+        if (/defenseur de retour/.test(t)) j += " + 1 défenseur qui revient";
+        out.jeu = j;
+      } else if (sansOpp) {
+        const sg = (apsId === "hand" || apsId === "foot") && /sans opposition|sans defenseur/.test(t) ? ", sans gardien" : "";
+        out.jeu = apsId === "volley" ? "2 réceptionneurs, 1 lanceur" : (/^(ateliers?|reception)/.test(t) ? "par 3, sans opposition" + sg + " (1 ballon par groupe)" : "par 2, sans opposition" + sg + " (1 ballon pour 2)");
+      } else out.jeu = undefined;          // jeu de l'APS (profil) : 4 contre 4…
+      // terrain : celui que le titre annonce
+      const ent = { basket: "Terrain de basket entier (28 × 15 m)", hand: "Terrain de handball entier (40 × 20 m)", foot: "Terrain de football réduit entier (40 × 20 m)" }[apsId];
+      const es = nrm(sit.espace || "");
+      if (/demi-terrain|demi terrain/.test(t)) out.espace = undefined;
+      else if (/tout terrain|terrain entier/.test(t)) out.espace = ent;
+      else if (/carre/.test(t)) out.espace = /carre/.test(es) ? sit.espace : "Carré de 15 × 15 m balisé par 4 plots";
+      else if (/couloir/.test(t)) out.espace = /couloir/.test(es) ? sit.espace : "Couloirs de 5 m tracés sur la longueur du terrain";
+      else if (/zones? de progression|\d zones|trois zones/.test(t)) out.espace = /zone/.test(es) ? sit.espace : undefined;
+      else if (/carre|couloir|zones?|postes de tir|largeur de couloir|depart ligne/.test(es)) out.espace = undefined;
+      // consignes et critères du modèle qui contredisent le titre (effectif, espace, rôles) : retirés
+      const contraire = (c) => { const x = nrm(c);
+        return /\d+\s*(contre|attaquants?|defenseurs?|joueurs?|jokers?|appuis?)\b|un attaquant a chaque|les \d+ defenseurs|chaque attaquant occupe|carre|couloir|zone de|zones?\b|joker|remplacant/.test(x) ||
+          (sansOpp && /defens|intercept|oppos|pressing|adversaire/.test(x)) || (!gb && /gardien/.test(x)) ||
+          (m && +m[1] === 1 && /entre deux|partenaire|passeur|\btouches?\b|j.ai|passes?\b/.test(x)); };
+      out.cons = (sit.cons || []).filter((c, i) => i === 0 || !contraire(c));
+      if (out.cons.length < 2) out.cons.push(sansOpp ? "Passages à tour de rôle ; le partenaire observe et donne un conseil." : apsId === "volley" ? "Rotation des rôles à chaque point ; balle hors du terrain = point pour l'adversaire." : "Changement de rôle (attaquant ↔ défenseur) à chaque rotation ; contacts interdits.");
+      out.crit = (sit.crit || []).filter((c, i) => i === 0 || !contraire(c));
+      out.plus = (sit.plus || []).filter(c => !contraire(c)); if (!out.plus.length) out.plus = [sansOpp ? "Ajouter un défenseur passif." : "Ajouter un défenseur ou réduire l'espace."];
+      out.moins = (sit.moins || []).filter(c => !contraire(c)); if (!out.moins.length) out.moins = [sansOpp ? "Réduire la distance et la vitesse d'exécution." : "Retirer un défenseur ou agrandir l'espace."];
+      return out;
+    }
+
     function situationsSeance(ctx) {
       const apsId = profilDepuis(ctx);
       if (!apsId) return null;
@@ -39459,8 +39656,8 @@ window.XlsxLite = (function () {
         if (s.situation && /^(basket|hand|volley|foot)$/.test(apsId)) {
           const t0 = nrm(s.situation); let f = null;
           Object.keys(banque).some(k => { f = banque[k].find(x => t0.indexOf(nrm(x.t)) === 0) || null; return !!f; });
-          premiere = f || Object.assign({}, premiere, { t: String(s.situation).split(" — ")[0], but: s.objectif || premiere.but,
-            cons: [s.regle || ""].concat(premiere.cons.slice(1, 3)).filter(Boolean), crit: [s.critere || ""].concat(premiere.crit.slice(0, 1)).filter(Boolean) });
+          premiere = f || accorderSituation(Object.assign({}, premiere, { t: String(s.situation).split(" — ")[0], but: s.objectif || premiere.but,
+            cons: [s.regle || ""].concat(premiere.cons.slice(1, 4)).filter(Boolean), crit: [s.critere || ""].concat(premiere.crit.slice(0, 2)).filter(Boolean) }), apsId);
         }
         return { apsId, th, sits: [premiere, banque.diagnostic[0]] };
       }
@@ -39528,11 +39725,11 @@ window.XlsxLite = (function () {
       // situation du projet absente de la banque : on la reprend telle quelle (cohérence projet ↔ fiche)
       if (!refS && s.situation && !/^(diagnostic|sommative|projet|demicooper)$/.test(th) && /^(basket|hand|volley|foot)$/.test(apsId)) {
         const modele = pris[0] || liste[0] || {};
-        refS = { t: String(s.situation).split(" — ")[0], but: s.objectif || modele.but || "",
+        refS = accorderSituation({ t: String(s.situation).split(" — ")[0], but: s.objectif || modele.but || "",
           espace: modele.espace, jeu: modele.jeu,
-          cons: [s.regle || ""].concat((modele.cons || []).slice(1, 3)).filter(Boolean),
-          crit: [s.critere || ""].concat((modele.crit || []).slice(0, 1)).filter(Boolean),
-          plus: modele.plus || ["Augmenter l'opposition."], moins: modele.moins || ["Réduire l'opposition."] };
+          cons: [s.regle || ""].concat((modele.cons || []).slice(1, 4)).filter(Boolean),
+          crit: [s.critere || ""].concat((modele.crit || []).slice(0, 2)).filter(Boolean),
+          plus: modele.plus || ["Augmenter l'opposition."], moins: modele.moins || ["Réduire l'opposition."] }, apsId);
       }
       if (refS) {
         const reste = pris.filter(x => x.t.indexOf(refS.t) !== 0);
@@ -39564,6 +39761,7 @@ window.XlsxLite = (function () {
       return { score, otcColl, coll, indiv, communs };
     }
     function ligneCoherence(ctx, sit, th, apsId) {
+      return "";   // ligne « Cohérence / OTC » retirée des fiches
       // séances d'évaluation : pas de ligne de cohérence (la situation de référence est imposée)
       if (/^(diagnostic|sommative|demicooper)$/.test(th || "")) return "";
       const c = coherence(ctx, sit), s = ctx.seance || {};
@@ -40723,7 +40921,7 @@ window.JSYNC = window.JSYNC || (function () {
   function normClasse(s) { return String(s || "").toLowerCase().replace(/\s+/g, "").replace(/[-_.\\|]/g, "/").replace(/^0+/, ""); }
   function normNom(s) {
     return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي")
+      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإٱ]/g, "ا").replace(/ة/g, "ه").replace(/[ىی]/g, "ي").replace(/ک/g, "ك").replace(/ھ/g, "ه")
       .replace(/[^a-z0-9؀-ۿ]+/g, " ").trim();
   }
   function vide(v) { return v === undefined || v === null || String(v).trim() === ""; }
@@ -40792,9 +40990,23 @@ window.JSYNC = window.JSYNC || (function () {
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
+  /* clé du même élève écrite autrement : mots dans un autre ordre, ou un mot en plus / en moins (unique) */
+  function cleProche(cles, k) {
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, kt = tri(k), c = cles.filter(function (x) { return tri(x) === kt; });
+    if (c.length === 1) return c[0];
+    if (c.length) return null;
+    var mk = k.split(" ").filter(function (w) { return w.length > 1; });
+    c = cles.filter(function (x) {
+      var mx = x.split(" ").filter(function (w) { return w.length > 1; }), p = mk.length <= mx.length ? mk : mx, g = p === mk ? mx : mk;
+      return p.length >= 2 && p.every(function (w) { return g.indexOf(w) >= 0; });
+    });
+    return c.length === 1 ? c[0] : null;
+  }
   function pour(map, nom) {
     var o = map[normNom(nom)];
     if (o) return o;
+    var kp = cleProche(Object.keys(map || {}), normNom(nom));
+    if (kp) return map[kp];
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -40817,6 +41029,7 @@ window.JSYNC = window.JSYNC || (function () {
     cd.rows = cd.rows || [];
     var nn = normNom(eleveNom);
     var row = cd.rows.filter(function (r) { return normNom(r.nom) === nn; })[0];
+    if (!row) { var kp = cleProche(cd.rows.filter(function (r) { return !vide(r.nom); }).map(function (r) { return normNom(r.nom); }), nn); if (kp) row = cd.rows.filter(function (r) { return normNom(r.nom) === kp; })[0]; }
     if (!row) {
       row = cd.rows.filter(function (r) { return vide(r.nom); })[0];
       if (!row) { row = { nom: "", sessions: ["", "", "", "", "", "", "", "", "", "", "", ""], noteFinale: "" }; cd.rows.push(row); }
@@ -40970,9 +41183,11 @@ window.JSYNC = window.JSYNC || (function () {
     if (/\+\s*1\s*partenaire/.test(t)) r.j = 1;
     var mv = /(\d+)\s*voleurs?/.exec(t); if (mv) r.voleurs = +mv[1];
     if (/chacun (son ballon|sa balle)|atelier par groupe|travail individuel/.test(t)) r.indiv = true;
+    var so = /par (\d)\s*,?\s*sans opposition/.exec(t); if (so) { r.a = +so[1]; r.d = 0; }
     var wv = /vagues? de (\d+)/.exec(t);
     var m = /(\d+)\s*(?:attaquants?|joueurs?(?: de champ)?)?\s*(?:\+\s*(?:gb|1 gardien|gardien|1))?\s*contre\s*(\d+)/.exec(t);
-    if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
+    if (so) { /* effectif déjà fixé : pas de défenseur */ }
+    else if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
     else if (m) { r.a = +m[1]; r.d = +m[2]; }
     if (!m && !wv) {
       var R = {}, re = /(\d+)\s*(defenseurs?|attaquants?|passeurs?|serveurs?|receptionneurs?|lanceurs?|contreurs?|ramasseurs?)/g, x;
@@ -43395,6 +43610,7 @@ window.JSYNC = window.JSYNC || (function () {
                 <td>${k.eleves.length}</td>
                 <td style="text-align:right;white-space:nowrap">
                   <button class="btn btn-sm" data-cl-sel="${k.id}" ${cl && k.id === cl.id ? "disabled" : ""}>${cl && k.id === cl.id ? "✓ Active" : "Sélectionner"}</button>
+                  <button class="btn btn-sm" data-cl-ren="${k.id}" title="Corriger le nom de la classe">✎ Renommer</button>
                   <button class="btn btn-sm btn-danger" data-cl-del="${k.id}">Supprimer</button>
                 </td></tr>`).join("")}</tbody>
             </table></div>
@@ -43468,6 +43684,13 @@ window.JSYNC = window.JSYNC || (function () {
     c.querySelectorAll("[data-cl-niv]").forEach(s => s.onchange = () => {
       const k = data.classes.find(x => x.id === s.dataset.clNiv); if (!k) return;
       k.niveauScolaire = s.value || undefined; k.moduleNum = ""; save(); toast("Niveau scolaire : " + (s.value || "auto")); render();
+    });
+    c.querySelectorAll("[data-cl-ren]").forEach(b => b.onclick = () => {
+      const k = data.classes.find(x => x.id === b.dataset.clRen); if (!k) return;
+      const nv = (prompt("Nouveau nom de la classe « " + k.nom + " » :", k.nom) || "").trim();
+      if (!nv || nv === k.nom) return;
+      if (data.classes.some(x => x !== k && x.nom.trim().toLowerCase() === nv.toLowerCase())) { toast("Une autre classe porte déjà le nom « " + nv + " »"); return; }
+      k.nom = nv; save(); toast("Classe renommée : " + nv); render();
     });
     c.querySelectorAll("[data-cl-del]").forEach(b => b.onclick = () => {
       const k = data.classes.find(x => x.id === b.dataset.clDel); if (!k) return;
@@ -47724,7 +47947,7 @@ window.XlsxLite = (function () {
           cons: ["Un défenseur sur le porteur, l'autre entre le receveur et le ballon.", "Orienter le dribbleur vers la ligne de touche.", "Récupération = changement de rôle."],
           crit: ["Moins d'une traversée sur 3 tentatives.", "Au moins 1 interception par rotation."],
           plus: ["3 contre 3."], moins: ["Attaquants limités à 2 dribbles."], jeu: "2 contre 2" },
-        { t: "Jeu à thème : défense tout terrain", but: "Récupérer le ballon avant la ligne médiane.",
+        { t: "Jeu à thème : défense tout terrain", espace: "Terrain de basket entier (28 × 15 m)", but: "Récupérer le ballon avant la ligne médiane.",
           cons: ["Chacun prend un joueur dès la remise en jeu.", "Balle récupérée avant la médiane = 2 points.", "Faute = lancer franc adverse."],
           crit: ["Au moins 2 récupérations hautes par rotation.", "Pas plus de 3 fautes par équipe."],
           plus: ["Temps de défense limité à 8 s avant de reculer."], moins: ["Défense seulement dans son demi-terrain."] }
@@ -48057,7 +48280,7 @@ window.XlsxLite = (function () {
           { p: [2, 3], t: "Transition 1re et 2e vague (3 contre 2 puis 5 contre 4)", but: "Marquer en contre-attaque ou enchaîner avec la 2e vague avant le repli complet.",
             cons: ["1re vague : 3 attaquants en couloirs, tir en moins de 6 s.", "Si le tir n'est pas possible : 2e vague (2 joueurs) en appui pour un 5 contre 4.", "Les défenseurs perdants se replient dès la perte."],
             crit: ["Tir en moins de 6 s sur 50 % des transitions.", "La 2e vague arrive avant le 5e défenseur."],
-            plus: ["Le 5e défenseur revient plus tôt."], moins: ["Défenseurs de la 1re vague passifs."], jeu: "vagues de 3 puis 5 contre 4" }
+            plus: ["Le 5e défenseur revient plus tôt."], moins: ["Défenseurs de la 1re vague passifs."], jeu: "3 contre 2 puis 5 contre 4 (2e vague)" }
         ],
         marquer: [
           { p: [3], t: "Écran direct (pick and roll) et jeu intérieur-extérieur", but: "Marquer en utilisant l'écran direct et le choix intérieur / extérieur.",
@@ -48072,7 +48295,7 @@ window.XlsxLite = (function () {
             plus: ["Attaque avec un tireur extérieur à 3 points."], moins: ["Attaque limitée à 4 passes."], jeu: "5 contre 5 sur demi-terrain" }
         ],
         opposer: [
-          { p: [3], t: "Presse tout terrain puis repli organisé", but: "Réduire l'espace de jeu adverse et récupérer avant la ligne médiane.",
+          { p: [3], t: "Presse tout terrain puis repli organisé", espace: "Terrain de basket entier (28 × 15 m)", but: "Réduire l'espace de jeu adverse et récupérer avant la ligne médiane.",
             cons: ["Trappe à deux sur le porteur près de la ligne de touche.", "Les autres anticipent les lignes de passe.", "Si la balle passe la médiane : repli immédiat en défense placée."],
             crit: ["Au moins 2 récupérations avant la médiane par rotation.", "Repli complet en moins de 5 s."],
             plus: ["Presse sur toute la durée de la possession."], moins: ["Presse seulement sur la remise en jeu."], jeu: "5 contre 5 tout terrain" }
@@ -48426,7 +48649,7 @@ window.XlsxLite = (function () {
           cons: ["Changement de direction ou de rythme pour déborder le défenseur.", "Protection du ballon avec l'avant-bras libre (sans pousser).", "Sortie du couloir = perte."],
           crit: ["3 traversées réussies sur 5.", "Au moins un changement de main par traversée."],
           plus: ["Couloir de 4 m."], moins: ["Défenseur qui ne fait que gêner (sans voler)."], jeu: "1 contre 1" },
-        { p: [3], t: "1 contre 1 sous pression tout terrain (prise à deux possible)", but: "Conserver le ballon jusqu'à la ligne médiane face à une défense pressante.",
+        { p: [3], t: "1 contre 1 sous pression tout terrain (prise à deux possible)", espace: "Terrain de basket entier (28 × 15 m)", but: "Conserver le ballon jusqu'à la ligne médiane face à une défense pressante.",
           cons: ["Dribble de protection, feinte et changement de direction.", "Un second défenseur peut venir faire prise à deux.", "Sortir de la prise à deux par un pivot ou un dribble arrière."],
           crit: ["Moins d'une perte sur 5 remontées.", "Aucune faute de marcher ou de 8 secondes."],
           plus: ["Temps limité à 6 s."], moins: ["Pas de prise à deux."], jeu: "1 contre 1 puis 1 contre 2" }
@@ -48730,6 +48953,46 @@ window.XlsxLite = (function () {
     }
 
     /* ---------- les deux situations de la séance ---------- */
+    /* ---------- situation du projet reprise avec un modèle de la banque : on aligne la tâche (effectif),
+       le terrain, les consignes et les critères sur le titre de la situation (le titre fait foi) ---------- */
+    function accorderSituation(sit, apsId) {
+      const t = nrm(sit.t || ""), out = Object.assign({}, sit);
+      const m = /(\d+)\s*(?:\+\s*gb\s*)?(?:attaquants?\s*)?contre\s*(\d+)/.exec(t);
+      const sansOpp = !m && /sans opposition|sans defenseur|miroir|^ateliers?\b|^parcours|^passe a (2|deux)|^relais passe|jonglage|concours|^tirs?\b|^tir\b|^frappes?\b|^relance et course|^course en couloirs|^montee de balle en couloirs|^receptions?\b/.test(t);
+      const gb = (apsId === "hand" || apsId === "foot") && /gardien|face au but|finition|\btirs?\b|frappe|cible/.test(t);
+      if (m) {
+        const a = +m[1], d = +m[2], m2 = /puis (\d+)\s*contre\s*(\d+)|et (\d+)\s*contre\s*(\d+)/.exec(t);
+        let j = apsId === "volley" ? a + " contre " + d : a + " attaquant" + (a > 1 ? "s" : "") + " contre " + d + " défenseur" + (d > 1 ? "s" : "") + (gb ? " + gardien" : "");
+        if (m2) j += " puis " + (m2[1] || m2[3]) + " contre " + (m2[2] || m2[4]);
+        const ap = /(\d+)\s*appuis/.exec(t); if (ap) j += " + " + ap[1] + " appuis neutres";
+        if (/defenseur de retour/.test(t)) j += " + 1 défenseur qui revient";
+        out.jeu = j;
+      } else if (sansOpp) {
+        const sg = (apsId === "hand" || apsId === "foot") && /sans opposition|sans defenseur/.test(t) ? ", sans gardien" : "";
+        out.jeu = apsId === "volley" ? "2 réceptionneurs, 1 lanceur" : (/^(ateliers?|reception)/.test(t) ? "par 3, sans opposition" + sg + " (1 ballon par groupe)" : "par 2, sans opposition" + sg + " (1 ballon pour 2)");
+      } else out.jeu = undefined;          // jeu de l'APS (profil) : 4 contre 4…
+      // terrain : celui que le titre annonce
+      const ent = { basket: "Terrain de basket entier (28 × 15 m)", hand: "Terrain de handball entier (40 × 20 m)", foot: "Terrain de football réduit entier (40 × 20 m)" }[apsId];
+      const es = nrm(sit.espace || "");
+      if (/demi-terrain|demi terrain/.test(t)) out.espace = undefined;
+      else if (/tout terrain|terrain entier/.test(t)) out.espace = ent;
+      else if (/carre/.test(t)) out.espace = /carre/.test(es) ? sit.espace : "Carré de 15 × 15 m balisé par 4 plots";
+      else if (/couloir/.test(t)) out.espace = /couloir/.test(es) ? sit.espace : "Couloirs de 5 m tracés sur la longueur du terrain";
+      else if (/zones? de progression|\d zones|trois zones/.test(t)) out.espace = /zone/.test(es) ? sit.espace : undefined;
+      else if (/carre|couloir|zones?|postes de tir|largeur de couloir|depart ligne/.test(es)) out.espace = undefined;
+      // consignes et critères du modèle qui contredisent le titre (effectif, espace, rôles) : retirés
+      const contraire = (c) => { const x = nrm(c);
+        return /\d+\s*(contre|attaquants?|defenseurs?|joueurs?|jokers?|appuis?)\b|un attaquant a chaque|les \d+ defenseurs|chaque attaquant occupe|carre|couloir|zone de|zones?\b|joker|remplacant/.test(x) ||
+          (sansOpp && /defens|intercept|oppos|pressing|adversaire/.test(x)) || (!gb && /gardien/.test(x)) ||
+          (m && +m[1] === 1 && /entre deux|partenaire|passeur|\btouches?\b|j.ai|passes?\b/.test(x)); };
+      out.cons = (sit.cons || []).filter((c, i) => i === 0 || !contraire(c));
+      if (out.cons.length < 2) out.cons.push(sansOpp ? "Passages à tour de rôle ; le partenaire observe et donne un conseil." : apsId === "volley" ? "Rotation des rôles à chaque point ; balle hors du terrain = point pour l'adversaire." : "Changement de rôle (attaquant ↔ défenseur) à chaque rotation ; contacts interdits.");
+      out.crit = (sit.crit || []).filter((c, i) => i === 0 || !contraire(c));
+      out.plus = (sit.plus || []).filter(c => !contraire(c)); if (!out.plus.length) out.plus = [sansOpp ? "Ajouter un défenseur passif." : "Ajouter un défenseur ou réduire l'espace."];
+      out.moins = (sit.moins || []).filter(c => !contraire(c)); if (!out.moins.length) out.moins = [sansOpp ? "Réduire la distance et la vitesse d'exécution." : "Retirer un défenseur ou agrandir l'espace."];
+      return out;
+    }
+
     function situationsSeance(ctx) {
       const apsId = profilDepuis(ctx);
       if (!apsId) return null;
@@ -48747,8 +49010,8 @@ window.XlsxLite = (function () {
         if (s.situation && /^(basket|hand|volley|foot)$/.test(apsId)) {
           const t0 = nrm(s.situation); let f = null;
           Object.keys(banque).some(k => { f = banque[k].find(x => t0.indexOf(nrm(x.t)) === 0) || null; return !!f; });
-          premiere = f || Object.assign({}, premiere, { t: String(s.situation).split(" — ")[0], but: s.objectif || premiere.but,
-            cons: [s.regle || ""].concat(premiere.cons.slice(1, 3)).filter(Boolean), crit: [s.critere || ""].concat(premiere.crit.slice(0, 1)).filter(Boolean) });
+          premiere = f || accorderSituation(Object.assign({}, premiere, { t: String(s.situation).split(" — ")[0], but: s.objectif || premiere.but,
+            cons: [s.regle || ""].concat(premiere.cons.slice(1, 4)).filter(Boolean), crit: [s.critere || ""].concat(premiere.crit.slice(0, 2)).filter(Boolean) }), apsId);
         }
         return { apsId, th, sits: [premiere, banque.diagnostic[0]] };
       }
@@ -48816,11 +49079,11 @@ window.XlsxLite = (function () {
       // situation du projet absente de la banque : on la reprend telle quelle (cohérence projet ↔ fiche)
       if (!refS && s.situation && !/^(diagnostic|sommative|projet|demicooper)$/.test(th) && /^(basket|hand|volley|foot)$/.test(apsId)) {
         const modele = pris[0] || liste[0] || {};
-        refS = { t: String(s.situation).split(" — ")[0], but: s.objectif || modele.but || "",
+        refS = accorderSituation({ t: String(s.situation).split(" — ")[0], but: s.objectif || modele.but || "",
           espace: modele.espace, jeu: modele.jeu,
-          cons: [s.regle || ""].concat((modele.cons || []).slice(1, 3)).filter(Boolean),
-          crit: [s.critere || ""].concat((modele.crit || []).slice(0, 1)).filter(Boolean),
-          plus: modele.plus || ["Augmenter l'opposition."], moins: modele.moins || ["Réduire l'opposition."] };
+          cons: [s.regle || ""].concat((modele.cons || []).slice(1, 4)).filter(Boolean),
+          crit: [s.critere || ""].concat((modele.crit || []).slice(0, 2)).filter(Boolean),
+          plus: modele.plus || ["Augmenter l'opposition."], moins: modele.moins || ["Réduire l'opposition."] }, apsId);
       }
       if (refS) {
         const reste = pris.filter(x => x.t.indexOf(refS.t) !== 0);
@@ -48852,6 +49115,7 @@ window.XlsxLite = (function () {
       return { score, otcColl, coll, indiv, communs };
     }
     function ligneCoherence(ctx, sit, th, apsId) {
+      return "";   // ligne « Cohérence / OTC » retirée des fiches
       // séances d'évaluation : pas de ligne de cohérence (la situation de référence est imposée)
       if (/^(diagnostic|sommative|demicooper)$/.test(th || "")) return "";
       const c = coherence(ctx, sit), s = ctx.seance || {};
@@ -50188,7 +50452,7 @@ window.JSYNC = window.JSYNC || (function () {
   function normClasse(s) { return String(s || "").toLowerCase().replace(/\s+/g, "").replace(/[-_.\\|]/g, "/").replace(/^0+/, ""); }
   function normNom(s) {
     return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي")
+      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإٱ]/g, "ا").replace(/ة/g, "ه").replace(/[ىی]/g, "ي").replace(/ک/g, "ك").replace(/ھ/g, "ه")
       .replace(/[^a-z0-9؀-ۿ]+/g, " ").trim();
   }
   function vide(v) { return v === undefined || v === null || String(v).trim() === ""; }
@@ -50257,9 +50521,23 @@ window.JSYNC = window.JSYNC || (function () {
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
+  /* clé du même élève écrite autrement : mots dans un autre ordre, ou un mot en plus / en moins (unique) */
+  function cleProche(cles, k) {
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, kt = tri(k), c = cles.filter(function (x) { return tri(x) === kt; });
+    if (c.length === 1) return c[0];
+    if (c.length) return null;
+    var mk = k.split(" ").filter(function (w) { return w.length > 1; });
+    c = cles.filter(function (x) {
+      var mx = x.split(" ").filter(function (w) { return w.length > 1; }), p = mk.length <= mx.length ? mk : mx, g = p === mk ? mx : mk;
+      return p.length >= 2 && p.every(function (w) { return g.indexOf(w) >= 0; });
+    });
+    return c.length === 1 ? c[0] : null;
+  }
   function pour(map, nom) {
     var o = map[normNom(nom)];
     if (o) return o;
+    var kp = cleProche(Object.keys(map || {}), normNom(nom));
+    if (kp) return map[kp];
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -50282,6 +50560,7 @@ window.JSYNC = window.JSYNC || (function () {
     cd.rows = cd.rows || [];
     var nn = normNom(eleveNom);
     var row = cd.rows.filter(function (r) { return normNom(r.nom) === nn; })[0];
+    if (!row) { var kp = cleProche(cd.rows.filter(function (r) { return !vide(r.nom); }).map(function (r) { return normNom(r.nom); }), nn); if (kp) row = cd.rows.filter(function (r) { return normNom(r.nom) === kp; })[0]; }
     if (!row) {
       row = cd.rows.filter(function (r) { return vide(r.nom); })[0];
       if (!row) { row = { nom: "", sessions: ["", "", "", "", "", "", "", "", "", "", "", ""], noteFinale: "" }; cd.rows.push(row); }
@@ -50435,9 +50714,11 @@ window.JSYNC = window.JSYNC || (function () {
     if (/\+\s*1\s*partenaire/.test(t)) r.j = 1;
     var mv = /(\d+)\s*voleurs?/.exec(t); if (mv) r.voleurs = +mv[1];
     if (/chacun (son ballon|sa balle)|atelier par groupe|travail individuel/.test(t)) r.indiv = true;
+    var so = /par (\d)\s*,?\s*sans opposition/.exec(t); if (so) { r.a = +so[1]; r.d = 0; }
     var wv = /vagues? de (\d+)/.exec(t);
     var m = /(\d+)\s*(?:attaquants?|joueurs?(?: de champ)?)?\s*(?:\+\s*(?:gb|1 gardien|gardien|1))?\s*contre\s*(\d+)/.exec(t);
-    if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
+    if (so) { /* effectif déjà fixé : pas de défenseur */ }
+    else if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
     else if (m) { r.a = +m[1]; r.d = +m[2]; }
     if (!m && !wv) {
       var R = {}, re = /(\d+)\s*(defenseurs?|attaquants?|passeurs?|serveurs?|receptionneurs?|lanceurs?|contreurs?|ramasseurs?)/g, x;
@@ -56603,7 +56884,7 @@ function importSession(input) {
           cons: ["Un défenseur sur le porteur, l'autre entre le receveur et le ballon.", "Orienter le dribbleur vers la ligne de touche.", "Récupération = changement de rôle."],
           crit: ["Moins d'une traversée sur 3 tentatives.", "Au moins 1 interception par rotation."],
           plus: ["3 contre 3."], moins: ["Attaquants limités à 2 dribbles."], jeu: "2 contre 2" },
-        { t: "Jeu à thème : défense tout terrain", but: "Récupérer le ballon avant la ligne médiane.",
+        { t: "Jeu à thème : défense tout terrain", espace: "Terrain de basket entier (28 × 15 m)", but: "Récupérer le ballon avant la ligne médiane.",
           cons: ["Chacun prend un joueur dès la remise en jeu.", "Balle récupérée avant la médiane = 2 points.", "Faute = lancer franc adverse."],
           crit: ["Au moins 2 récupérations hautes par rotation.", "Pas plus de 3 fautes par équipe."],
           plus: ["Temps de défense limité à 8 s avant de reculer."], moins: ["Défense seulement dans son demi-terrain."] }
@@ -56936,7 +57217,7 @@ function importSession(input) {
           { p: [2, 3], t: "Transition 1re et 2e vague (3 contre 2 puis 5 contre 4)", but: "Marquer en contre-attaque ou enchaîner avec la 2e vague avant le repli complet.",
             cons: ["1re vague : 3 attaquants en couloirs, tir en moins de 6 s.", "Si le tir n'est pas possible : 2e vague (2 joueurs) en appui pour un 5 contre 4.", "Les défenseurs perdants se replient dès la perte."],
             crit: ["Tir en moins de 6 s sur 50 % des transitions.", "La 2e vague arrive avant le 5e défenseur."],
-            plus: ["Le 5e défenseur revient plus tôt."], moins: ["Défenseurs de la 1re vague passifs."], jeu: "vagues de 3 puis 5 contre 4" }
+            plus: ["Le 5e défenseur revient plus tôt."], moins: ["Défenseurs de la 1re vague passifs."], jeu: "3 contre 2 puis 5 contre 4 (2e vague)" }
         ],
         marquer: [
           { p: [3], t: "Écran direct (pick and roll) et jeu intérieur-extérieur", but: "Marquer en utilisant l'écran direct et le choix intérieur / extérieur.",
@@ -56951,7 +57232,7 @@ function importSession(input) {
             plus: ["Attaque avec un tireur extérieur à 3 points."], moins: ["Attaque limitée à 4 passes."], jeu: "5 contre 5 sur demi-terrain" }
         ],
         opposer: [
-          { p: [3], t: "Presse tout terrain puis repli organisé", but: "Réduire l'espace de jeu adverse et récupérer avant la ligne médiane.",
+          { p: [3], t: "Presse tout terrain puis repli organisé", espace: "Terrain de basket entier (28 × 15 m)", but: "Réduire l'espace de jeu adverse et récupérer avant la ligne médiane.",
             cons: ["Trappe à deux sur le porteur près de la ligne de touche.", "Les autres anticipent les lignes de passe.", "Si la balle passe la médiane : repli immédiat en défense placée."],
             crit: ["Au moins 2 récupérations avant la médiane par rotation.", "Repli complet en moins de 5 s."],
             plus: ["Presse sur toute la durée de la possession."], moins: ["Presse seulement sur la remise en jeu."], jeu: "5 contre 5 tout terrain" }
@@ -57305,7 +57586,7 @@ function importSession(input) {
           cons: ["Changement de direction ou de rythme pour déborder le défenseur.", "Protection du ballon avec l'avant-bras libre (sans pousser).", "Sortie du couloir = perte."],
           crit: ["3 traversées réussies sur 5.", "Au moins un changement de main par traversée."],
           plus: ["Couloir de 4 m."], moins: ["Défenseur qui ne fait que gêner (sans voler)."], jeu: "1 contre 1" },
-        { p: [3], t: "1 contre 1 sous pression tout terrain (prise à deux possible)", but: "Conserver le ballon jusqu'à la ligne médiane face à une défense pressante.",
+        { p: [3], t: "1 contre 1 sous pression tout terrain (prise à deux possible)", espace: "Terrain de basket entier (28 × 15 m)", but: "Conserver le ballon jusqu'à la ligne médiane face à une défense pressante.",
           cons: ["Dribble de protection, feinte et changement de direction.", "Un second défenseur peut venir faire prise à deux.", "Sortir de la prise à deux par un pivot ou un dribble arrière."],
           crit: ["Moins d'une perte sur 5 remontées.", "Aucune faute de marcher ou de 8 secondes."],
           plus: ["Temps limité à 6 s."], moins: ["Pas de prise à deux."], jeu: "1 contre 1 puis 1 contre 2" }
@@ -57609,6 +57890,46 @@ function importSession(input) {
     }
 
     /* ---------- les deux situations de la séance ---------- */
+    /* ---------- situation du projet reprise avec un modèle de la banque : on aligne la tâche (effectif),
+       le terrain, les consignes et les critères sur le titre de la situation (le titre fait foi) ---------- */
+    function accorderSituation(sit, apsId) {
+      const t = nrm(sit.t || ""), out = Object.assign({}, sit);
+      const m = /(\d+)\s*(?:\+\s*gb\s*)?(?:attaquants?\s*)?contre\s*(\d+)/.exec(t);
+      const sansOpp = !m && /sans opposition|sans defenseur|miroir|^ateliers?\b|^parcours|^passe a (2|deux)|^relais passe|jonglage|concours|^tirs?\b|^tir\b|^frappes?\b|^relance et course|^course en couloirs|^montee de balle en couloirs|^receptions?\b/.test(t);
+      const gb = (apsId === "hand" || apsId === "foot") && /gardien|face au but|finition|\btirs?\b|frappe|cible/.test(t);
+      if (m) {
+        const a = +m[1], d = +m[2], m2 = /puis (\d+)\s*contre\s*(\d+)|et (\d+)\s*contre\s*(\d+)/.exec(t);
+        let j = apsId === "volley" ? a + " contre " + d : a + " attaquant" + (a > 1 ? "s" : "") + " contre " + d + " défenseur" + (d > 1 ? "s" : "") + (gb ? " + gardien" : "");
+        if (m2) j += " puis " + (m2[1] || m2[3]) + " contre " + (m2[2] || m2[4]);
+        const ap = /(\d+)\s*appuis/.exec(t); if (ap) j += " + " + ap[1] + " appuis neutres";
+        if (/defenseur de retour/.test(t)) j += " + 1 défenseur qui revient";
+        out.jeu = j;
+      } else if (sansOpp) {
+        const sg = (apsId === "hand" || apsId === "foot") && /sans opposition|sans defenseur/.test(t) ? ", sans gardien" : "";
+        out.jeu = apsId === "volley" ? "2 réceptionneurs, 1 lanceur" : (/^(ateliers?|reception)/.test(t) ? "par 3, sans opposition" + sg + " (1 ballon par groupe)" : "par 2, sans opposition" + sg + " (1 ballon pour 2)");
+      } else out.jeu = undefined;          // jeu de l'APS (profil) : 4 contre 4…
+      // terrain : celui que le titre annonce
+      const ent = { basket: "Terrain de basket entier (28 × 15 m)", hand: "Terrain de handball entier (40 × 20 m)", foot: "Terrain de football réduit entier (40 × 20 m)" }[apsId];
+      const es = nrm(sit.espace || "");
+      if (/demi-terrain|demi terrain/.test(t)) out.espace = undefined;
+      else if (/tout terrain|terrain entier/.test(t)) out.espace = ent;
+      else if (/carre/.test(t)) out.espace = /carre/.test(es) ? sit.espace : "Carré de 15 × 15 m balisé par 4 plots";
+      else if (/couloir/.test(t)) out.espace = /couloir/.test(es) ? sit.espace : "Couloirs de 5 m tracés sur la longueur du terrain";
+      else if (/zones? de progression|\d zones|trois zones/.test(t)) out.espace = /zone/.test(es) ? sit.espace : undefined;
+      else if (/carre|couloir|zones?|postes de tir|largeur de couloir|depart ligne/.test(es)) out.espace = undefined;
+      // consignes et critères du modèle qui contredisent le titre (effectif, espace, rôles) : retirés
+      const contraire = (c) => { const x = nrm(c);
+        return /\d+\s*(contre|attaquants?|defenseurs?|joueurs?|jokers?|appuis?)\b|un attaquant a chaque|les \d+ defenseurs|chaque attaquant occupe|carre|couloir|zone de|zones?\b|joker|remplacant/.test(x) ||
+          (sansOpp && /defens|intercept|oppos|pressing|adversaire/.test(x)) || (!gb && /gardien/.test(x)) ||
+          (m && +m[1] === 1 && /entre deux|partenaire|passeur|\btouches?\b|j.ai|passes?\b/.test(x)); };
+      out.cons = (sit.cons || []).filter((c, i) => i === 0 || !contraire(c));
+      if (out.cons.length < 2) out.cons.push(sansOpp ? "Passages à tour de rôle ; le partenaire observe et donne un conseil." : apsId === "volley" ? "Rotation des rôles à chaque point ; balle hors du terrain = point pour l'adversaire." : "Changement de rôle (attaquant ↔ défenseur) à chaque rotation ; contacts interdits.");
+      out.crit = (sit.crit || []).filter((c, i) => i === 0 || !contraire(c));
+      out.plus = (sit.plus || []).filter(c => !contraire(c)); if (!out.plus.length) out.plus = [sansOpp ? "Ajouter un défenseur passif." : "Ajouter un défenseur ou réduire l'espace."];
+      out.moins = (sit.moins || []).filter(c => !contraire(c)); if (!out.moins.length) out.moins = [sansOpp ? "Réduire la distance et la vitesse d'exécution." : "Retirer un défenseur ou agrandir l'espace."];
+      return out;
+    }
+
     function situationsSeance(ctx) {
       const apsId = profilDepuis(ctx);
       if (!apsId) return null;
@@ -57626,8 +57947,8 @@ function importSession(input) {
         if (s.situation && /^(basket|hand|volley|foot)$/.test(apsId)) {
           const t0 = nrm(s.situation); let f = null;
           Object.keys(banque).some(k => { f = banque[k].find(x => t0.indexOf(nrm(x.t)) === 0) || null; return !!f; });
-          premiere = f || Object.assign({}, premiere, { t: String(s.situation).split(" — ")[0], but: s.objectif || premiere.but,
-            cons: [s.regle || ""].concat(premiere.cons.slice(1, 3)).filter(Boolean), crit: [s.critere || ""].concat(premiere.crit.slice(0, 1)).filter(Boolean) });
+          premiere = f || accorderSituation(Object.assign({}, premiere, { t: String(s.situation).split(" — ")[0], but: s.objectif || premiere.but,
+            cons: [s.regle || ""].concat(premiere.cons.slice(1, 4)).filter(Boolean), crit: [s.critere || ""].concat(premiere.crit.slice(0, 2)).filter(Boolean) }), apsId);
         }
         return { apsId, th, sits: [premiere, banque.diagnostic[0]] };
       }
@@ -57695,11 +58016,11 @@ function importSession(input) {
       // situation du projet absente de la banque : on la reprend telle quelle (cohérence projet ↔ fiche)
       if (!refS && s.situation && !/^(diagnostic|sommative|projet|demicooper)$/.test(th) && /^(basket|hand|volley|foot)$/.test(apsId)) {
         const modele = pris[0] || liste[0] || {};
-        refS = { t: String(s.situation).split(" — ")[0], but: s.objectif || modele.but || "",
+        refS = accorderSituation({ t: String(s.situation).split(" — ")[0], but: s.objectif || modele.but || "",
           espace: modele.espace, jeu: modele.jeu,
-          cons: [s.regle || ""].concat((modele.cons || []).slice(1, 3)).filter(Boolean),
-          crit: [s.critere || ""].concat((modele.crit || []).slice(0, 1)).filter(Boolean),
-          plus: modele.plus || ["Augmenter l'opposition."], moins: modele.moins || ["Réduire l'opposition."] };
+          cons: [s.regle || ""].concat((modele.cons || []).slice(1, 4)).filter(Boolean),
+          crit: [s.critere || ""].concat((modele.crit || []).slice(0, 2)).filter(Boolean),
+          plus: modele.plus || ["Augmenter l'opposition."], moins: modele.moins || ["Réduire l'opposition."] }, apsId);
       }
       if (refS) {
         const reste = pris.filter(x => x.t.indexOf(refS.t) !== 0);
@@ -57731,6 +58052,7 @@ function importSession(input) {
       return { score, otcColl, coll, indiv, communs };
     }
     function ligneCoherence(ctx, sit, th, apsId) {
+      return "";   // ligne « Cohérence / OTC » retirée des fiches
       // séances d'évaluation : pas de ligne de cohérence (la situation de référence est imposée)
       if (/^(diagnostic|sommative|demicooper)$/.test(th || "")) return "";
       const c = coherence(ctx, sit), s = ctx.seance || {};
@@ -60128,6 +60450,7 @@ window.OMRKIT = window.OMRKIT || (function () {
                 '<td><select data-ddk-niv="' + k.id + '"><option value="">—</option>' + optNiv(k.niveau || niveauDe(k.nom)) + '</select></td>' +
                 '<td>' + statsClasse(r, k).effectif + '</td>' +
                 '<td style="text-align:right">' + (on ? '<button class="ddk-a" disabled>✓ Active</button>' : '<button class="ddk-a" data-ddk-sel="' + k.id + '">Sélectionner</button>') +
+                '<button class="ddk-a" data-ddk-ren="' + k.id + '" title="Corriger le nom de la classe">✎ Renommer</button>' +
                 '<button class="ddk-a del" data-ddk-del="' + k.id + '">Supprimer</button></td></tr>';
             }).join("") + '</tbody></table>';
         }).join("") + '</div>' +
@@ -60151,6 +60474,22 @@ window.OMRKIT = window.OMRKIT || (function () {
       k.snap = snapNeuf(k); rr.classes.push(k); ecrireReg(rr); rendreClasses(); rendre();
     };
     host.querySelectorAll("[data-ddk-sel]").forEach(function (b) { b.onclick = function () { basculer(b.dataset.ddkSel); }; });
+    host.querySelectorAll("[data-ddk-ren]").forEach(function (b) {
+      b.onclick = function () {
+        var rr = lireReg(), k = rr.classes.filter(function (x) { return x.id === b.dataset.ddkRen; })[0]; if (!k) return;
+        var nv = (prompt("Nouveau nom de la classe « " + k.nom + " » :", k.nom) || "").trim();
+        if (!nv || nv === k.nom) return;
+        if (rr.classes.some(function (x) { return x !== k && String(x.nom).trim().toLowerCase() === nv.toLowerCase(); })) { alert("Une autre classe porte déjà le nom « " + nv + " »."); return; }
+        k.nom = nv;
+        // le nom est aussi enregistré dans la séance (classe active) ou dans sa sauvegarde (autres classes)
+        var renommerSession = function (txt) { var o = jp(txt, null); if (o && typeof o === "object") { o.classe = nv; return JSON.stringify(o); } return txt; };
+        if (rr.activeId === k.id) {
+          var g = document.getElementById("cl-groupe"); if (g) g.value = nv;
+          var s = lsGet(STORAGE_KEY); if (s) lsSet(STORAGE_KEY, renommerSession(s));
+        } else if (k.snap && k.snap[STORAGE_KEY]) k.snap[STORAGE_KEY] = renommerSession(k.snap[STORAGE_KEY]);
+        ecrireReg(rr); rendreClasses(); rendre();
+      };
+    });
     host.querySelectorAll("[data-ddk-del]").forEach(function (b) {
       b.onclick = function () {
         var rr = lireReg(), k = rr.classes.filter(function (x) { return x.id === b.dataset.ddkDel; })[0]; if (!k) return;
@@ -61096,7 +61435,7 @@ window.JSYNC = window.JSYNC || (function () {
   function normClasse(s) { return String(s || "").toLowerCase().replace(/\s+/g, "").replace(/[-_.\\|]/g, "/").replace(/^0+/, ""); }
   function normNom(s) {
     return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي")
+      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإٱ]/g, "ا").replace(/ة/g, "ه").replace(/[ىی]/g, "ي").replace(/ک/g, "ك").replace(/ھ/g, "ه")
       .replace(/[^a-z0-9؀-ۿ]+/g, " ").trim();
   }
   function vide(v) { return v === undefined || v === null || String(v).trim() === ""; }
@@ -61165,9 +61504,23 @@ window.JSYNC = window.JSYNC || (function () {
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
+  /* clé du même élève écrite autrement : mots dans un autre ordre, ou un mot en plus / en moins (unique) */
+  function cleProche(cles, k) {
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, kt = tri(k), c = cles.filter(function (x) { return tri(x) === kt; });
+    if (c.length === 1) return c[0];
+    if (c.length) return null;
+    var mk = k.split(" ").filter(function (w) { return w.length > 1; });
+    c = cles.filter(function (x) {
+      var mx = x.split(" ").filter(function (w) { return w.length > 1; }), p = mk.length <= mx.length ? mk : mx, g = p === mk ? mx : mk;
+      return p.length >= 2 && p.every(function (w) { return g.indexOf(w) >= 0; });
+    });
+    return c.length === 1 ? c[0] : null;
+  }
   function pour(map, nom) {
     var o = map[normNom(nom)];
     if (o) return o;
+    var kp = cleProche(Object.keys(map || {}), normNom(nom));
+    if (kp) return map[kp];
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -61190,6 +61543,7 @@ window.JSYNC = window.JSYNC || (function () {
     cd.rows = cd.rows || [];
     var nn = normNom(eleveNom);
     var row = cd.rows.filter(function (r) { return normNom(r.nom) === nn; })[0];
+    if (!row) { var kp = cleProche(cd.rows.filter(function (r) { return !vide(r.nom); }).map(function (r) { return normNom(r.nom); }), nn); if (kp) row = cd.rows.filter(function (r) { return normNom(r.nom) === kp; })[0]; }
     if (!row) {
       row = cd.rows.filter(function (r) { return vide(r.nom); })[0];
       if (!row) { row = { nom: "", sessions: ["", "", "", "", "", "", "", "", "", "", "", ""], noteFinale: "" }; cd.rows.push(row); }
@@ -61343,9 +61697,11 @@ window.JSYNC = window.JSYNC || (function () {
     if (/\+\s*1\s*partenaire/.test(t)) r.j = 1;
     var mv = /(\d+)\s*voleurs?/.exec(t); if (mv) r.voleurs = +mv[1];
     if (/chacun (son ballon|sa balle)|atelier par groupe|travail individuel/.test(t)) r.indiv = true;
+    var so = /par (\d)\s*,?\s*sans opposition/.exec(t); if (so) { r.a = +so[1]; r.d = 0; }
     var wv = /vagues? de (\d+)/.exec(t);
     var m = /(\d+)\s*(?:attaquants?|joueurs?(?: de champ)?)?\s*(?:\+\s*(?:gb|1 gardien|gardien|1))?\s*contre\s*(\d+)/.exec(t);
-    if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
+    if (so) { /* effectif déjà fixé : pas de défenseur */ }
+    else if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
     else if (m) { r.a = +m[1]; r.d = +m[2]; }
     if (!m && !wv) {
       var R = {}, re = /(\d+)\s*(defenseurs?|attaquants?|passeurs?|serveurs?|receptionneurs?|lanceurs?|contreurs?|ramasseurs?)/g, x;
@@ -63214,6 +63570,7 @@ EPS.ui.classes = {
                   </td>
                   <td>
                     <button class="btn btn-sm btn-outline" data-select="${c.id}">${c.id === activeId ? "✓ Active" : "Sélectionner"}</button>
+                    <button class="btn btn-sm btn-outline" data-ren="${c.id}" title="Corriger le nom de la classe">✎ Renommer</button>
                     <button class="btn btn-sm btn-danger" data-del="${c.id}">Supprimer</button>
                   </td>
                 </tr>`).join("")}
@@ -63288,6 +63645,18 @@ EPS.ui.classes = {
 
     container.querySelectorAll("[data-select]").forEach((b) => b.addEventListener("click", async () => {
       EPS.setClasse(b.dataset.select);
+      await refreshClasseSelector();
+      goto("classes");
+    }));
+
+    container.querySelectorAll("[data-ren]").forEach((b) => b.addEventListener("click", async () => {
+      const k = classes.find((x) => x.id === b.dataset.ren); if (!k) return;
+      const nv = (prompt("Nouveau nom de la classe « " + k.nom + " » :", k.nom) || "").trim();
+      if (!nv || nv === k.nom) return;
+      if (classes.some((x) => x !== k && String(x.nom).trim().toLowerCase() === nv.toLowerCase())) return alert("Une autre classe porte déjà le nom « " + nv + " ».");
+      k.nom = nv;
+      await EPS.db.put("classes", k);
+      EPS.saveIndicator();
       await refreshClasseSelector();
       goto("classes");
     }));
@@ -64823,10 +65192,11 @@ EPS.ui.summative = {
     const lienJ = window.JSYNC ? JSYNC.lien("vitesse", classe.nom, niveauCode) : null;
     const vxCompJ = {};   // élèves dont la note comportementale vient du cahier journalier
     const vxCompV = {};   // valeur lue dans le cahier journalier
+    const vxAbsent = {};  // élèves introuvables dans le tableau du cahier journalier
     if (current && lienJ && lienJ.ok) {
       const mJ = JSYNC.lire("vitesse", classe.nom, niveauCode);
       for (const s of students) {
-        const j = JSYNC.pour(mJ, s.nom); if (!j) continue;
+        const j = JSYNC.pour(mJ, s.nom); if (!j) { vxAbsent[s.id] = 1; continue; }
         if (j.comportementales != null && !isNaN(j.comportementales)) { vxCompJ[s.id] = j.compAuto ? "auto" : "journal"; vxCompV[s.id] = j.comportementales; }
         const id = "grade_" + current.id + "_" + s.id;
         const g = byStudentGrade[s.id] || { id, evaluationId: current.id, studentId: s.id, apsId };
@@ -65034,7 +65404,7 @@ EPS.ui.summative = {
                    <td class="ro-cell">${r.res.qualitative}</td>`}
               <td class="ro-cell"><strong>${r.res.procedurale}</strong></td>
               <td>${scoreButtons(r.res.conc, niveauCfg.conceptuelMax, "conceptuelNote", r.student.id)}</td>
-              <td>${vxCompJ[r.student.id] ? `<span class="vx-cj" title="${vxCompJ[r.student.id] === "auto" ? "Calculée par le barème comportemental du cahier journalier" : "Note du cahier journalier"}">${r.res.comp} 📘</span>` : `<span class="vx-cj vx-cj-vide" title="${vtAideComp.replace(/"/g, "&quot;")}">— 📘</span>`}</td>
+              <td>${vxCompJ[r.student.id] ? `<span class="vx-cj" title="${vxCompJ[r.student.id] === "auto" ? "Calculée par le barème comportemental du cahier journalier" : "Note du cahier journalier"}">${r.res.comp} 📘</span>` : `<span class="vx-cj vx-cj-vide" title="${(vxAbsent[r.student.id] ? "Élève introuvable dans le tableau « Course de vitesse » du cahier journalier (classe " + classe.nom + ") : vérifiez que le nom est le même dans les deux listes." : vtAideComp).replace(/"/g, "&quot;")}">${vxAbsent[r.student.id] ? "? 📘" : "— 📘"}</span>`}</td>
               <td class="ro-cell"><strong>${r.res.finale}</strong></td>
               <td><span class="tag ${r.res.finale >= 10 ? "tag-green" : "tag-red"}">${notation.appreciation(r.res.finale)}</span></td>
             </tr>`).join("")}
@@ -68165,7 +68535,7 @@ window.XlsxLite = (function () {
           cons: ["Un défenseur sur le porteur, l'autre entre le receveur et le ballon.", "Orienter le dribbleur vers la ligne de touche.", "Récupération = changement de rôle."],
           crit: ["Moins d'une traversée sur 3 tentatives.", "Au moins 1 interception par rotation."],
           plus: ["3 contre 3."], moins: ["Attaquants limités à 2 dribbles."], jeu: "2 contre 2" },
-        { t: "Jeu à thème : défense tout terrain", but: "Récupérer le ballon avant la ligne médiane.",
+        { t: "Jeu à thème : défense tout terrain", espace: "Terrain de basket entier (28 × 15 m)", but: "Récupérer le ballon avant la ligne médiane.",
           cons: ["Chacun prend un joueur dès la remise en jeu.", "Balle récupérée avant la médiane = 2 points.", "Faute = lancer franc adverse."],
           crit: ["Au moins 2 récupérations hautes par rotation.", "Pas plus de 3 fautes par équipe."],
           plus: ["Temps de défense limité à 8 s avant de reculer."], moins: ["Défense seulement dans son demi-terrain."] }
@@ -68498,7 +68868,7 @@ window.XlsxLite = (function () {
           { p: [2, 3], t: "Transition 1re et 2e vague (3 contre 2 puis 5 contre 4)", but: "Marquer en contre-attaque ou enchaîner avec la 2e vague avant le repli complet.",
             cons: ["1re vague : 3 attaquants en couloirs, tir en moins de 6 s.", "Si le tir n'est pas possible : 2e vague (2 joueurs) en appui pour un 5 contre 4.", "Les défenseurs perdants se replient dès la perte."],
             crit: ["Tir en moins de 6 s sur 50 % des transitions.", "La 2e vague arrive avant le 5e défenseur."],
-            plus: ["Le 5e défenseur revient plus tôt."], moins: ["Défenseurs de la 1re vague passifs."], jeu: "vagues de 3 puis 5 contre 4" }
+            plus: ["Le 5e défenseur revient plus tôt."], moins: ["Défenseurs de la 1re vague passifs."], jeu: "3 contre 2 puis 5 contre 4 (2e vague)" }
         ],
         marquer: [
           { p: [3], t: "Écran direct (pick and roll) et jeu intérieur-extérieur", but: "Marquer en utilisant l'écran direct et le choix intérieur / extérieur.",
@@ -68513,7 +68883,7 @@ window.XlsxLite = (function () {
             plus: ["Attaque avec un tireur extérieur à 3 points."], moins: ["Attaque limitée à 4 passes."], jeu: "5 contre 5 sur demi-terrain" }
         ],
         opposer: [
-          { p: [3], t: "Presse tout terrain puis repli organisé", but: "Réduire l'espace de jeu adverse et récupérer avant la ligne médiane.",
+          { p: [3], t: "Presse tout terrain puis repli organisé", espace: "Terrain de basket entier (28 × 15 m)", but: "Réduire l'espace de jeu adverse et récupérer avant la ligne médiane.",
             cons: ["Trappe à deux sur le porteur près de la ligne de touche.", "Les autres anticipent les lignes de passe.", "Si la balle passe la médiane : repli immédiat en défense placée."],
             crit: ["Au moins 2 récupérations avant la médiane par rotation.", "Repli complet en moins de 5 s."],
             plus: ["Presse sur toute la durée de la possession."], moins: ["Presse seulement sur la remise en jeu."], jeu: "5 contre 5 tout terrain" }
@@ -68867,7 +69237,7 @@ window.XlsxLite = (function () {
           cons: ["Changement de direction ou de rythme pour déborder le défenseur.", "Protection du ballon avec l'avant-bras libre (sans pousser).", "Sortie du couloir = perte."],
           crit: ["3 traversées réussies sur 5.", "Au moins un changement de main par traversée."],
           plus: ["Couloir de 4 m."], moins: ["Défenseur qui ne fait que gêner (sans voler)."], jeu: "1 contre 1" },
-        { p: [3], t: "1 contre 1 sous pression tout terrain (prise à deux possible)", but: "Conserver le ballon jusqu'à la ligne médiane face à une défense pressante.",
+        { p: [3], t: "1 contre 1 sous pression tout terrain (prise à deux possible)", espace: "Terrain de basket entier (28 × 15 m)", but: "Conserver le ballon jusqu'à la ligne médiane face à une défense pressante.",
           cons: ["Dribble de protection, feinte et changement de direction.", "Un second défenseur peut venir faire prise à deux.", "Sortir de la prise à deux par un pivot ou un dribble arrière."],
           crit: ["Moins d'une perte sur 5 remontées.", "Aucune faute de marcher ou de 8 secondes."],
           plus: ["Temps limité à 6 s."], moins: ["Pas de prise à deux."], jeu: "1 contre 1 puis 1 contre 2" }
@@ -69171,6 +69541,46 @@ window.XlsxLite = (function () {
     }
 
     /* ---------- les deux situations de la séance ---------- */
+    /* ---------- situation du projet reprise avec un modèle de la banque : on aligne la tâche (effectif),
+       le terrain, les consignes et les critères sur le titre de la situation (le titre fait foi) ---------- */
+    function accorderSituation(sit, apsId) {
+      const t = nrm(sit.t || ""), out = Object.assign({}, sit);
+      const m = /(\d+)\s*(?:\+\s*gb\s*)?(?:attaquants?\s*)?contre\s*(\d+)/.exec(t);
+      const sansOpp = !m && /sans opposition|sans defenseur|miroir|^ateliers?\b|^parcours|^passe a (2|deux)|^relais passe|jonglage|concours|^tirs?\b|^tir\b|^frappes?\b|^relance et course|^course en couloirs|^montee de balle en couloirs|^receptions?\b/.test(t);
+      const gb = (apsId === "hand" || apsId === "foot") && /gardien|face au but|finition|\btirs?\b|frappe|cible/.test(t);
+      if (m) {
+        const a = +m[1], d = +m[2], m2 = /puis (\d+)\s*contre\s*(\d+)|et (\d+)\s*contre\s*(\d+)/.exec(t);
+        let j = apsId === "volley" ? a + " contre " + d : a + " attaquant" + (a > 1 ? "s" : "") + " contre " + d + " défenseur" + (d > 1 ? "s" : "") + (gb ? " + gardien" : "");
+        if (m2) j += " puis " + (m2[1] || m2[3]) + " contre " + (m2[2] || m2[4]);
+        const ap = /(\d+)\s*appuis/.exec(t); if (ap) j += " + " + ap[1] + " appuis neutres";
+        if (/defenseur de retour/.test(t)) j += " + 1 défenseur qui revient";
+        out.jeu = j;
+      } else if (sansOpp) {
+        const sg = (apsId === "hand" || apsId === "foot") && /sans opposition|sans defenseur/.test(t) ? ", sans gardien" : "";
+        out.jeu = apsId === "volley" ? "2 réceptionneurs, 1 lanceur" : (/^(ateliers?|reception)/.test(t) ? "par 3, sans opposition" + sg + " (1 ballon par groupe)" : "par 2, sans opposition" + sg + " (1 ballon pour 2)");
+      } else out.jeu = undefined;          // jeu de l'APS (profil) : 4 contre 4…
+      // terrain : celui que le titre annonce
+      const ent = { basket: "Terrain de basket entier (28 × 15 m)", hand: "Terrain de handball entier (40 × 20 m)", foot: "Terrain de football réduit entier (40 × 20 m)" }[apsId];
+      const es = nrm(sit.espace || "");
+      if (/demi-terrain|demi terrain/.test(t)) out.espace = undefined;
+      else if (/tout terrain|terrain entier/.test(t)) out.espace = ent;
+      else if (/carre/.test(t)) out.espace = /carre/.test(es) ? sit.espace : "Carré de 15 × 15 m balisé par 4 plots";
+      else if (/couloir/.test(t)) out.espace = /couloir/.test(es) ? sit.espace : "Couloirs de 5 m tracés sur la longueur du terrain";
+      else if (/zones? de progression|\d zones|trois zones/.test(t)) out.espace = /zone/.test(es) ? sit.espace : undefined;
+      else if (/carre|couloir|zones?|postes de tir|largeur de couloir|depart ligne/.test(es)) out.espace = undefined;
+      // consignes et critères du modèle qui contredisent le titre (effectif, espace, rôles) : retirés
+      const contraire = (c) => { const x = nrm(c);
+        return /\d+\s*(contre|attaquants?|defenseurs?|joueurs?|jokers?|appuis?)\b|un attaquant a chaque|les \d+ defenseurs|chaque attaquant occupe|carre|couloir|zone de|zones?\b|joker|remplacant/.test(x) ||
+          (sansOpp && /defens|intercept|oppos|pressing|adversaire/.test(x)) || (!gb && /gardien/.test(x)) ||
+          (m && +m[1] === 1 && /entre deux|partenaire|passeur|\btouches?\b|j.ai|passes?\b/.test(x)); };
+      out.cons = (sit.cons || []).filter((c, i) => i === 0 || !contraire(c));
+      if (out.cons.length < 2) out.cons.push(sansOpp ? "Passages à tour de rôle ; le partenaire observe et donne un conseil." : apsId === "volley" ? "Rotation des rôles à chaque point ; balle hors du terrain = point pour l'adversaire." : "Changement de rôle (attaquant ↔ défenseur) à chaque rotation ; contacts interdits.");
+      out.crit = (sit.crit || []).filter((c, i) => i === 0 || !contraire(c));
+      out.plus = (sit.plus || []).filter(c => !contraire(c)); if (!out.plus.length) out.plus = [sansOpp ? "Ajouter un défenseur passif." : "Ajouter un défenseur ou réduire l'espace."];
+      out.moins = (sit.moins || []).filter(c => !contraire(c)); if (!out.moins.length) out.moins = [sansOpp ? "Réduire la distance et la vitesse d'exécution." : "Retirer un défenseur ou agrandir l'espace."];
+      return out;
+    }
+
     function situationsSeance(ctx) {
       const apsId = profilDepuis(ctx);
       if (!apsId) return null;
@@ -69188,8 +69598,8 @@ window.XlsxLite = (function () {
         if (s.situation && /^(basket|hand|volley|foot)$/.test(apsId)) {
           const t0 = nrm(s.situation); let f = null;
           Object.keys(banque).some(k => { f = banque[k].find(x => t0.indexOf(nrm(x.t)) === 0) || null; return !!f; });
-          premiere = f || Object.assign({}, premiere, { t: String(s.situation).split(" — ")[0], but: s.objectif || premiere.but,
-            cons: [s.regle || ""].concat(premiere.cons.slice(1, 3)).filter(Boolean), crit: [s.critere || ""].concat(premiere.crit.slice(0, 1)).filter(Boolean) });
+          premiere = f || accorderSituation(Object.assign({}, premiere, { t: String(s.situation).split(" — ")[0], but: s.objectif || premiere.but,
+            cons: [s.regle || ""].concat(premiere.cons.slice(1, 4)).filter(Boolean), crit: [s.critere || ""].concat(premiere.crit.slice(0, 2)).filter(Boolean) }), apsId);
         }
         return { apsId, th, sits: [premiere, banque.diagnostic[0]] };
       }
@@ -69257,11 +69667,11 @@ window.XlsxLite = (function () {
       // situation du projet absente de la banque : on la reprend telle quelle (cohérence projet ↔ fiche)
       if (!refS && s.situation && !/^(diagnostic|sommative|projet|demicooper)$/.test(th) && /^(basket|hand|volley|foot)$/.test(apsId)) {
         const modele = pris[0] || liste[0] || {};
-        refS = { t: String(s.situation).split(" — ")[0], but: s.objectif || modele.but || "",
+        refS = accorderSituation({ t: String(s.situation).split(" — ")[0], but: s.objectif || modele.but || "",
           espace: modele.espace, jeu: modele.jeu,
-          cons: [s.regle || ""].concat((modele.cons || []).slice(1, 3)).filter(Boolean),
-          crit: [s.critere || ""].concat((modele.crit || []).slice(0, 1)).filter(Boolean),
-          plus: modele.plus || ["Augmenter l'opposition."], moins: modele.moins || ["Réduire l'opposition."] };
+          cons: [s.regle || ""].concat((modele.cons || []).slice(1, 4)).filter(Boolean),
+          crit: [s.critere || ""].concat((modele.crit || []).slice(0, 2)).filter(Boolean),
+          plus: modele.plus || ["Augmenter l'opposition."], moins: modele.moins || ["Réduire l'opposition."] }, apsId);
       }
       if (refS) {
         const reste = pris.filter(x => x.t.indexOf(refS.t) !== 0);
@@ -69293,6 +69703,7 @@ window.XlsxLite = (function () {
       return { score, otcColl, coll, indiv, communs };
     }
     function ligneCoherence(ctx, sit, th, apsId) {
+      return "";   // ligne « Cohérence / OTC » retirée des fiches
       // séances d'évaluation : pas de ligne de cohérence (la situation de référence est imposée)
       if (/^(diagnostic|sommative|demicooper)$/.test(th || "")) return "";
       const c = coherence(ctx, sit), s = ctx.seance || {};
@@ -77273,9 +77684,11 @@ td.sm{font-size:.8rem}
     if (/\+\s*1\s*partenaire/.test(t)) r.j = 1;
     var mv = /(\d+)\s*voleurs?/.exec(t); if (mv) r.voleurs = +mv[1];
     if (/chacun (son ballon|sa balle)|atelier par groupe|travail individuel/.test(t)) r.indiv = true;
+    var so = /par (\d)\s*,?\s*sans opposition/.exec(t); if (so) { r.a = +so[1]; r.d = 0; }
     var wv = /vagues? de (\d+)/.exec(t);
     var m = /(\d+)\s*(?:attaquants?|joueurs?(?: de champ)?)?\s*(?:\+\s*(?:gb|1 gardien|gardien|1))?\s*contre\s*(\d+)/.exec(t);
-    if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
+    if (so) { /* effectif déjà fixé : pas de défenseur */ }
+    else if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
     else if (m) { r.a = +m[1]; r.d = +m[2]; }
     if (!m && !wv) {
       var R = {}, re = /(\d+)\s*(defenseurs?|attaquants?|passeurs?|serveurs?|receptionneurs?|lanceurs?|contreurs?|ramasseurs?)/g, x;
@@ -78194,7 +78607,7 @@ window.JSYNC = window.JSYNC || (function () {
   function normClasse(s) { return String(s || "").toLowerCase().replace(/\s+/g, "").replace(/[-_.\\|]/g, "/").replace(/^0+/, ""); }
   function normNom(s) {
     return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي")
+      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإٱ]/g, "ا").replace(/ة/g, "ه").replace(/[ىی]/g, "ي").replace(/ک/g, "ك").replace(/ھ/g, "ه")
       .replace(/[^a-z0-9؀-ۿ]+/g, " ").trim();
   }
   function vide(v) { return v === undefined || v === null || String(v).trim() === ""; }
@@ -78263,9 +78676,23 @@ window.JSYNC = window.JSYNC || (function () {
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
+  /* clé du même élève écrite autrement : mots dans un autre ordre, ou un mot en plus / en moins (unique) */
+  function cleProche(cles, k) {
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, kt = tri(k), c = cles.filter(function (x) { return tri(x) === kt; });
+    if (c.length === 1) return c[0];
+    if (c.length) return null;
+    var mk = k.split(" ").filter(function (w) { return w.length > 1; });
+    c = cles.filter(function (x) {
+      var mx = x.split(" ").filter(function (w) { return w.length > 1; }), p = mk.length <= mx.length ? mk : mx, g = p === mk ? mx : mk;
+      return p.length >= 2 && p.every(function (w) { return g.indexOf(w) >= 0; });
+    });
+    return c.length === 1 ? c[0] : null;
+  }
   function pour(map, nom) {
     var o = map[normNom(nom)];
     if (o) return o;
+    var kp = cleProche(Object.keys(map || {}), normNom(nom));
+    if (kp) return map[kp];
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -78288,6 +78715,7 @@ window.JSYNC = window.JSYNC || (function () {
     cd.rows = cd.rows || [];
     var nn = normNom(eleveNom);
     var row = cd.rows.filter(function (r) { return normNom(r.nom) === nn; })[0];
+    if (!row) { var kp = cleProche(cd.rows.filter(function (r) { return !vide(r.nom); }).map(function (r) { return normNom(r.nom); }), nn); if (kp) row = cd.rows.filter(function (r) { return normNom(r.nom) === kp; })[0]; }
     if (!row) {
       row = cd.rows.filter(function (r) { return vide(r.nom); })[0];
       if (!row) { row = { nom: "", sessions: ["", "", "", "", "", "", "", "", "", "", "", ""], noteFinale: "" }; cd.rows.push(row); }
@@ -79235,7 +79663,7 @@ window.DISC = {
             g.k.map(function (k) {
               var on = c && k.id === c.id;
               return '<tr class="' + (on ? "on" : "") + '"><td><b>' + esc(k.nom) + '</b></td><td><select data-niv="' + k.id + '">' + NIVS.map(function (n) { return '<option' + (niv(k) === n ? " selected" : "") + '>' + n + '</option>'; }).join("") + '</select></td><td>' + k.eleves.length + '</td>' +
-                '<td class="r"><button class="btn sm" data-sel="' + k.id + '"' + (on ? " disabled" : "") + '>' + (on ? "✓ Active" : "Sélectionner") + '</button> <button class="btn sm dan" data-del="' + k.id + '">Supprimer</button></td></tr>';
+                '<td class="r"><button class="btn sm" data-sel="' + k.id + '"' + (on ? " disabled" : "") + '>' + (on ? "✓ Active" : "Sélectionner") + '</button> <button class="btn sm" data-ren="' + k.id + '" title="Corriger le nom de la classe">✎ Renommer</button> <button class="btn sm dan" data-del="' + k.id + '">Supprimer</button></td></tr>';
             }).join("") + '</tbody></table></div>';
         }).join("") : '<p class="muted">Aucune classe créée.</p>') + '</div>' +
       (c ? '<div class="card"><h3>Élèves — ' + esc(c.nom) + ' <span class="tag">' + c.eleves.length + ' inscrit(s)</span></h3>' +
@@ -79257,6 +79685,15 @@ window.DISC = {
       S.classes.push(k); sauverClasse(k); reglage("active::" + AN, k.id); toast("Classe « " + nom + " » créée"); rendre();
     };
     v.querySelectorAll("[data-sel]").forEach(function (b) { b.onclick = function () { reglage("active::" + AN, b.dataset.sel); rendre(); }; });
+    v.querySelectorAll("[data-ren]").forEach(function (b) {
+      b.onclick = function () {
+        var k = S.classes.filter(function (x) { return x.id === b.dataset.ren; })[0]; if (!k) return;
+        var nv = (prompt("Nouveau nom de la classe « " + k.nom + " » :", k.nom) || "").trim();
+        if (!nv || nv === k.nom) return;
+        if (cl.some(function (x) { return x !== k && x.nom.trim().toLowerCase() === nv.toLowerCase(); })) { toast("Une autre classe porte déjà ce nom"); return; }
+        k.nom = nv; sauverClasse(k); toast("Classe renommée : " + nv); rendre();
+      };
+    });
     v.querySelectorAll("[data-niv]").forEach(function (s) { s.onchange = function () { var k = S.classes.filter(function (x) { return x.id === s.dataset.niv; })[0]; k.niveau = s.value; delete k.cycle; sauverClasse(k); toast("Niveau : " + s.value + " (le projet de cycle sera à régénérer)"); rendre(); }; });
     v.querySelectorAll("[data-del]").forEach(function (b) {
       b.onclick = function () {
@@ -80038,9 +80475,11 @@ td.sm{font-size:.8rem}
     if (/\+\s*1\s*partenaire/.test(t)) r.j = 1;
     var mv = /(\d+)\s*voleurs?/.exec(t); if (mv) r.voleurs = +mv[1];
     if (/chacun (son ballon|sa balle)|atelier par groupe|travail individuel/.test(t)) r.indiv = true;
+    var so = /par (\d)\s*,?\s*sans opposition/.exec(t); if (so) { r.a = +so[1]; r.d = 0; }
     var wv = /vagues? de (\d+)/.exec(t);
     var m = /(\d+)\s*(?:attaquants?|joueurs?(?: de champ)?)?\s*(?:\+\s*(?:gb|1 gardien|gardien|1))?\s*contre\s*(\d+)/.exec(t);
-    if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
+    if (so) { /* effectif déjà fixé : pas de défenseur */ }
+    else if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
     else if (m) { r.a = +m[1]; r.d = +m[2]; }
     if (!m && !wv) {
       var R = {}, re = /(\d+)\s*(defenseurs?|attaquants?|passeurs?|serveurs?|receptionneurs?|lanceurs?|contreurs?|ramasseurs?)/g, x;
@@ -80982,7 +81421,7 @@ window.JSYNC = window.JSYNC || (function () {
   function normClasse(s) { return String(s || "").toLowerCase().replace(/\s+/g, "").replace(/[-_.\\|]/g, "/").replace(/^0+/, ""); }
   function normNom(s) {
     return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي")
+      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإٱ]/g, "ا").replace(/ة/g, "ه").replace(/[ىی]/g, "ي").replace(/ک/g, "ك").replace(/ھ/g, "ه")
       .replace(/[^a-z0-9؀-ۿ]+/g, " ").trim();
   }
   function vide(v) { return v === undefined || v === null || String(v).trim() === ""; }
@@ -81051,9 +81490,23 @@ window.JSYNC = window.JSYNC || (function () {
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
+  /* clé du même élève écrite autrement : mots dans un autre ordre, ou un mot en plus / en moins (unique) */
+  function cleProche(cles, k) {
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, kt = tri(k), c = cles.filter(function (x) { return tri(x) === kt; });
+    if (c.length === 1) return c[0];
+    if (c.length) return null;
+    var mk = k.split(" ").filter(function (w) { return w.length > 1; });
+    c = cles.filter(function (x) {
+      var mx = x.split(" ").filter(function (w) { return w.length > 1; }), p = mk.length <= mx.length ? mk : mx, g = p === mk ? mx : mk;
+      return p.length >= 2 && p.every(function (w) { return g.indexOf(w) >= 0; });
+    });
+    return c.length === 1 ? c[0] : null;
+  }
   function pour(map, nom) {
     var o = map[normNom(nom)];
     if (o) return o;
+    var kp = cleProche(Object.keys(map || {}), normNom(nom));
+    if (kp) return map[kp];
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -81076,6 +81529,7 @@ window.JSYNC = window.JSYNC || (function () {
     cd.rows = cd.rows || [];
     var nn = normNom(eleveNom);
     var row = cd.rows.filter(function (r) { return normNom(r.nom) === nn; })[0];
+    if (!row) { var kp = cleProche(cd.rows.filter(function (r) { return !vide(r.nom); }).map(function (r) { return normNom(r.nom); }), nn); if (kp) row = cd.rows.filter(function (r) { return normNom(r.nom) === kp; })[0]; }
     if (!row) {
       row = cd.rows.filter(function (r) { return vide(r.nom); })[0];
       if (!row) { row = { nom: "", sessions: ["", "", "", "", "", "", "", "", "", "", "", ""], noteFinale: "" }; cd.rows.push(row); }
@@ -82103,7 +82557,7 @@ window.DISC = {
             g.k.map(function (k) {
               var on = c && k.id === c.id;
               return '<tr class="' + (on ? "on" : "") + '"><td><b>' + esc(k.nom) + '</b></td><td><select data-niv="' + k.id + '">' + NIVS.map(function (n) { return '<option' + (niv(k) === n ? " selected" : "") + '>' + n + '</option>'; }).join("") + '</select></td><td>' + k.eleves.length + '</td>' +
-                '<td class="r"><button class="btn sm" data-sel="' + k.id + '"' + (on ? " disabled" : "") + '>' + (on ? "✓ Active" : "Sélectionner") + '</button> <button class="btn sm dan" data-del="' + k.id + '">Supprimer</button></td></tr>';
+                '<td class="r"><button class="btn sm" data-sel="' + k.id + '"' + (on ? " disabled" : "") + '>' + (on ? "✓ Active" : "Sélectionner") + '</button> <button class="btn sm" data-ren="' + k.id + '" title="Corriger le nom de la classe">✎ Renommer</button> <button class="btn sm dan" data-del="' + k.id + '">Supprimer</button></td></tr>';
             }).join("") + '</tbody></table></div>';
         }).join("") : '<p class="muted">Aucune classe créée.</p>') + '</div>' +
       (c ? '<div class="card"><h3>Élèves — ' + esc(c.nom) + ' <span class="tag">' + c.eleves.length + ' inscrit(s)</span></h3>' +
@@ -82125,6 +82579,15 @@ window.DISC = {
       S.classes.push(k); sauverClasse(k); reglage("active::" + AN, k.id); toast("Classe « " + nom + " » créée"); rendre();
     };
     v.querySelectorAll("[data-sel]").forEach(function (b) { b.onclick = function () { reglage("active::" + AN, b.dataset.sel); rendre(); }; });
+    v.querySelectorAll("[data-ren]").forEach(function (b) {
+      b.onclick = function () {
+        var k = S.classes.filter(function (x) { return x.id === b.dataset.ren; })[0]; if (!k) return;
+        var nv = (prompt("Nouveau nom de la classe « " + k.nom + " » :", k.nom) || "").trim();
+        if (!nv || nv === k.nom) return;
+        if (cl.some(function (x) { return x !== k && x.nom.trim().toLowerCase() === nv.toLowerCase(); })) { toast("Une autre classe porte déjà ce nom"); return; }
+        k.nom = nv; sauverClasse(k); toast("Classe renommée : " + nv); rendre();
+      };
+    });
     v.querySelectorAll("[data-niv]").forEach(function (s) { s.onchange = function () { var k = S.classes.filter(function (x) { return x.id === s.dataset.niv; })[0]; k.niveau = s.value; delete k.cycle; sauverClasse(k); toast("Niveau : " + s.value + " (le projet de cycle sera à régénérer)"); rendre(); }; });
     v.querySelectorAll("[data-del]").forEach(function (b) {
       b.onclick = function () {
@@ -82974,9 +83437,11 @@ td.sm{font-size:.8rem}
     if (/\+\s*1\s*partenaire/.test(t)) r.j = 1;
     var mv = /(\d+)\s*voleurs?/.exec(t); if (mv) r.voleurs = +mv[1];
     if (/chacun (son ballon|sa balle)|atelier par groupe|travail individuel/.test(t)) r.indiv = true;
+    var so = /par (\d)\s*,?\s*sans opposition/.exec(t); if (so) { r.a = +so[1]; r.d = 0; }
     var wv = /vagues? de (\d+)/.exec(t);
     var m = /(\d+)\s*(?:attaquants?|joueurs?(?: de champ)?)?\s*(?:\+\s*(?:gb|1 gardien|gardien|1))?\s*contre\s*(\d+)/.exec(t);
-    if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
+    if (so) { /* effectif déjà fixé : pas de défenseur */ }
+    else if (wv) { r.a = +wv[1]; r.d = Math.max(1, +wv[1] - 1); }
     else if (m) { r.a = +m[1]; r.d = +m[2]; }
     if (!m && !wv) {
       var R = {}, re = /(\d+)\s*(defenseurs?|attaquants?|passeurs?|serveurs?|receptionneurs?|lanceurs?|contreurs?|ramasseurs?)/g, x;
@@ -83895,7 +84360,7 @@ window.JSYNC = window.JSYNC || (function () {
   function normClasse(s) { return String(s || "").toLowerCase().replace(/\s+/g, "").replace(/[-_.\\|]/g, "/").replace(/^0+/, ""); }
   function normNom(s) {
     return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي")
+      .replace(/[ً-ٰٟـ]/g, "").replace(/[آأإٱ]/g, "ا").replace(/ة/g, "ه").replace(/[ىی]/g, "ي").replace(/ک/g, "ك").replace(/ھ/g, "ه")
       .replace(/[^a-z0-9؀-ۿ]+/g, " ").trim();
   }
   function vide(v) { return v === undefined || v === null || String(v).trim() === ""; }
@@ -83964,9 +84429,23 @@ window.JSYNC = window.JSYNC || (function () {
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
     return out;
   }
+  /* clé du même élève écrite autrement : mots dans un autre ordre, ou un mot en plus / en moins (unique) */
+  function cleProche(cles, k) {
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, kt = tri(k), c = cles.filter(function (x) { return tri(x) === kt; });
+    if (c.length === 1) return c[0];
+    if (c.length) return null;
+    var mk = k.split(" ").filter(function (w) { return w.length > 1; });
+    c = cles.filter(function (x) {
+      var mx = x.split(" ").filter(function (w) { return w.length > 1; }), p = mk.length <= mx.length ? mk : mx, g = p === mk ? mx : mk;
+      return p.length >= 2 && p.every(function (w) { return g.indexOf(w) >= 0; });
+    });
+    return c.length === 1 ? c[0] : null;
+  }
   function pour(map, nom) {
     var o = map[normNom(nom)];
     if (o) return o;
+    var kp = cleProche(Object.keys(map || {}), normNom(nom));
+    if (kp) return map[kp];
     return map && map.__defComp != null ? { conceptuelles: null, comportementales: map.__defComp, compAuto: true } : null;
   }
   /* message affiché quand la note comportementale n'est pas encore dans le cahier journalier */
@@ -83989,6 +84468,7 @@ window.JSYNC = window.JSYNC || (function () {
     cd.rows = cd.rows || [];
     var nn = normNom(eleveNom);
     var row = cd.rows.filter(function (r) { return normNom(r.nom) === nn; })[0];
+    if (!row) { var kp = cleProche(cd.rows.filter(function (r) { return !vide(r.nom); }).map(function (r) { return normNom(r.nom); }), nn); if (kp) row = cd.rows.filter(function (r) { return normNom(r.nom) === kp; })[0]; }
     if (!row) {
       row = cd.rows.filter(function (r) { return vide(r.nom); })[0];
       if (!row) { row = { nom: "", sessions: ["", "", "", "", "", "", "", "", "", "", "", ""], noteFinale: "" }; cd.rows.push(row); }
@@ -84931,7 +85411,7 @@ window.DISC = {
             g.k.map(function (k) {
               var on = c && k.id === c.id;
               return '<tr class="' + (on ? "on" : "") + '"><td><b>' + esc(k.nom) + '</b></td><td><select data-niv="' + k.id + '">' + NIVS.map(function (n) { return '<option' + (niv(k) === n ? " selected" : "") + '>' + n + '</option>'; }).join("") + '</select></td><td>' + k.eleves.length + '</td>' +
-                '<td class="r"><button class="btn sm" data-sel="' + k.id + '"' + (on ? " disabled" : "") + '>' + (on ? "✓ Active" : "Sélectionner") + '</button> <button class="btn sm dan" data-del="' + k.id + '">Supprimer</button></td></tr>';
+                '<td class="r"><button class="btn sm" data-sel="' + k.id + '"' + (on ? " disabled" : "") + '>' + (on ? "✓ Active" : "Sélectionner") + '</button> <button class="btn sm" data-ren="' + k.id + '" title="Corriger le nom de la classe">✎ Renommer</button> <button class="btn sm dan" data-del="' + k.id + '">Supprimer</button></td></tr>';
             }).join("") + '</tbody></table></div>';
         }).join("") : '<p class="muted">Aucune classe créée.</p>') + '</div>' +
       (c ? '<div class="card"><h3>Élèves — ' + esc(c.nom) + ' <span class="tag">' + c.eleves.length + ' inscrit(s)</span></h3>' +
@@ -84953,6 +85433,15 @@ window.DISC = {
       S.classes.push(k); sauverClasse(k); reglage("active::" + AN, k.id); toast("Classe « " + nom + " » créée"); rendre();
     };
     v.querySelectorAll("[data-sel]").forEach(function (b) { b.onclick = function () { reglage("active::" + AN, b.dataset.sel); rendre(); }; });
+    v.querySelectorAll("[data-ren]").forEach(function (b) {
+      b.onclick = function () {
+        var k = S.classes.filter(function (x) { return x.id === b.dataset.ren; })[0]; if (!k) return;
+        var nv = (prompt("Nouveau nom de la classe « " + k.nom + " » :", k.nom) || "").trim();
+        if (!nv || nv === k.nom) return;
+        if (cl.some(function (x) { return x !== k && x.nom.trim().toLowerCase() === nv.toLowerCase(); })) { toast("Une autre classe porte déjà ce nom"); return; }
+        k.nom = nv; sauverClasse(k); toast("Classe renommée : " + nv); rendre();
+      };
+    });
     v.querySelectorAll("[data-niv]").forEach(function (s) { s.onchange = function () { var k = S.classes.filter(function (x) { return x.id === s.dataset.niv; })[0]; k.niveau = s.value; delete k.cycle; sauverClasse(k); toast("Niveau : " + s.value + " (le projet de cycle sera à régénérer)"); rendre(); }; });
     v.querySelectorAll("[data-del]").forEach(function (b) {
       b.onclick = function () {
