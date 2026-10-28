@@ -12455,7 +12455,18 @@ window.JSYNC = window.JSYNC || (function () {
       var o = { conceptuelles: vide(r.conceptuelles) ? null : Number(String(r.conceptuelles).replace(",", ".")),
                 comportementales: vide(r.comportementales) ? null : Number(String(r.comportementales).replace(",", ".")), compAuto: false };
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
-      out[normNom(r.nom)] = o;
+      var k = normNom(r.nom), p = out[k];
+      if (p) { if (o.conceptuelles == null) o.conceptuelles = p.conceptuelles; if (o.comportementales == null) { o.comportementales = p.comportementales; o.compAuto = p.compAuto; } }
+      out[k] = o;
+    });
+    // même élève écrit autrement (nom et prénom inversés…) sur deux lignes : on réunit ses notes
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, grp = {};
+    Object.keys(out).forEach(function (k) { (grp[tri(k)] = grp[tri(k)] || []).push(k); });
+    Object.keys(grp).forEach(function (g) {
+      var ks = grp[g]; if (ks.length < 2) return;
+      var m = { conceptuelles: null, comportementales: null, compAuto: false };
+      ks.forEach(function (k) { var o = out[k]; if (m.conceptuelles == null && o.conceptuelles != null) m.conceptuelles = o.conceptuelles; if (m.comportementales == null && o.comportementales != null) { m.comportementales = o.comportementales; m.compAuto = o.compAuto; } });
+      ks.forEach(function (k) { out[k] = { conceptuelles: m.conceptuelles, comportementales: m.comportementales, compAuto: m.compAuto }; });
     });
     // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
@@ -21963,7 +21974,18 @@ window.JSYNC = window.JSYNC || (function () {
       var o = { conceptuelles: vide(r.conceptuelles) ? null : Number(String(r.conceptuelles).replace(",", ".")),
                 comportementales: vide(r.comportementales) ? null : Number(String(r.comportementales).replace(",", ".")), compAuto: false };
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
-      out[normNom(r.nom)] = o;
+      var k = normNom(r.nom), p = out[k];
+      if (p) { if (o.conceptuelles == null) o.conceptuelles = p.conceptuelles; if (o.comportementales == null) { o.comportementales = p.comportementales; o.compAuto = p.compAuto; } }
+      out[k] = o;
+    });
+    // même élève écrit autrement (nom et prénom inversés…) sur deux lignes : on réunit ses notes
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, grp = {};
+    Object.keys(out).forEach(function (k) { (grp[tri(k)] = grp[tri(k)] || []).push(k); });
+    Object.keys(grp).forEach(function (g) {
+      var ks = grp[g]; if (ks.length < 2) return;
+      var m = { conceptuelles: null, comportementales: null, compAuto: false };
+      ks.forEach(function (k) { var o = out[k]; if (m.conceptuelles == null && o.conceptuelles != null) m.conceptuelles = o.conceptuelles; if (m.comportementales == null && o.comportementales != null) { m.comportementales = o.comportementales; m.compAuto = o.compAuto; } });
+      ks.forEach(function (k) { out[k] = { conceptuelles: m.conceptuelles, comportementales: m.comportementales, compAuto: m.compAuto }; });
     });
     // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
@@ -31474,7 +31496,18 @@ window.JSYNC = window.JSYNC || (function () {
       var o = { conceptuelles: vide(r.conceptuelles) ? null : Number(String(r.conceptuelles).replace(",", ".")),
                 comportementales: vide(r.comportementales) ? null : Number(String(r.comportementales).replace(",", ".")), compAuto: false };
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
-      out[normNom(r.nom)] = o;
+      var k = normNom(r.nom), p = out[k];
+      if (p) { if (o.conceptuelles == null) o.conceptuelles = p.conceptuelles; if (o.comportementales == null) { o.comportementales = p.comportementales; o.compAuto = p.compAuto; } }
+      out[k] = o;
+    });
+    // même élève écrit autrement (nom et prénom inversés…) sur deux lignes : on réunit ses notes
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, grp = {};
+    Object.keys(out).forEach(function (k) { (grp[tri(k)] = grp[tri(k)] || []).push(k); });
+    Object.keys(grp).forEach(function (g) {
+      var ks = grp[g]; if (ks.length < 2) return;
+      var m = { conceptuelles: null, comportementales: null, compAuto: false };
+      ks.forEach(function (k) { var o = out[k]; if (m.conceptuelles == null && o.conceptuelles != null) m.conceptuelles = o.conceptuelles; if (m.comportementales == null && o.comportementales != null) { m.comportementales = o.comportementales; m.compAuto = o.compAuto; } });
+      ks.forEach(function (k) { out[k] = { conceptuelles: m.conceptuelles, comportementales: m.comportementales, compAuto: m.compAuto }; });
     });
     // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
@@ -40984,7 +41017,18 @@ window.JSYNC = window.JSYNC || (function () {
       var o = { conceptuelles: vide(r.conceptuelles) ? null : Number(String(r.conceptuelles).replace(",", ".")),
                 comportementales: vide(r.comportementales) ? null : Number(String(r.comportementales).replace(",", ".")), compAuto: false };
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
-      out[normNom(r.nom)] = o;
+      var k = normNom(r.nom), p = out[k];
+      if (p) { if (o.conceptuelles == null) o.conceptuelles = p.conceptuelles; if (o.comportementales == null) { o.comportementales = p.comportementales; o.compAuto = p.compAuto; } }
+      out[k] = o;
+    });
+    // même élève écrit autrement (nom et prénom inversés…) sur deux lignes : on réunit ses notes
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, grp = {};
+    Object.keys(out).forEach(function (k) { (grp[tri(k)] = grp[tri(k)] || []).push(k); });
+    Object.keys(grp).forEach(function (g) {
+      var ks = grp[g]; if (ks.length < 2) return;
+      var m = { conceptuelles: null, comportementales: null, compAuto: false };
+      ks.forEach(function (k) { var o = out[k]; if (m.conceptuelles == null && o.conceptuelles != null) m.conceptuelles = o.conceptuelles; if (m.comportementales == null && o.comportementales != null) { m.comportementales = o.comportementales; m.compAuto = o.compAuto; } });
+      ks.forEach(function (k) { out[k] = { conceptuelles: m.conceptuelles, comportementales: m.comportementales, compAuto: m.compAuto }; });
     });
     // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
@@ -50515,7 +50559,18 @@ window.JSYNC = window.JSYNC || (function () {
       var o = { conceptuelles: vide(r.conceptuelles) ? null : Number(String(r.conceptuelles).replace(",", ".")),
                 comportementales: vide(r.comportementales) ? null : Number(String(r.comportementales).replace(",", ".")), compAuto: false };
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
-      out[normNom(r.nom)] = o;
+      var k = normNom(r.nom), p = out[k];
+      if (p) { if (o.conceptuelles == null) o.conceptuelles = p.conceptuelles; if (o.comportementales == null) { o.comportementales = p.comportementales; o.compAuto = p.compAuto; } }
+      out[k] = o;
+    });
+    // même élève écrit autrement (nom et prénom inversés…) sur deux lignes : on réunit ses notes
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, grp = {};
+    Object.keys(out).forEach(function (k) { (grp[tri(k)] = grp[tri(k)] || []).push(k); });
+    Object.keys(grp).forEach(function (g) {
+      var ks = grp[g]; if (ks.length < 2) return;
+      var m = { conceptuelles: null, comportementales: null, compAuto: false };
+      ks.forEach(function (k) { var o = out[k]; if (m.conceptuelles == null && o.conceptuelles != null) m.conceptuelles = o.conceptuelles; if (m.comportementales == null && o.comportementales != null) { m.comportementales = o.comportementales; m.compAuto = o.compAuto; } });
+      ks.forEach(function (k) { out[k] = { conceptuelles: m.conceptuelles, comportementales: m.comportementales, compAuto: m.compAuto }; });
     });
     // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
@@ -61498,7 +61553,18 @@ window.JSYNC = window.JSYNC || (function () {
       var o = { conceptuelles: vide(r.conceptuelles) ? null : Number(String(r.conceptuelles).replace(",", ".")),
                 comportementales: vide(r.comportementales) ? null : Number(String(r.comportementales).replace(",", ".")), compAuto: false };
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
-      out[normNom(r.nom)] = o;
+      var k = normNom(r.nom), p = out[k];
+      if (p) { if (o.conceptuelles == null) o.conceptuelles = p.conceptuelles; if (o.comportementales == null) { o.comportementales = p.comportementales; o.compAuto = p.compAuto; } }
+      out[k] = o;
+    });
+    // même élève écrit autrement (nom et prénom inversés…) sur deux lignes : on réunit ses notes
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, grp = {};
+    Object.keys(out).forEach(function (k) { (grp[tri(k)] = grp[tri(k)] || []).push(k); });
+    Object.keys(grp).forEach(function (g) {
+      var ks = grp[g]; if (ks.length < 2) return;
+      var m = { conceptuelles: null, comportementales: null, compAuto: false };
+      ks.forEach(function (k) { var o = out[k]; if (m.conceptuelles == null && o.conceptuelles != null) m.conceptuelles = o.conceptuelles; if (m.comportementales == null && o.comportementales != null) { m.comportementales = o.comportementales; m.compAuto = o.compAuto; } });
+      ks.forEach(function (k) { out[k] = { conceptuelles: m.conceptuelles, comportementales: m.comportementales, compAuto: m.compAuto }; });
     });
     // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
@@ -78670,7 +78736,18 @@ window.JSYNC = window.JSYNC || (function () {
       var o = { conceptuelles: vide(r.conceptuelles) ? null : Number(String(r.conceptuelles).replace(",", ".")),
                 comportementales: vide(r.comportementales) ? null : Number(String(r.comportementales).replace(",", ".")), compAuto: false };
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
-      out[normNom(r.nom)] = o;
+      var k = normNom(r.nom), p = out[k];
+      if (p) { if (o.conceptuelles == null) o.conceptuelles = p.conceptuelles; if (o.comportementales == null) { o.comportementales = p.comportementales; o.compAuto = p.compAuto; } }
+      out[k] = o;
+    });
+    // même élève écrit autrement (nom et prénom inversés…) sur deux lignes : on réunit ses notes
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, grp = {};
+    Object.keys(out).forEach(function (k) { (grp[tri(k)] = grp[tri(k)] || []).push(k); });
+    Object.keys(grp).forEach(function (g) {
+      var ks = grp[g]; if (ks.length < 2) return;
+      var m = { conceptuelles: null, comportementales: null, compAuto: false };
+      ks.forEach(function (k) { var o = out[k]; if (m.conceptuelles == null && o.conceptuelles != null) m.conceptuelles = o.conceptuelles; if (m.comportementales == null && o.comportementales != null) { m.comportementales = o.comportementales; m.compAuto = o.compAuto; } });
+      ks.forEach(function (k) { out[k] = { conceptuelles: m.conceptuelles, comportementales: m.comportementales, compAuto: m.compAuto }; });
     });
     // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
@@ -81484,7 +81561,18 @@ window.JSYNC = window.JSYNC || (function () {
       var o = { conceptuelles: vide(r.conceptuelles) ? null : Number(String(r.conceptuelles).replace(",", ".")),
                 comportementales: vide(r.comportementales) ? null : Number(String(r.comportementales).replace(",", ".")), compAuto: false };
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
-      out[normNom(r.nom)] = o;
+      var k = normNom(r.nom), p = out[k];
+      if (p) { if (o.conceptuelles == null) o.conceptuelles = p.conceptuelles; if (o.comportementales == null) { o.comportementales = p.comportementales; o.compAuto = p.compAuto; } }
+      out[k] = o;
+    });
+    // même élève écrit autrement (nom et prénom inversés…) sur deux lignes : on réunit ses notes
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, grp = {};
+    Object.keys(out).forEach(function (k) { (grp[tri(k)] = grp[tri(k)] || []).push(k); });
+    Object.keys(grp).forEach(function (g) {
+      var ks = grp[g]; if (ks.length < 2) return;
+      var m = { conceptuelles: null, comportementales: null, compAuto: false };
+      ks.forEach(function (k) { var o = out[k]; if (m.conceptuelles == null && o.conceptuelles != null) m.conceptuelles = o.conceptuelles; if (m.comportementales == null && o.comportementales != null) { m.comportementales = o.comportementales; m.compAuto = o.compAuto; } });
+      ks.forEach(function (k) { out[k] = { conceptuelles: m.conceptuelles, comportementales: m.comportementales, compAuto: m.compAuto }; });
     });
     // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
@@ -84423,7 +84511,18 @@ window.JSYNC = window.JSYNC || (function () {
       var o = { conceptuelles: vide(r.conceptuelles) ? null : Number(String(r.conceptuelles).replace(",", ".")),
                 comportementales: vide(r.comportementales) ? null : Number(String(r.comportementales).replace(",", ".")), compAuto: false };
       if (idx && commence) { o.comportementales = bcNote(idx, r, max); o.compAuto = true; }
-      out[normNom(r.nom)] = o;
+      var k = normNom(r.nom), p = out[k];
+      if (p) { if (o.conceptuelles == null) o.conceptuelles = p.conceptuelles; if (o.comportementales == null) { o.comportementales = p.comportementales; o.compAuto = p.compAuto; } }
+      out[k] = o;
+    });
+    // même élève écrit autrement (nom et prénom inversés…) sur deux lignes : on réunit ses notes
+    var tri = function (s) { return s.split(" ").filter(Boolean).sort().join(" "); }, grp = {};
+    Object.keys(out).forEach(function (k) { (grp[tri(k)] = grp[tri(k)] || []).push(k); });
+    Object.keys(grp).forEach(function (g) {
+      var ks = grp[g]; if (ks.length < 2) return;
+      var m = { conceptuelles: null, comportementales: null, compAuto: false };
+      ks.forEach(function (k) { var o = out[k]; if (m.conceptuelles == null && o.conceptuelles != null) m.conceptuelles = o.conceptuelles; if (m.comportementales == null && o.comportementales != null) { m.comportementales = o.comportementales; m.compAuto = o.compAuto; } });
+      ks.forEach(function (k) { out[k] = { conceptuelles: m.conceptuelles, comportementales: m.comportementales, compAuto: m.compAuto }; });
     });
     // barème actif et cycle commencé : un élève sans aucun code noté garde la note maximale
     if (idx && commence) { try { Object.defineProperty(out, "__defComp", { value: max, enumerable: false }); } catch (e) {} }
