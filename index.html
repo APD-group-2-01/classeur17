@@ -18152,10 +18152,12 @@ window.XlsxLite = (function () {
   function devinerSexe(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -18168,11 +18170,15 @@ window.XlsxLite = (function () {
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
@@ -28551,10 +28557,12 @@ window.XlsxLite = (function () {
   function devinerSexe(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -28567,11 +28575,15 @@ window.XlsxLite = (function () {
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
@@ -38947,10 +38959,12 @@ window.XlsxLite = (function () {
   function devinerSexe(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -38963,11 +38977,15 @@ window.XlsxLite = (function () {
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
@@ -49263,10 +49281,12 @@ window.XlsxLite = (function () {
   function devinerSexe(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -49279,11 +49299,15 @@ window.XlsxLite = (function () {
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
@@ -55761,10 +55785,12 @@ var PRENOMS_FEMININS = [
   function devinerSexeEPS(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -55777,11 +55803,15 @@ var PRENOMS_FEMININS = [
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
@@ -62553,10 +62583,12 @@ window.XlsxLite = (function () {
   function devinerSexe(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -62569,11 +62601,15 @@ window.XlsxLite = (function () {
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
@@ -69662,7 +69698,7 @@ EPS.ui.summative = {
           </tr></thead>
           <tbody>
             ${computedRows.map((r) => `<tr>
-              <td>${r.student.nom}</td>
+              <td>${r.student.nom} <button type="button" class="vx-sexe" data-vx-sexe="${r.student.id}" title="Sexe (barème ${r.student.genre === "F" ? "filles" : "garçons"}) — cliquer pour changer" style="margin-left:4px;min-width:24px;padding:1px 6px;border-radius:6px;border:1px solid ${r.student.genre === "F" ? "#E58AB0" : "#7FA7D9"};background:${r.student.genre === "F" ? "#FDE8F1" : "#E8F0FB"};color:${r.student.genre === "F" ? "#B0306A" : "#1F4E79"};font-weight:800;font-size:.75rem;cursor:pointer">${r.student.genre === "F" ? "F" : "G"}</button></td>
               <td><input class="cell-input temps-input" type="number" step="0.01" min="0" inputmode="decimal"
                     data-student="${r.student.id}" placeholder="s"
                     value="${r.tempsSec !== null ? r.tempsSec : ""}" style="width:78px;text-align:center;"></td>
@@ -69734,6 +69770,14 @@ EPS.ui.summative = {
       const y = window.scrollY; EPS.ui.summative.render(container).then(() => window.scrollTo(0, y));
     }));
     /* Le temps peut être chronométré ou saisi directement au clavier. */
+    document.querySelectorAll("[data-vx-sexe]").forEach((b) => b.addEventListener("click", async () => {
+      const st = await EPS.db.get("students", b.dataset.vxSexe);
+      if (!st) return;
+      st.genre = st.genre === "F" ? "M" : "F"; st.genreManuel = true;
+      await EPS.db.put("students", st);
+      EPS.saveIndicator();
+      const y = window.scrollY; EPS.ui.summative.render(container).then(() => window.scrollTo(0, y));
+    }));
     document.querySelectorAll(".temps-input").forEach((inp) => {
       inp.addEventListener("change", async () => {
         if (!current) return;
@@ -70802,10 +70846,12 @@ window.XlsxLite = (function () {
   function devinerSexe(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -70818,11 +70864,15 @@ window.XlsxLite = (function () {
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
@@ -76479,10 +76529,12 @@ window.XlsxLite = (function () {
   function devinerSexe(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -76495,11 +76547,15 @@ window.XlsxLite = (function () {
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
@@ -81080,10 +81136,12 @@ window.XlsxLite = (function () {
   function devinerSexe(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -81096,11 +81154,15 @@ window.XlsxLite = (function () {
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
@@ -83378,10 +83440,12 @@ window.XlsxLite = (function () {
   function devinerSexe(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -83394,11 +83458,15 @@ window.XlsxLite = (function () {
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
@@ -86752,10 +86820,12 @@ window.XlsxLite = (function () {
   function devinerSexe(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -86768,11 +86838,15 @@ window.XlsxLite = (function () {
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
@@ -90251,10 +90325,12 @@ window.XlsxLite = (function () {
   function devinerSexe(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -90267,11 +90343,15 @@ window.XlsxLite = (function () {
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
@@ -93054,10 +93134,12 @@ window.DISC = {
   function devinerSexe(nomComplet) {
     var s = String(nomComplet || "").trim();
     if (!s) return null;
-    var f = false, m = false, fin = false;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
     // écriture latine
     var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
     for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
       if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
       else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
     }
@@ -93070,11 +93152,15 @@ window.DISC = {
     if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
     for (var j = 0; j < ar.length; j++) {
       var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
       if (arF.indexOf(w) !== -1) { f = true; continue; }
       if (arM.indexOf(w) !== -1) { m = true; continue; }
       if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
       if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
     }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
     if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
     if (f && !m) return "F";
     if (m && !f) return "M";
