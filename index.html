@@ -384,7 +384,7 @@ footer .credit-shell-fr{font-size:.72rem;}
 .bar-spacer{flex:1 1 auto;}
 .quick{display:flex;gap:5px;}
 .quick button{
-  width:30px;height:30px;border-radius:8px;border:1px solid rgba(255,255,255,.18);
+  width:32px;height:32px;border-radius:9px;display:inline-grid;place-items:center;padding:0;border:1px solid rgba(255,255,255,.18);
   background:transparent;color:#C9D8E8;font-family:var(--cond);font-weight:700;font-size:1rem;
 }
 .quick button{transition:background .15s ease,transform .15s ease;}
@@ -93707,11 +93707,31 @@ window.DISC = {
 
   /* ── Barre : accès rapide ── */
   var quick = el("quick");
+var QA = 'viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+var QICONS = {
+  journal: `<svg ${QA}><rect x="4" y="4.5" width="16" height="16" rx="2.5"/><path d="M4 9.5h16M8.5 2.5v4M15.5 2.5v4"/><path d="M8 13.5l2.2 2.2 4.8-4.6"/></svg>`,
+  projet: `<svg ${QA}><rect x="5" y="4" width="14" height="17.5" rx="2"/><path d="M9 4V2.8h6V4"/><path d="M8.5 10h7M8.5 13.5h7M8.5 17h4"/></svg>`,
+  texte: `<svg ${QA}><path d="M12 6.5C10 5 7 4.5 3.5 5v13.5c3.5-.5 6.5 0 8.5 1.5 2-1.5 5-2 8.5-1.5V5C17 4.5 14 5 12 6.5z"/><path d="M12 6.5V20"/></svg>`,
+  basket: `<svg ${QA}><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/><path d="M5.6 5.6c2.6 2.6 2.6 10.2 0 12.8M18.4 5.6c-2.6 2.6-2.6 10.2 0 12.8"/></svg>`,
+  hand: `<svg ${QA}><path d="M3 20V6h18v14"/><path d="M3 10.5h18M3 15h18M7.5 6v14M12 6v14M16.5 6v14" stroke-width="1" opacity=".6"/><circle cx="12" cy="13" r="3.2" fill="currentColor" stroke="none"/></svg>`,
+  volley: `<svg ${QA}><circle cx="12" cy="12" r="9"/><path d="M12 3c0 4 2 7.5 6 9.5M12 12c-3.5 2-7.5 2.2-9 1M12 12c0 4 2.5 7.3 5 8.2"/><path d="M12 3c-3 1.5-5 5-5 9"/></svg>`,
+  foot: `<svg ${QA}><circle cx="12" cy="12" r="9"/><path d="M12 8.2l3.3 2.4-1.3 3.9h-4l-1.3-3.9z"/><path d="M12 8.2V3.2M15.3 10.6l4.6-1.6M14 14.5l2.9 4M10 14.5l-2.9 4M8.7 10.6L4.1 9"/></svg>`,
+  didur: `<svg ${QA}><path d="M20.4 6.6a4.8 4.8 0 0 0-7.1-.3L12 7.6l-1.3-1.3a4.8 4.8 0 0 0-6.8 6.8L12 21l8.1-7.9"/><path d="M3.5 12.5h4l1.5-3 2.5 6 1.8-3h7.2"/></svg>`,
+  vitesse: `<svg ${QA}><path d="M13.5 2.5L6 13.5h5.5l-1 8 7.5-11h-5.5z"/><path d="M2.5 9h2M2 13h2.5M3 17h2.5"/></svg>`,
+  relais: `<svg ${QA}><path d="M9 15l7-7" stroke-width="4.2"/><path d="M3 14.5l3.2-3.2M4.5 19l4.2-4.2M9.5 20.5l3.2-3.2"/><path d="M17.5 3.5a4 4 0 0 1 3 3"/></svg>`,
+  qualites: `<svg ${QA}><path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/></svg>`,
+  navette: `<svg ${QA}><path d="M3 4v16M21 4v16"/><path d="M7 9h10M14 6l3 3-3 3"/><path d="M17 15H7M10 12l-3 3 3 3"/></svg>`,
+  longueur: `<svg ${QA}><circle cx="6" cy="5" r="1.8"/><path d="M4 11c3-5 9-6.5 13-3"/><path d="M15 6.2l2 1.8-2.6.9"/><path d="M2.5 20h5"/><path d="M11 20h10.5" stroke-dasharray="1.6 1.8"/></svg>`,
+  poids: `<svg ${QA}><circle cx="17.5" cy="16.5" r="3.5" fill="currentColor" stroke="none"/><path d="M3 20c1-7 5.5-12 11-12" stroke-dasharray="2 2.2"/><path d="M14 8l-2.3-1.6M14 8l-1.7 2.2"/></svg>`
+};
+
+
   APPS.forEach(function(app){
     var q = document.createElement("button");
     q.type = "button";
-    q.textContent = app.num;
-    q.title = app.ar;
+    if (QICONS[app.id]) q.innerHTML = QICONS[app.id]; else q.textContent = app.num;
+    q.title = app.fr + " — " + app.ar;
+    q.setAttribute("aria-label", app.fr);
     q.style.setProperty("--qc", app.color);
     q.style.setProperty("--qcl", nuance(app.color, .3));
     q.style.setProperty("--qcd", nuance(app.color, -.4));
