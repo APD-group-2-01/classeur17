@@ -93785,10 +93785,18 @@ window.DISC = {
       /* 2. renommages : appliqués aux autres applications */
       var plans = {};
       function plan(app) { return plans[app] = plans[app] || { nouvelles: [], ajouts: [], renommer: [], supprimer: [] }; }
+      /* le cahier journalier est la référence : une classe retirée du cahier est supprimée partout */
+      if (cur.journal && Object.keys(cur.journal).length) Object.keys(reg.ign.journal || {}).forEach(function (ck) {
+        if (!cur.journal[ck] && !reg.supp[ck]) reg.supp[ck] = { app: "journal", t: Date.now() };
+      });
       /* 2bis. classes supprimées : retirées de toutes les applications (une classe recréée sous le même nom revient) */
       var supprimees = {};
       Object.keys(reg.supp).forEach(function (ck) {
-        if (Object.keys(venuesApp).some(function (app) { return venuesApp[app].indexOf(ck) >= 0; })) {
+        // classe retirée du cahier journalier : elle ne revient que si on la recrée dans le cahier ;
+        // classe supprimée dans une application : elle revient si on la recrée n'importe où
+        var revenue = reg.supp[ck].app === "journal" && cur.journal ? !!cur.journal[ck]
+          : Object.keys(venuesApp).some(function (app) { return venuesApp[app].indexOf(ck) >= 0; });
+        if (revenue) {
           delete reg.supp[ck]; Object.keys(reg.ign).forEach(function (a) { if (reg.ign[a]) delete reg.ign[a][ck]; }); return;   // recréée : revient partout
         }
         Object.keys(cur).forEach(function (app) {
