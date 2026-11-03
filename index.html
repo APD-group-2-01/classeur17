@@ -13757,8 +13757,41 @@ window.JSYNC = window.JSYNC || (function () {
      ========================================================== */
 
   // --- individuel ---
-  function totalEleve(el) {
-    return COMPETENCES.reduce((s, c) => s + (Number(el.scores[c.id]) || 0), 0);
+  /* critères individuels officiels par niveau scolaire (sports de démarquage) : au diagnostic individuel : N1 = à renforcer (0) · N2 = en cours (1) · N3 = acquis (2) */
+  const SM_IND_NIV = {
+    "1AC": [
+      { id: "o_passe", nom: "La passe", axes: ["conserver", "progresser"], niv: ["Passe imprécise et mal choisie.", "Passe correcte, mais irrégulière.", "Passe précise et bien adaptée."] },
+      { id: "o_demarq", nom: "Le démarquage", axes: ["progresser", "conserver"], niv: ["Reste statique et rarement disponible.", "Se déplace peu et se libère difficilement.", "Se déplace efficacement et trouve l'espace libre."] }
+    ],
+    "2AC": [
+      { id: "o_progres", nom: "La progression avec la balle", axes: ["progresser", "contreattaque"], niv: ["Progresse rarement : s'arrête ou perd la balle dès qu'il est pressé.", "Progresse vers la cible, mais tête baissée et sans voir les partenaires.", "Progresse en variant direction et rythme, tête levée, et transmet au bon moment."] },
+      { id: "o_role", nom: "Le changement de rôle (attaquant ↔ défenseur)", axes: ["recuperer", "defendre", "contreattaque"], niv: ["Reste spectateur à la perte ou à la récupération de la balle.", "Change de rôle, mais avec retard ou de façon désordonnée.", "Change de rôle immédiatement : se replie à la perte, se démarque à la récupération."] }
+    ],
+    "3AC": [
+      { id: "o_place", nom: "Le placement", axes: ["opposer", "defendre"], niv: ["Suit le ballon sans penser à l'espace ou aux partenaires.", "Se place pour aider ou libérer un espace.", "Anticipe le jeu, crée des solutions et gêne l'adversaire."] },
+      { id: "o_repli", nom: "Le repli défensif", axes: ["opposer", "recuperer", "contreattaque"], niv: ["Lent, en retard, laissant des espaces libres.", "Assez vite, mais parfois mal placé ou mal orienté.", "Repli rapide, ferme les espaces et anticipe les actions adverses."] }
+    ],
+    "TC": [
+      { id: "o_conserv", nom: "La conservation sous pression", axes: ["conserver", "progresser"], niv: ["Perd la balle dès qu'il est pressé, joue dans l'urgence.", "Conserve la balle, mais par des passes latérales ou en retrait sans faire progresser.", "Protège la balle et la fait circuler vite et vers l'avant face à une défense organisée."] },
+      { id: "o_espace", nom: "L'occupation de l'espace offensif", axes: ["progresser", "marquer"], niv: ["Se regroupe près du porteur, occupe mal la largeur et la profondeur.", "Occupe son poste, mais avec peu de mobilité et d'appels.", "Occupe largeur et profondeur, multiplie les appels et crée des intervalles."] }
+    ],
+    "1BAC": [
+      { id: "o_vitesse", nom: "La vitesse d'exécution et la prise de décision", axes: ["contreattaque", "progresser"], niv: ["Hésite, garde trop la balle, choix tardifs ou inadaptés.", "Choix pertinents, mais exécution lente qui laisse la défense se replacer.", "Lit le jeu et enchaîne vite réception, décision et action."] },
+      { id: "o_soutien", nom: "Le jeu sans ballon (appels et soutien)", axes: ["progresser", "conserver"], niv: ["Peu mobile, ne propose pas de solution au porteur.", "Se propose, mais souvent en retard ou dans un espace fermé.", "Appels et soutiens permanents, au bon moment et dans l'espace libre."] }
+    ],
+    "2BAC": [
+      { id: "o_final", nom: "La finition", axes: ["marquer"], niv: ["Tire en mauvaise position ou renonce à tirer.", "Tire en position favorable, mais avec une réussite irrégulière.", "Choisit la meilleure position et conclut avec efficacité."] },
+      { id: "o_projet", nom: "Le rôle dans le projet collectif", axes: ["progresser", "defendre"], niv: ["Ignore son rôle et joue pour lui-même.", "Tient son rôle, mais l'adapte peu au rapport de force.", "Tient et adapte son rôle au rapport de force, au service du projet d'équipe."] }
+    ]
+  };
+  function smIndOff(cl) { if (!cl || smApsId() === "volley") return []; const n = smNivCode(cl) || (typeof pvNiveau === "function" ? pvNiveau(cl) : ""); return SM_IND_NIV[n] || []; }
+  function compDiagTous(cl) { cl = cl || (typeof classe === "function" ? classe() : null); return (cl ? smIndOff(cl) : []).concat(COMPETENCES); }   // critères du niveau en premier
+  /* critères retenus pour le diagnostic de la classe (les autres ne sont ni notés ni analysés) */
+  function diagExclus(cl) { cl = cl || (typeof classe === "function" ? classe() : null); return cl && Array.isArray(cl.diagExclus) ? cl.diagExclus : []; }
+  function compActives(cl) { const x = diagExclus(cl), t = compDiagTous(cl), a = t.filter(c => x.indexOf(c.id) < 0); return a.length ? a : t; }
+  function totalEleve(el, cl) {
+    const a = compActives(cl), s = a.reduce((t, c) => t + (Number(el.scores[c.id]) || 0), 0);
+    return a.length === 10 ? s : Math.round(s / (2 * a.length) * 20 * 10) / 10;   // ramené sur 20
   }
   function niveauFromScore20(t) {
     if (t <= 7) return "lacune";
@@ -13766,9 +13799,41 @@ window.JSYNC = window.JSYNC || (function () {
     return "maitrise";
   }
   function eleveEvalue(el) {
-    return COMPETENCES.some(c => el.scores[c.id] !== undefined && el.scores[c.id] !== null && el.scores[c.id] !== "");
+    return compActives().some(c => el.scores[c.id] !== undefined && el.scores[c.id] !== null && el.scores[c.id] !== "");
   }
 
+  /* résultats du diagnostic fait avec la grille importée (GrilleAPS) : maîtrise de chaque critère */
+  function gapsDiag(cl) {
+    if (!cl) return null;
+    let g = null, R = null;
+    try { g = JSON.parse(localStorage.getItem("GRILLE_APS::" + SM_APS) || "null"); R = JSON.parse(localStorage.getItem("GRILLE_APS_RES::" + SM_APS + "::" + String(cl.nom || "").trim().toLowerCase()) || "null"); } catch (e) {}
+    if (!g || !g.actif || !Array.isArray(g.criteres) || !R || !R.diag) return null;
+    const noms = (cl.eleves || []).map(e => String(e.nom || "").toLowerCase());
+    const crits = g.criteres.filter(c => (c.niveaux || []).length && Math.max.apply(null, c.niveaux.map(n => Number(n.pts) || 0)) > 0).map(c => {
+      const mx = Math.max.apply(null, c.niveaux.map(n => Number(n.pts) || 0));
+      const v = noms.map(k => (R.diag[k] || {})["g_" + c.id]).filter(x => x !== undefined && x !== null && x !== "").map(x => { const n = c.niveaux[Number(x)]; return n ? (Number(n.pts) || 0) / mx : null; }).filter(x => x != null);
+      return { id: c.id, nom: c.nom, grp: c.grp, n: v.length, pct: v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 100) : null };
+    }).filter(c => c.n);
+    return crits.length ? { titre: g.titre || "Grille importée", crits } : null;
+  }
+  /* un critère importé est rattaché à la compétence de la grille numérique qui partage le plus de mots avec lui */
+  function gapsCompetence(nom) {
+    const mots = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z\u0600-\u06ff]+/).filter(w => w.length >= 4).map(w => w.slice(0, 6));
+    const m = mots(nom); let best = null, bs = 0;
+    COMPETENCES.forEach(k => { const s = mots(k.nom).filter(w => m.indexOf(w) >= 0).length; if (s > bs) { bs = s; best = k; } });
+    return best;
+  }
+  function gapsAnalyseHTML(cl) {
+    const D = gapsDiag(cl); if (!D) return "";
+    const coul = p => p < 40 ? "var(--lacune)" : p < 70 ? "var(--inter)" : "var(--maitrise)";
+    const tri = D.crits.slice().sort((a, b) => a.pct - b.pct);
+    return `<div class="card"><div class="card-title">📄 Diagnostic avec la grille importée — ${esc(D.titre)}</div>
+      <table><thead><tr><th>Critère</th><th>Partie</th><th>Élèves</th><th>Maîtrise</th><th>Rattaché à</th></tr></thead><tbody>
+      ${tri.map(c => { const k = gapsCompetence(c.nom); return `<tr><td>${esc(c.nom)}</td><td>${c.grp === "C" ? "Collective" : "Individuelle"}</td><td>${c.n}</td>
+        <td><div class="bar"><span style="width:${c.pct}%;background:${coul(c.pct)}"></span></div><span class="muted" style="font-size:.8rem">${c.pct} %</span></td>
+        <td>${k ? esc(k.nom) : '<span class="muted">—</span>'}</td></tr>`; }).join("")}</tbody></table>
+      <p class="hint">Critères les plus faibles : ${tri.slice(0, 3).map(c => "<b>" + esc(c.nom) + "</b> (" + c.pct + " %)").join(" · ")}. Ils comptent dans les axes prioritaires par la compétence à laquelle ils sont rattachés.</p></div>`;
+  }
   function statsIndividuel(cl) {
     const evalues = (cl ? cl.eleves : []).filter(eleveEvalue);
     const res = {
@@ -13778,15 +13843,25 @@ window.JSYNC = window.JSYNC || (function () {
       repartition: { lacune: 0, intermediaire: 0, maitrise: 0 },
       competences: {}   // id -> { moyenne (sur 2), maitrisePct, prioritePct }
     };
-    COMPETENCES.forEach(c => { res.competences[c.id] = { moyenne: 0, maitrisePct: 0, prioritePct: 0, n: 0 }; });
-    if (!evalues.length) return res;
+    const CD = compDiagTous(cl);
+    CD.forEach(c => { res.competences[c.id] = { moyenne: 0, maitrisePct: 0, prioritePct: 0, n: 0 }; });
+    const GD = gapsDiag(cl), GDc = {};
+    if (GD) GD.crits.forEach(c => { const k = gapsCompetence(c.nom); if (k) (GDc[k.id] = GDc[k.id] || []).push(c.pct); });
+    const appliquerGD = () => {
+      Object.keys(GDc).forEach(id => {
+        const k = res.competences[id]; if (!k || k.exclu) return;
+        const g = Math.round(GDc[id].reduce((a, b) => a + b, 0) / GDc[id].length);
+        k.maitrisePct = k.n ? Math.round((k.maitrisePct + g) / 2) : g; k.prioritePct = 100 - k.maitrisePct; k.importe = true;
+      });
+    };
+    if (!evalues.length) { if (GD) { const exD0 = diagExclus(cl); COMPETENCES.forEach(c => { if (exD0.indexOf(c.id) >= 0) res.competences[c.id].exclu = true; }); appliquerGD(); } return res; }
 
     let somme = 0;
     evalues.forEach(el => {
-      const t = totalEleve(el);
+      const t = totalEleve(el, cl);
       somme += t;
       res.repartition[niveauFromScore20(t)]++;
-      COMPETENCES.forEach(c => {
+      CD.forEach(c => {
         const v = Number(el.scores[c.id]) || 0;
         res.competences[c.id].moyenne += v;
         res.competences[c.id].n++;
@@ -13794,12 +13869,15 @@ window.JSYNC = window.JSYNC || (function () {
     });
     res.moyenne = Math.round((somme / evalues.length) * 10) / 10;
     res.niveau = niveauFromScore20(res.moyenne);
-    COMPETENCES.forEach(c => {
+    const exD = diagExclus(cl);
+    CD.forEach(c => {
       const k = res.competences[c.id];
+      if (exD.indexOf(c.id) >= 0) { k.exclu = true; k.moyenne = 0; k.maitrisePct = 0; k.prioritePct = 0; return; }
       k.moyenne = k.n ? Math.round((k.moyenne / k.n) * 100) / 100 : 0;
       k.maitrisePct = Math.round((k.moyenne / 2) * 100);
       k.prioritePct = 100 - k.maitrisePct;
     });
+    appliquerGD();
     return res;
   }
 
@@ -14078,7 +14156,8 @@ window.JSYNC = window.JSYNC || (function () {
     // poids individuel : moyenne des priorités des compétences rattachées à l'axe
     const indiv = {};
     AXES.forEach(a => { indiv[a.id] = { somme: 0, n: 0 }; });
-    COMPETENCES.forEach(c => {
+    compDiagTous().forEach(c => {
+      if (!si.competences[c.id] || si.competences[c.id].exclu) return;          // critère non diagnostiqué
       const p = si.competences[c.id].prioritePct;
       c.axes.forEach(ax => { indiv[ax].somme += p; indiv[ax].n++; });
     });
@@ -14601,7 +14680,8 @@ window.JSYNC = window.JSYNC || (function () {
   function smScores(el) { return (el.sommative && el.sommative.scores) || {}; }
   function smNivCode(cl) { const n = pvNiveau(cl); return SM_GRILLE[n] ? n : ""; }
   function smGrille(cl) { return SM_GRILLE[smNivCode(cl)] || SM_GRILLE["1AC"]; }
-  window.__GAPS = { classe: function () { return classe(); }, G: function (cl) { return smGrille(cl); }, niv: function (cl) { return pvNiveau(cl) || smNivCode(cl); }, aps: function () { return SM_APS; }, nomAps: function () { return PV_CFG.aps; } };
+  window.__GAPS = { classe: function () { return classe(); }, G: function (cl) { return smGrille(cl); }, niv: function (cl) { return pvNiveau(cl) || smNivCode(cl); }, aps: function () { return SM_APS; }, nomAps: function () { return PV_CFG.aps; },
+    noteHors: function (cl, id, pid) { const e = (cl.eleves || []).find(x => x.id === id); if (!e) return null; const r = smCalc(e, cl, smJournal(cl)); return pid === "I" ? r.I.note : pid === "C" ? r.C.note : null; } };
   /* tous les critères (diagnostic + collectifs) avec leur rôle pour cette classe */
   function smCrits(cl) {
     const info = (cl && cl.sommativeInfo) || {}, role = info.role || {}, ex = info.exclus || [];
@@ -14925,15 +15005,16 @@ window.JSYNC = window.JSYNC || (function () {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
         <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:13pt;font-weight:700;font-style:italic;color:#8B2E3C">${diag ? "Grille de diagnostic collectif" : "Grille d'évaluation sommative"} ${esc(n)} — ${esc(PV_CFG.aps)}</div>
         <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:11pt;color:#1F4E79;min-width:40mm">Classe : <b>${esc(cl.nom)}</b></div></div>
-      <p style="font-size:8pt;margin:0 0 2mm">Date : …… / …… / ……… · Enseignant(e) : ${esc(en.enseignant || "……………………")} ${diag ? "" : "· Individuelle : cocher le niveau de chaque critère (0 = à renforcer · 1 = en cours · 2 = acquis)."}
+      <p style="font-size:8pt;margin:0 0 2mm">Date : …… / …… / ……… · Enseignant(e) : ${esc(en.enseignant || "……………………")} ${diag ? "" : KI.some(k => k.off) ? "· Individuelle : cocher le niveau de chaque critère (N1 = 1 pt · N2 = 2 pts · N3 = 3 pts — descriptifs en bas de page)." : "· Individuelle : cocher le niveau de chaque critère (0 = à renforcer · 1 = en cours · 2 = acquis)."}
         Collectif : faire un bâton à chaque balle jouée (${cpt.map(k => "<b>" + k.toUpperCase() + "</b> " + EQ_PLU[k]).join(" · ")}), puis calculer chaque critère : ${B.map(c => "<b>" + esc(c.lib) + "</b> = " + c.num.toUpperCase() + " ÷ " + (c.den || "bj").toUpperCase()).join(" · ")}.</p>
       <table class="eqg-t" style="table-layout:fixed"><colgroup><col style="width:8mm"><col style="width:${paysage ? 44 : 40}mm">${KI.map(() => "<col><col><col>").join("")}${diag ? "" : ""}${dens.map(() => `<col style="width:${paysage ? 17 : 15}mm">`).join("")}${B.map(() => `<col style="width:${paysage ? 17 : 15}mm"><col style="width:${paysage ? 11 : 10}mm">`).join("")}${diag ? "" : '<col style="width:13mm">'}</colgroup><thead>
         <tr><th rowspan="3" style="width:7mm">Eq</th><th rowspan="3" class="nm" style="width:${paysage ? 42 : 38}mm">Nom / Prénom</th>
           ${KI.length ? `<th colspan="${KI.length * 3}" class="gi">Individuel ${G.i} pts</th>` : ""}<th colspan="${ncol}" class="gc">${diag ? "Diagnostic collectif — % par critère" : "Collectif " + G.c + " pts"}</th></tr>
-        <tr>${KI.map(k => `<th colspan="3" class="gi">${esc(court(k.nom))}</th>`).join("")}${dens.map(k => `<th rowspan="2" class="gc">${esc(EQ_PLU[k].replace(/^./, x => x.toUpperCase()))}<br><small>(${k.toUpperCase()})</small></th>`).join("")}${B.map(c => `<th colspan="2" class="gc">${esc(c.lib)}${diag ? "" : " /" + maxC(c)}<br><small>${c.num.toUpperCase()} ÷ ${(c.den || "bj").toUpperCase()}</small></th>`).join("")}${diag ? "" : `<th rowspan="2" class="gc">Note<br>/${G.c}</th>`}</tr>
-        <tr>${KI.map(() => [0, 1, 2].map(v => `<th class="gi niv">${v}</th>`).join("")).join("")}${B.map(c => `<th class="gc" title="${esc(EQ_PLU[c.num])}">${c.num.toUpperCase()}</th><th class="gc">${diag ? "%" : "Pts"}</th>`).join("")}</tr></thead>
+        <tr>${KI.map(k => `<th colspan="3" class="gi">${esc(court(k.nom))}${k.off ? "<br><small>3 pts</small>" : ""}</th>`).join("")}${dens.map(k => `<th rowspan="2" class="gc">${esc(EQ_PLU[k].replace(/^./, x => x.toUpperCase()))}<br><small>(${k.toUpperCase()})</small></th>`).join("")}${B.map(c => `<th colspan="2" class="gc">${esc(c.lib)}${diag ? "" : " /" + maxC(c)}<br><small>${c.num.toUpperCase()} ÷ ${(c.den || "bj").toUpperCase()}</small></th>`).join("")}${diag ? "" : `<th rowspan="2" class="gc">Note<br>/${G.c}</th>`}</tr>
+        <tr>${KI.map(k => [0, 1, 2].map(v => `<th class="gi niv">${k.off ? "N" + (v + 1) + "<br><small>" + (v + 1) + "P</small>" : v}</th>`).join("")).join("")}${B.map(c => `<th class="gc" title="${esc(EQ_PLU[c.num])}">${c.num.toUpperCase()}</th><th class="gc">${diag ? "%" : "Pts"}</th>`).join("")}</tr></thead>
         ${groupes.map(g => `<tbody class="grp">${g.el.map((e, i) => `<tr style="height:${h}mm">${i === 0 ? `<td rowspan="${g.el.length}" class="eqc" style="background:${g.coul}">${g.t}</td>` : ""}<td class="nm">${esc(e.nom)}</td>${KI.map(() => "<td></td><td></td><td></td>").join("")}${i === 0 ? (g.sans ? `<td colspan="${ncol}" rowspan="${g.el.length}" style="background:#f4f4f4;font-size:7pt">Sans équipe</td>` : dens.map(() => `<td rowspan="${g.el.length}" class="cpt"></td>`).join("") + B.map(() => `<td rowspan="${g.el.length}" class="cpt"></td><td rowspan="${g.el.length}" class="pts"></td>`).join("") + (diag ? "" : `<td rowspan="${g.el.length}" class="cpt"></td>`)) : ""}</tr>`).join("")}</tbody>`).join("")}
       </table>
+      ${KI.some(k => k.off) ? `<p style="font-size:7pt;margin:2mm 0 0;line-height:1.35">${KI.filter(k => k.off).map(k => "<b>" + esc(k.nom) + "</b> — " + k.niv.map((t, i) => "N" + (i + 1) + " : " + esc(t)).join(" · ")).join("<br>")}</p>` : ""}
       <p style="font-size:7.5pt;margin:2mm 0 0"><b>Calcul :</b> ${B.map(c => "<b>" + esc(c.lib) + "</b> = " + c.num.toUpperCase() + " ÷ " + (c.den || "bj").toUpperCase() + " × 100" + (diag ? "" : " → " + c.tr.map(t => t[0] + "–" + t[1] + " % : " + String(t[2]).replace(".", ",")).join(" · ") + " pt")).join(" — ")}. Reporter ensuite les totaux dans le classeur : ${diag ? "les pourcentages se calculent tout seuls" : "la note se calcule toute seule"}.</p>
       <style>
         #sm-print .eqg-t th.gi{background:#D9EAD3 !important} #sm-print .eqg-t th.gc{background:#F4CCCC !important}
@@ -15909,6 +15990,10 @@ window.JSYNC = window.JSYNC || (function () {
           </tr>
         </table>
 
+        <details class="no-print" style="margin:6px 0 10px;border:1px dashed #C9D1DC;border-radius:10px;padding:8px 12px;background:#FAFBFC" ${diagExclus(cl).length ? "open" : ""}>
+          <summary style="cursor:pointer;font-weight:700">🎯 Critères à diagnostiquer — ${compActives(cl).length}/${compDiagTous(cl).length} retenus <span class="muted" style="font-weight:400">(valable pour toute la classe ; le total est ramené sur 20 et l'analyse ne tient compte que des critères retenus)</span></summary>
+          <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px">${compDiagTous(cl).map(k => `<label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer${k.niv ? ";font-weight:700;color:#1F4E79" : ""}"><input type="checkbox" data-dx="${k.id}" ${diagExclus(cl).indexOf(k.id) < 0 ? "checked" : ""}> ${k.nom}</label>`).join("")}</div>
+        </details>
         <p class="fiche-consigne">Consigne : observer l'élève dans des situations individuelles simples et cocher la case correspondant au niveau réellement constaté.</p>
 
         <table class="fiche-grille">
@@ -15922,12 +16007,12 @@ window.JSYNC = window.JSYNC || (function () {
             </tr>
           </thead>
           <tbody>
-            ${COMPETENCES.map(k => `<tr>
-              <td>${k.nom}</td>
+            ${compActives(cl).map(k => `<tr>
+              <td>${k.niv ? `<b>${k.nom}</b> <span style="font-size:.68rem;font-weight:700;color:#fff;background:#1F4E79;border-radius:5px;padding:1px 5px;white-space:nowrap">critère ${esc(smNivCode(cl) || "")}</span>` : k.nom}</td>
               ${[0, 1, 2].map(v => `<td class="ck">
                 <button class="case ${String(el.scores[k.id]) === String(v) ? "on" : ""}" data-c="${k.id}" data-v="${v}">
                   <span class="box"></span> ${v}
-                </button></td>`).join("")}
+                </button>${k.niv ? `<div style="font-size:.72rem;line-height:1.3;color:#475569;margin-top:3px;text-align:left">${esc(k.niv[v])}</div>` : ""}</td>`).join("")}
               <td class="bar-note">${el.scores[k.id] !== undefined ? el.scores[k.id] : "…"} /2</td>
             </tr>`).join("")}
           </tbody>
@@ -15980,6 +16065,12 @@ window.JSYNC = window.JSYNC || (function () {
       };
     });
 
+    box.querySelectorAll("[data-dx]").forEach(x => x.onchange = () => {
+      const ex = diagExclus(cl).slice(), i = ex.indexOf(x.dataset.dx);
+      if (x.checked && i >= 0) ex.splice(i, 1); else if (!x.checked && i < 0) ex.push(x.dataset.dx);
+      if (ex.length >= compDiagTous(cl).length) { toast("Gardez au moins un critère"); x.checked = true; return; }
+      cl.diagExclus = ex; save(); render();
+    });
     $("fiche-sel").onchange = (e) => { ficheEleveId = e.target.value; render(); };
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
@@ -16147,7 +16238,7 @@ window.JSYNC = window.JSYNC || (function () {
     const si = statsIndividuel(cl), sc = statsCollectif(cl);
     const niv = niveauClasse(si, sc);
     const prio = prioritesAxes(si, sc);
-    const faibles = COMPETENCES.slice()
+    const faibles = compDiagTous(cl).filter(k => si.competences[k.id] && !si.competences[k.id].exclu)
       .sort((a, b) => si.competences[b.id].prioritePct - si.competences[a.id].prioritePct);
 
     const cle = (si.niveau || "lacune") + "|" + (sc.niveau || "lacune");
@@ -16207,6 +16298,7 @@ window.JSYNC = window.JSYNC || (function () {
         <p class="hint">Chaque compétence faible alimente la priorité des principes auxquels elle est rattachée. Résultat : ${prio.slice(0, 3).map(p => "<b>" + p.axe.nom + "</b>").join(" → ")}.</p>
       </div>
 
+      ${gapsAnalyseHTML(cl)}
       <button class="btn btn-primary no-print" id="go-axes">🎯 Voir les axes prioritaires</button>`;
     $("go-axes").onclick = () => { page = "axes"; render(); };
   }
@@ -21968,6 +22060,10 @@ window.XlsxLite = (function () {
         o.parts[p.id] = r.note; o.mes = r; if (r.note == null) o.complet = false; return;
       }
       var s = 0, ok = true, cs = critsDe(g, p.id);
+      if (!cs.length) {   // partie sans critère dans la grille : note de l'application (hors grille)
+        var hg = CFG.horsGrille ? CFG.horsGrille(ctx, e, p.id) : null;
+        o.parts[p.id] = hg == null ? null : Math.round(hg * 100) / 100; if (o.parts[p.id] == null) o.complet = false; return;
+      }
       cs.forEach(function (c) { var n = noteCrit(c, x, mx[c.id]); if (n == null) ok = false; else s += n; });
       o.parts[p.id] = cs.length && ok ? Math.round(s * 100) / 100 : null;
       if (o.parts[p.id] == null) o.complet = false;
@@ -22056,7 +22152,7 @@ window.XlsxLite = (function () {
     var mx = maxSomm(g, ctx.M);
     return CFG.parts.map(function (p) {
       if (p.mesure) return p.lib + " /" + fN(ctx.M[p.id]) + " : " + p.mesure.lib;
-      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "aucun critère");
+      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "hors grille : note de l'application");
     }).join(" · ") + " · Conceptuel /" + ctx.M.conc + " · Comportemental /" + ctx.M.comp + " = /20";
   }
 
@@ -22101,7 +22197,7 @@ window.XlsxLite = (function () {
     CFG.parts.forEach(function (p) {
       if (p.mesure) { e1 += '<th colspan="2" rowspan="2" class="s">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + '<br><span style="font-weight:400;font-size:10.5px">barème officiel</span></th>'; e3 += '<th class="s">' + esc(p.mesure.court) + '</th><th class="s">Note</th>'; return; }
       var cs = critsDe(g, p.id), H = enteteCrit(cs, function (c) { return notesNiv(c, mx[c.id]); }, mx, true);
-      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + esc(g.titre) + '</th>';
+      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + (cs.length ? esc(g.titre) : "hors grille (note de l'application)") + '</th>';
       e2 += H.h1.replace(/<br><span style="font-weight:400;font-size:10px;opacity:.85">[^<]*<\/span>/g, "") + '<th rowspan="2">Total /' + fN(ctx.M[p.id]) + '</th>';
       e3 += H.h2;
     });
@@ -22269,8 +22365,6 @@ window.XlsxLite = (function () {
         var gardes = W.criteres.filter(function (c) { return String(c.nom || "").trim(); });
         if (!gardes.length) { msg("Écrivez le nom d'au moins un critère."); return; }
         if (gardes.some(function (c) { return !(mesure && c.grp === mesure.id) && maxC(c) <= 0; })) { msg("Chaque critère doit avoir un niveau avec des points (> 0)."); return; }
-        var manque = partsNotees().filter(function (p) { return !gardes.some(function (c) { return c.grp === p.id; }); });
-        if (manque.length) { msg("Ajoutez au moins un critère pour : " + manque.map(function (p) { return p.lib; }).join(", ") + "."); return; }
         gardes.forEach(function (c) { c.niveaux.sort(function (a, b) { return a.pts - b.pts; }); if (!c.id) c.id = uid(); });
         W.criteres = gardes; W.titre = (W.titre || "").trim() || "Grille importée"; W.actif = true;
         lsSet(cleGrille(), JSON.stringify(W)); fermerEd(); bouton(); dessiner();
@@ -22309,7 +22403,8 @@ window.XlsxLite = (function () {
     parts: [{ id: "I", lib: "Individuelle" }, { id: "C", lib: "Collective" }],
     contexte: function () { var c = A.classe(); if (!c) return null; return { classe: c, niv: A.niv(c), G: A.G(c), eleves: (c.eleves || []).map(function (e) { return { id: e.id, nom: e.nom, sexe: e.genre === "F" ? "F" : "G" }; }) }; },
     maxima: function (ctx) { var G = ctx.G; return { I: G.i, C: G.c, conc: G.conc, comp: G.comp }; },
-    champsJournal: function (o) { return { individ: o.parts.I, collec: o.parts.C, conceptuelles: o.conc }; }
+    champsJournal: function (o) { return { individ: o.parts.I, collec: o.parts.C, conceptuelles: o.conc }; },
+    horsGrille: function (ctx, e, pid) { return A.noteHors ? A.noteHors(ctx.classe, e.id, pid) : null; }
   });
 })();
 @@SCRIPTCLOSE7f3a@@>
@@ -24223,8 +24318,41 @@ window.JSYNC = window.JSYNC || (function () {
      ========================================================== */
 
   // --- individuel ---
-  function totalEleve(el) {
-    return COMPETENCES.reduce((s, c) => s + (Number(el.scores[c.id]) || 0), 0);
+  /* critères individuels officiels par niveau scolaire (sports de démarquage) : au diagnostic individuel : N1 = à renforcer (0) · N2 = en cours (1) · N3 = acquis (2) */
+  const SM_IND_NIV = {
+    "1AC": [
+      { id: "o_passe", nom: "La passe", axes: ["conserver", "progresser"], niv: ["Passe imprécise et mal choisie.", "Passe correcte, mais irrégulière.", "Passe précise et bien adaptée."] },
+      { id: "o_demarq", nom: "Le démarquage", axes: ["progresser", "conserver"], niv: ["Reste statique et rarement disponible.", "Se déplace peu et se libère difficilement.", "Se déplace efficacement et trouve l'espace libre."] }
+    ],
+    "2AC": [
+      { id: "o_progres", nom: "La progression avec la balle", axes: ["progresser", "contreattaque"], niv: ["Progresse rarement : s'arrête ou perd la balle dès qu'il est pressé.", "Progresse vers la cible, mais tête baissée et sans voir les partenaires.", "Progresse en variant direction et rythme, tête levée, et transmet au bon moment."] },
+      { id: "o_role", nom: "Le changement de rôle (attaquant ↔ défenseur)", axes: ["recuperer", "defendre", "contreattaque"], niv: ["Reste spectateur à la perte ou à la récupération de la balle.", "Change de rôle, mais avec retard ou de façon désordonnée.", "Change de rôle immédiatement : se replie à la perte, se démarque à la récupération."] }
+    ],
+    "3AC": [
+      { id: "o_place", nom: "Le placement", axes: ["opposer", "defendre"], niv: ["Suit le ballon sans penser à l'espace ou aux partenaires.", "Se place pour aider ou libérer un espace.", "Anticipe le jeu, crée des solutions et gêne l'adversaire."] },
+      { id: "o_repli", nom: "Le repli défensif", axes: ["opposer", "recuperer", "contreattaque"], niv: ["Lent, en retard, laissant des espaces libres.", "Assez vite, mais parfois mal placé ou mal orienté.", "Repli rapide, ferme les espaces et anticipe les actions adverses."] }
+    ],
+    "TC": [
+      { id: "o_conserv", nom: "La conservation sous pression", axes: ["conserver", "progresser"], niv: ["Perd la balle dès qu'il est pressé, joue dans l'urgence.", "Conserve la balle, mais par des passes latérales ou en retrait sans faire progresser.", "Protège la balle et la fait circuler vite et vers l'avant face à une défense organisée."] },
+      { id: "o_espace", nom: "L'occupation de l'espace offensif", axes: ["progresser", "marquer"], niv: ["Se regroupe près du porteur, occupe mal la largeur et la profondeur.", "Occupe son poste, mais avec peu de mobilité et d'appels.", "Occupe largeur et profondeur, multiplie les appels et crée des intervalles."] }
+    ],
+    "1BAC": [
+      { id: "o_vitesse", nom: "La vitesse d'exécution et la prise de décision", axes: ["contreattaque", "progresser"], niv: ["Hésite, garde trop la balle, choix tardifs ou inadaptés.", "Choix pertinents, mais exécution lente qui laisse la défense se replacer.", "Lit le jeu et enchaîne vite réception, décision et action."] },
+      { id: "o_soutien", nom: "Le jeu sans ballon (appels et soutien)", axes: ["progresser", "conserver"], niv: ["Peu mobile, ne propose pas de solution au porteur.", "Se propose, mais souvent en retard ou dans un espace fermé.", "Appels et soutiens permanents, au bon moment et dans l'espace libre."] }
+    ],
+    "2BAC": [
+      { id: "o_final", nom: "La finition", axes: ["marquer"], niv: ["Tire en mauvaise position ou renonce à tirer.", "Tire en position favorable, mais avec une réussite irrégulière.", "Choisit la meilleure position et conclut avec efficacité."] },
+      { id: "o_projet", nom: "Le rôle dans le projet collectif", axes: ["progresser", "defendre"], niv: ["Ignore son rôle et joue pour lui-même.", "Tient son rôle, mais l'adapte peu au rapport de force.", "Tient et adapte son rôle au rapport de force, au service du projet d'équipe."] }
+    ]
+  };
+  function smIndOff(cl) { if (!cl || smApsId() === "volley") return []; const n = smNivCode(cl) || (typeof pvNiveau === "function" ? pvNiveau(cl) : ""); return SM_IND_NIV[n] || []; }
+  function compDiagTous(cl) { cl = cl || (typeof classe === "function" ? classe() : null); return (cl ? smIndOff(cl) : []).concat(COMPETENCES); }   // critères du niveau en premier
+  /* critères retenus pour le diagnostic de la classe (les autres ne sont ni notés ni analysés) */
+  function diagExclus(cl) { cl = cl || (typeof classe === "function" ? classe() : null); return cl && Array.isArray(cl.diagExclus) ? cl.diagExclus : []; }
+  function compActives(cl) { const x = diagExclus(cl), t = compDiagTous(cl), a = t.filter(c => x.indexOf(c.id) < 0); return a.length ? a : t; }
+  function totalEleve(el, cl) {
+    const a = compActives(cl), s = a.reduce((t, c) => t + (Number(el.scores[c.id]) || 0), 0);
+    return a.length === 10 ? s : Math.round(s / (2 * a.length) * 20 * 10) / 10;   // ramené sur 20
   }
   function niveauFromScore20(t) {
     if (t <= 7) return "lacune";
@@ -24232,9 +24360,41 @@ window.JSYNC = window.JSYNC || (function () {
     return "maitrise";
   }
   function eleveEvalue(el) {
-    return COMPETENCES.some(c => el.scores[c.id] !== undefined && el.scores[c.id] !== null && el.scores[c.id] !== "");
+    return compActives().some(c => el.scores[c.id] !== undefined && el.scores[c.id] !== null && el.scores[c.id] !== "");
   }
 
+  /* résultats du diagnostic fait avec la grille importée (GrilleAPS) : maîtrise de chaque critère */
+  function gapsDiag(cl) {
+    if (!cl) return null;
+    let g = null, R = null;
+    try { g = JSON.parse(localStorage.getItem("GRILLE_APS::" + SM_APS) || "null"); R = JSON.parse(localStorage.getItem("GRILLE_APS_RES::" + SM_APS + "::" + String(cl.nom || "").trim().toLowerCase()) || "null"); } catch (e) {}
+    if (!g || !g.actif || !Array.isArray(g.criteres) || !R || !R.diag) return null;
+    const noms = (cl.eleves || []).map(e => String(e.nom || "").toLowerCase());
+    const crits = g.criteres.filter(c => (c.niveaux || []).length && Math.max.apply(null, c.niveaux.map(n => Number(n.pts) || 0)) > 0).map(c => {
+      const mx = Math.max.apply(null, c.niveaux.map(n => Number(n.pts) || 0));
+      const v = noms.map(k => (R.diag[k] || {})["g_" + c.id]).filter(x => x !== undefined && x !== null && x !== "").map(x => { const n = c.niveaux[Number(x)]; return n ? (Number(n.pts) || 0) / mx : null; }).filter(x => x != null);
+      return { id: c.id, nom: c.nom, grp: c.grp, n: v.length, pct: v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 100) : null };
+    }).filter(c => c.n);
+    return crits.length ? { titre: g.titre || "Grille importée", crits } : null;
+  }
+  /* un critère importé est rattaché à la compétence de la grille numérique qui partage le plus de mots avec lui */
+  function gapsCompetence(nom) {
+    const mots = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z\u0600-\u06ff]+/).filter(w => w.length >= 4).map(w => w.slice(0, 6));
+    const m = mots(nom); let best = null, bs = 0;
+    COMPETENCES.forEach(k => { const s = mots(k.nom).filter(w => m.indexOf(w) >= 0).length; if (s > bs) { bs = s; best = k; } });
+    return best;
+  }
+  function gapsAnalyseHTML(cl) {
+    const D = gapsDiag(cl); if (!D) return "";
+    const coul = p => p < 40 ? "var(--lacune)" : p < 70 ? "var(--inter)" : "var(--maitrise)";
+    const tri = D.crits.slice().sort((a, b) => a.pct - b.pct);
+    return `<div class="card"><div class="card-title">📄 Diagnostic avec la grille importée — ${esc(D.titre)}</div>
+      <table><thead><tr><th>Critère</th><th>Partie</th><th>Élèves</th><th>Maîtrise</th><th>Rattaché à</th></tr></thead><tbody>
+      ${tri.map(c => { const k = gapsCompetence(c.nom); return `<tr><td>${esc(c.nom)}</td><td>${c.grp === "C" ? "Collective" : "Individuelle"}</td><td>${c.n}</td>
+        <td><div class="bar"><span style="width:${c.pct}%;background:${coul(c.pct)}"></span></div><span class="muted" style="font-size:.8rem">${c.pct} %</span></td>
+        <td>${k ? esc(k.nom) : '<span class="muted">—</span>'}</td></tr>`; }).join("")}</tbody></table>
+      <p class="hint">Critères les plus faibles : ${tri.slice(0, 3).map(c => "<b>" + esc(c.nom) + "</b> (" + c.pct + " %)").join(" · ")}. Ils comptent dans les axes prioritaires par la compétence à laquelle ils sont rattachés.</p></div>`;
+  }
   function statsIndividuel(cl) {
     const evalues = (cl ? cl.eleves : []).filter(eleveEvalue);
     const res = {
@@ -24244,15 +24404,25 @@ window.JSYNC = window.JSYNC || (function () {
       repartition: { lacune: 0, intermediaire: 0, maitrise: 0 },
       competences: {}   // id -> { moyenne (sur 2), maitrisePct, prioritePct }
     };
-    COMPETENCES.forEach(c => { res.competences[c.id] = { moyenne: 0, maitrisePct: 0, prioritePct: 0, n: 0 }; });
-    if (!evalues.length) return res;
+    const CD = compDiagTous(cl);
+    CD.forEach(c => { res.competences[c.id] = { moyenne: 0, maitrisePct: 0, prioritePct: 0, n: 0 }; });
+    const GD = gapsDiag(cl), GDc = {};
+    if (GD) GD.crits.forEach(c => { const k = gapsCompetence(c.nom); if (k) (GDc[k.id] = GDc[k.id] || []).push(c.pct); });
+    const appliquerGD = () => {
+      Object.keys(GDc).forEach(id => {
+        const k = res.competences[id]; if (!k || k.exclu) return;
+        const g = Math.round(GDc[id].reduce((a, b) => a + b, 0) / GDc[id].length);
+        k.maitrisePct = k.n ? Math.round((k.maitrisePct + g) / 2) : g; k.prioritePct = 100 - k.maitrisePct; k.importe = true;
+      });
+    };
+    if (!evalues.length) { if (GD) { const exD0 = diagExclus(cl); COMPETENCES.forEach(c => { if (exD0.indexOf(c.id) >= 0) res.competences[c.id].exclu = true; }); appliquerGD(); } return res; }
 
     let somme = 0;
     evalues.forEach(el => {
-      const t = totalEleve(el);
+      const t = totalEleve(el, cl);
       somme += t;
       res.repartition[niveauFromScore20(t)]++;
-      COMPETENCES.forEach(c => {
+      CD.forEach(c => {
         const v = Number(el.scores[c.id]) || 0;
         res.competences[c.id].moyenne += v;
         res.competences[c.id].n++;
@@ -24260,12 +24430,15 @@ window.JSYNC = window.JSYNC || (function () {
     });
     res.moyenne = Math.round((somme / evalues.length) * 10) / 10;
     res.niveau = niveauFromScore20(res.moyenne);
-    COMPETENCES.forEach(c => {
+    const exD = diagExclus(cl);
+    CD.forEach(c => {
       const k = res.competences[c.id];
+      if (exD.indexOf(c.id) >= 0) { k.exclu = true; k.moyenne = 0; k.maitrisePct = 0; k.prioritePct = 0; return; }
       k.moyenne = k.n ? Math.round((k.moyenne / k.n) * 100) / 100 : 0;
       k.maitrisePct = Math.round((k.moyenne / 2) * 100);
       k.prioritePct = 100 - k.maitrisePct;
     });
+    appliquerGD();
     return res;
   }
 
@@ -24544,7 +24717,8 @@ window.JSYNC = window.JSYNC || (function () {
     // poids individuel : moyenne des priorités des compétences rattachées à l'axe
     const indiv = {};
     AXES.forEach(a => { indiv[a.id] = { somme: 0, n: 0 }; });
-    COMPETENCES.forEach(c => {
+    compDiagTous().forEach(c => {
+      if (!si.competences[c.id] || si.competences[c.id].exclu) return;          // critère non diagnostiqué
       const p = si.competences[c.id].prioritePct;
       c.axes.forEach(ax => { indiv[ax].somme += p; indiv[ax].n++; });
     });
@@ -25067,7 +25241,8 @@ window.JSYNC = window.JSYNC || (function () {
   function smScores(el) { return (el.sommative && el.sommative.scores) || {}; }
   function smNivCode(cl) { const n = pvNiveau(cl); return SM_GRILLE[n] ? n : ""; }
   function smGrille(cl) { return SM_GRILLE[smNivCode(cl)] || SM_GRILLE["1AC"]; }
-  window.__GAPS = { classe: function () { return classe(); }, G: function (cl) { return smGrille(cl); }, niv: function (cl) { return pvNiveau(cl) || smNivCode(cl); }, aps: function () { return SM_APS; }, nomAps: function () { return PV_CFG.aps; } };
+  window.__GAPS = { classe: function () { return classe(); }, G: function (cl) { return smGrille(cl); }, niv: function (cl) { return pvNiveau(cl) || smNivCode(cl); }, aps: function () { return SM_APS; }, nomAps: function () { return PV_CFG.aps; },
+    noteHors: function (cl, id, pid) { const e = (cl.eleves || []).find(x => x.id === id); if (!e) return null; const r = smCalc(e, cl, smJournal(cl)); return pid === "I" ? r.I.note : pid === "C" ? r.C.note : null; } };
   /* tous les critères (diagnostic + collectifs) avec leur rôle pour cette classe */
   function smCrits(cl) {
     const info = (cl && cl.sommativeInfo) || {}, role = info.role || {}, ex = info.exclus || [];
@@ -25391,15 +25566,16 @@ window.JSYNC = window.JSYNC || (function () {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
         <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:13pt;font-weight:700;font-style:italic;color:#8B2E3C">${diag ? "Grille de diagnostic collectif" : "Grille d'évaluation sommative"} ${esc(n)} — ${esc(PV_CFG.aps)}</div>
         <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:11pt;color:#1F4E79;min-width:40mm">Classe : <b>${esc(cl.nom)}</b></div></div>
-      <p style="font-size:8pt;margin:0 0 2mm">Date : …… / …… / ……… · Enseignant(e) : ${esc(en.enseignant || "……………………")} ${diag ? "" : "· Individuelle : cocher le niveau de chaque critère (0 = à renforcer · 1 = en cours · 2 = acquis)."}
+      <p style="font-size:8pt;margin:0 0 2mm">Date : …… / …… / ……… · Enseignant(e) : ${esc(en.enseignant || "……………………")} ${diag ? "" : KI.some(k => k.off) ? "· Individuelle : cocher le niveau de chaque critère (N1 = 1 pt · N2 = 2 pts · N3 = 3 pts — descriptifs en bas de page)." : "· Individuelle : cocher le niveau de chaque critère (0 = à renforcer · 1 = en cours · 2 = acquis)."}
         Collectif : faire un bâton à chaque balle jouée (${cpt.map(k => "<b>" + k.toUpperCase() + "</b> " + EQ_PLU[k]).join(" · ")}), puis calculer chaque critère : ${B.map(c => "<b>" + esc(c.lib) + "</b> = " + c.num.toUpperCase() + " ÷ " + (c.den || "bj").toUpperCase()).join(" · ")}.</p>
       <table class="eqg-t" style="table-layout:fixed"><colgroup><col style="width:8mm"><col style="width:${paysage ? 44 : 40}mm">${KI.map(() => "<col><col><col>").join("")}${diag ? "" : ""}${dens.map(() => `<col style="width:${paysage ? 17 : 15}mm">`).join("")}${B.map(() => `<col style="width:${paysage ? 17 : 15}mm"><col style="width:${paysage ? 11 : 10}mm">`).join("")}${diag ? "" : '<col style="width:13mm">'}</colgroup><thead>
         <tr><th rowspan="3" style="width:7mm">Eq</th><th rowspan="3" class="nm" style="width:${paysage ? 42 : 38}mm">Nom / Prénom</th>
           ${KI.length ? `<th colspan="${KI.length * 3}" class="gi">Individuel ${G.i} pts</th>` : ""}<th colspan="${ncol}" class="gc">${diag ? "Diagnostic collectif — % par critère" : "Collectif " + G.c + " pts"}</th></tr>
-        <tr>${KI.map(k => `<th colspan="3" class="gi">${esc(court(k.nom))}</th>`).join("")}${dens.map(k => `<th rowspan="2" class="gc">${esc(EQ_PLU[k].replace(/^./, x => x.toUpperCase()))}<br><small>(${k.toUpperCase()})</small></th>`).join("")}${B.map(c => `<th colspan="2" class="gc">${esc(c.lib)}${diag ? "" : " /" + maxC(c)}<br><small>${c.num.toUpperCase()} ÷ ${(c.den || "bj").toUpperCase()}</small></th>`).join("")}${diag ? "" : `<th rowspan="2" class="gc">Note<br>/${G.c}</th>`}</tr>
-        <tr>${KI.map(() => [0, 1, 2].map(v => `<th class="gi niv">${v}</th>`).join("")).join("")}${B.map(c => `<th class="gc" title="${esc(EQ_PLU[c.num])}">${c.num.toUpperCase()}</th><th class="gc">${diag ? "%" : "Pts"}</th>`).join("")}</tr></thead>
+        <tr>${KI.map(k => `<th colspan="3" class="gi">${esc(court(k.nom))}${k.off ? "<br><small>3 pts</small>" : ""}</th>`).join("")}${dens.map(k => `<th rowspan="2" class="gc">${esc(EQ_PLU[k].replace(/^./, x => x.toUpperCase()))}<br><small>(${k.toUpperCase()})</small></th>`).join("")}${B.map(c => `<th colspan="2" class="gc">${esc(c.lib)}${diag ? "" : " /" + maxC(c)}<br><small>${c.num.toUpperCase()} ÷ ${(c.den || "bj").toUpperCase()}</small></th>`).join("")}${diag ? "" : `<th rowspan="2" class="gc">Note<br>/${G.c}</th>`}</tr>
+        <tr>${KI.map(k => [0, 1, 2].map(v => `<th class="gi niv">${k.off ? "N" + (v + 1) + "<br><small>" + (v + 1) + "P</small>" : v}</th>`).join("")).join("")}${B.map(c => `<th class="gc" title="${esc(EQ_PLU[c.num])}">${c.num.toUpperCase()}</th><th class="gc">${diag ? "%" : "Pts"}</th>`).join("")}</tr></thead>
         ${groupes.map(g => `<tbody class="grp">${g.el.map((e, i) => `<tr style="height:${h}mm">${i === 0 ? `<td rowspan="${g.el.length}" class="eqc" style="background:${g.coul}">${g.t}</td>` : ""}<td class="nm">${esc(e.nom)}</td>${KI.map(() => "<td></td><td></td><td></td>").join("")}${i === 0 ? (g.sans ? `<td colspan="${ncol}" rowspan="${g.el.length}" style="background:#f4f4f4;font-size:7pt">Sans équipe</td>` : dens.map(() => `<td rowspan="${g.el.length}" class="cpt"></td>`).join("") + B.map(() => `<td rowspan="${g.el.length}" class="cpt"></td><td rowspan="${g.el.length}" class="pts"></td>`).join("") + (diag ? "" : `<td rowspan="${g.el.length}" class="cpt"></td>`)) : ""}</tr>`).join("")}</tbody>`).join("")}
       </table>
+      ${KI.some(k => k.off) ? `<p style="font-size:7pt;margin:2mm 0 0;line-height:1.35">${KI.filter(k => k.off).map(k => "<b>" + esc(k.nom) + "</b> — " + k.niv.map((t, i) => "N" + (i + 1) + " : " + esc(t)).join(" · ")).join("<br>")}</p>` : ""}
       <p style="font-size:7.5pt;margin:2mm 0 0"><b>Calcul :</b> ${B.map(c => "<b>" + esc(c.lib) + "</b> = " + c.num.toUpperCase() + " ÷ " + (c.den || "bj").toUpperCase() + " × 100" + (diag ? "" : " → " + c.tr.map(t => t[0] + "–" + t[1] + " % : " + String(t[2]).replace(".", ",")).join(" · ") + " pt")).join(" — ")}. Reporter ensuite les totaux dans le classeur : ${diag ? "les pourcentages se calculent tout seuls" : "la note se calcule toute seule"}.</p>
       <style>
         #sm-print .eqg-t th.gi{background:#D9EAD3 !important} #sm-print .eqg-t th.gc{background:#F4CCCC !important}
@@ -26375,6 +26551,10 @@ window.JSYNC = window.JSYNC || (function () {
           </tr>
         </table>
 
+        <details class="no-print" style="margin:6px 0 10px;border:1px dashed #C9D1DC;border-radius:10px;padding:8px 12px;background:#FAFBFC" ${diagExclus(cl).length ? "open" : ""}>
+          <summary style="cursor:pointer;font-weight:700">🎯 Critères à diagnostiquer — ${compActives(cl).length}/${compDiagTous(cl).length} retenus <span class="muted" style="font-weight:400">(valable pour toute la classe ; le total est ramené sur 20 et l'analyse ne tient compte que des critères retenus)</span></summary>
+          <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px">${compDiagTous(cl).map(k => `<label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer${k.niv ? ";font-weight:700;color:#1F4E79" : ""}"><input type="checkbox" data-dx="${k.id}" ${diagExclus(cl).indexOf(k.id) < 0 ? "checked" : ""}> ${k.nom}</label>`).join("")}</div>
+        </details>
         <p class="fiche-consigne">Consigne : observer l'élève dans des situations individuelles simples et cocher la case correspondant au niveau réellement constaté.</p>
 
         <table class="fiche-grille">
@@ -26388,12 +26568,12 @@ window.JSYNC = window.JSYNC || (function () {
             </tr>
           </thead>
           <tbody>
-            ${COMPETENCES.map(k => `<tr>
-              <td>${k.nom}</td>
+            ${compActives(cl).map(k => `<tr>
+              <td>${k.niv ? `<b>${k.nom}</b> <span style="font-size:.68rem;font-weight:700;color:#fff;background:#1F4E79;border-radius:5px;padding:1px 5px;white-space:nowrap">critère ${esc(smNivCode(cl) || "")}</span>` : k.nom}</td>
               ${[0, 1, 2].map(v => `<td class="ck">
                 <button class="case ${String(el.scores[k.id]) === String(v) ? "on" : ""}" data-c="${k.id}" data-v="${v}">
                   <span class="box"></span> ${v}
-                </button></td>`).join("")}
+                </button>${k.niv ? `<div style="font-size:.72rem;line-height:1.3;color:#475569;margin-top:3px;text-align:left">${esc(k.niv[v])}</div>` : ""}</td>`).join("")}
               <td class="bar-note">${el.scores[k.id] !== undefined ? el.scores[k.id] : "…"} /2</td>
             </tr>`).join("")}
           </tbody>
@@ -26446,6 +26626,12 @@ window.JSYNC = window.JSYNC || (function () {
       };
     });
 
+    box.querySelectorAll("[data-dx]").forEach(x => x.onchange = () => {
+      const ex = diagExclus(cl).slice(), i = ex.indexOf(x.dataset.dx);
+      if (x.checked && i >= 0) ex.splice(i, 1); else if (!x.checked && i < 0) ex.push(x.dataset.dx);
+      if (ex.length >= compDiagTous(cl).length) { toast("Gardez au moins un critère"); x.checked = true; return; }
+      cl.diagExclus = ex; save(); render();
+    });
     $("fiche-sel").onchange = (e) => { ficheEleveId = e.target.value; render(); };
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
@@ -26613,7 +26799,7 @@ window.JSYNC = window.JSYNC || (function () {
     const si = statsIndividuel(cl), sc = statsCollectif(cl);
     const niv = niveauClasse(si, sc);
     const prio = prioritesAxes(si, sc);
-    const faibles = COMPETENCES.slice()
+    const faibles = compDiagTous(cl).filter(k => si.competences[k.id] && !si.competences[k.id].exclu)
       .sort((a, b) => si.competences[b.id].prioritePct - si.competences[a.id].prioritePct);
 
     const cle = (si.niveau || "lacune") + "|" + (sc.niveau || "lacune");
@@ -26673,6 +26859,7 @@ window.JSYNC = window.JSYNC || (function () {
         <p class="hint">Chaque compétence faible alimente la priorité des principes auxquels elle est rattachée. Résultat : ${prio.slice(0, 3).map(p => "<b>" + p.axe.nom + "</b>").join(" → ")}.</p>
       </div>
 
+      ${gapsAnalyseHTML(cl)}
       <button class="btn btn-primary no-print" id="go-axes">🎯 Voir les axes prioritaires</button>`;
     $("go-axes").onclick = () => { page = "axes"; render(); };
   }
@@ -32434,6 +32621,10 @@ window.XlsxLite = (function () {
         o.parts[p.id] = r.note; o.mes = r; if (r.note == null) o.complet = false; return;
       }
       var s = 0, ok = true, cs = critsDe(g, p.id);
+      if (!cs.length) {   // partie sans critère dans la grille : note de l'application (hors grille)
+        var hg = CFG.horsGrille ? CFG.horsGrille(ctx, e, p.id) : null;
+        o.parts[p.id] = hg == null ? null : Math.round(hg * 100) / 100; if (o.parts[p.id] == null) o.complet = false; return;
+      }
       cs.forEach(function (c) { var n = noteCrit(c, x, mx[c.id]); if (n == null) ok = false; else s += n; });
       o.parts[p.id] = cs.length && ok ? Math.round(s * 100) / 100 : null;
       if (o.parts[p.id] == null) o.complet = false;
@@ -32522,7 +32713,7 @@ window.XlsxLite = (function () {
     var mx = maxSomm(g, ctx.M);
     return CFG.parts.map(function (p) {
       if (p.mesure) return p.lib + " /" + fN(ctx.M[p.id]) + " : " + p.mesure.lib;
-      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "aucun critère");
+      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "hors grille : note de l'application");
     }).join(" · ") + " · Conceptuel /" + ctx.M.conc + " · Comportemental /" + ctx.M.comp + " = /20";
   }
 
@@ -32567,7 +32758,7 @@ window.XlsxLite = (function () {
     CFG.parts.forEach(function (p) {
       if (p.mesure) { e1 += '<th colspan="2" rowspan="2" class="s">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + '<br><span style="font-weight:400;font-size:10.5px">barème officiel</span></th>'; e3 += '<th class="s">' + esc(p.mesure.court) + '</th><th class="s">Note</th>'; return; }
       var cs = critsDe(g, p.id), H = enteteCrit(cs, function (c) { return notesNiv(c, mx[c.id]); }, mx, true);
-      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + esc(g.titre) + '</th>';
+      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + (cs.length ? esc(g.titre) : "hors grille (note de l'application)") + '</th>';
       e2 += H.h1.replace(/<br><span style="font-weight:400;font-size:10px;opacity:.85">[^<]*<\/span>/g, "") + '<th rowspan="2">Total /' + fN(ctx.M[p.id]) + '</th>';
       e3 += H.h2;
     });
@@ -32735,8 +32926,6 @@ window.XlsxLite = (function () {
         var gardes = W.criteres.filter(function (c) { return String(c.nom || "").trim(); });
         if (!gardes.length) { msg("Écrivez le nom d'au moins un critère."); return; }
         if (gardes.some(function (c) { return !(mesure && c.grp === mesure.id) && maxC(c) <= 0; })) { msg("Chaque critère doit avoir un niveau avec des points (> 0)."); return; }
-        var manque = partsNotees().filter(function (p) { return !gardes.some(function (c) { return c.grp === p.id; }); });
-        if (manque.length) { msg("Ajoutez au moins un critère pour : " + manque.map(function (p) { return p.lib; }).join(", ") + "."); return; }
         gardes.forEach(function (c) { c.niveaux.sort(function (a, b) { return a.pts - b.pts; }); if (!c.id) c.id = uid(); });
         W.criteres = gardes; W.titre = (W.titre || "").trim() || "Grille importée"; W.actif = true;
         lsSet(cleGrille(), JSON.stringify(W)); fermerEd(); bouton(); dessiner();
@@ -32775,7 +32964,8 @@ window.XlsxLite = (function () {
     parts: [{ id: "I", lib: "Individuelle" }, { id: "C", lib: "Collective" }],
     contexte: function () { var c = A.classe(); if (!c) return null; return { classe: c, niv: A.niv(c), G: A.G(c), eleves: (c.eleves || []).map(function (e) { return { id: e.id, nom: e.nom, sexe: e.genre === "F" ? "F" : "G" }; }) }; },
     maxima: function (ctx) { var G = ctx.G; return { I: G.i, C: G.c, conc: G.conc, comp: G.comp }; },
-    champsJournal: function (o) { return { individ: o.parts.I, collec: o.parts.C, conceptuelles: o.conc }; }
+    champsJournal: function (o) { return { individ: o.parts.I, collec: o.parts.C, conceptuelles: o.conc }; },
+    horsGrille: function (ctx, e, pid) { return A.noteHors ? A.noteHors(ctx.classe, e.id, pid) : null; }
   });
 })();
 @@SCRIPTCLOSE7f3a@@>
@@ -34686,8 +34876,41 @@ window.JSYNC = window.JSYNC || (function () {
      ========================================================== */
 
   // --- individuel ---
-  function totalEleve(el) {
-    return COMPETENCES.reduce((s, c) => s + (Number(el.scores[c.id]) || 0), 0);
+  /* critères individuels officiels par niveau scolaire (sports de démarquage) : au diagnostic individuel : N1 = à renforcer (0) · N2 = en cours (1) · N3 = acquis (2) */
+  const SM_IND_NIV = {
+    "1AC": [
+      { id: "o_passe", nom: "La passe", axes: ["conserver", "progresser"], niv: ["Passe imprécise et mal choisie.", "Passe correcte, mais irrégulière.", "Passe précise et bien adaptée."] },
+      { id: "o_demarq", nom: "Le démarquage", axes: ["progresser", "conserver"], niv: ["Reste statique et rarement disponible.", "Se déplace peu et se libère difficilement.", "Se déplace efficacement et trouve l'espace libre."] }
+    ],
+    "2AC": [
+      { id: "o_progres", nom: "La progression avec la balle", axes: ["progresser", "contreattaque"], niv: ["Progresse rarement : s'arrête ou perd la balle dès qu'il est pressé.", "Progresse vers la cible, mais tête baissée et sans voir les partenaires.", "Progresse en variant direction et rythme, tête levée, et transmet au bon moment."] },
+      { id: "o_role", nom: "Le changement de rôle (attaquant ↔ défenseur)", axes: ["recuperer", "defendre", "contreattaque"], niv: ["Reste spectateur à la perte ou à la récupération de la balle.", "Change de rôle, mais avec retard ou de façon désordonnée.", "Change de rôle immédiatement : se replie à la perte, se démarque à la récupération."] }
+    ],
+    "3AC": [
+      { id: "o_place", nom: "Le placement", axes: ["opposer", "defendre"], niv: ["Suit le ballon sans penser à l'espace ou aux partenaires.", "Se place pour aider ou libérer un espace.", "Anticipe le jeu, crée des solutions et gêne l'adversaire."] },
+      { id: "o_repli", nom: "Le repli défensif", axes: ["opposer", "recuperer", "contreattaque"], niv: ["Lent, en retard, laissant des espaces libres.", "Assez vite, mais parfois mal placé ou mal orienté.", "Repli rapide, ferme les espaces et anticipe les actions adverses."] }
+    ],
+    "TC": [
+      { id: "o_conserv", nom: "La conservation sous pression", axes: ["conserver", "progresser"], niv: ["Perd la balle dès qu'il est pressé, joue dans l'urgence.", "Conserve la balle, mais par des passes latérales ou en retrait sans faire progresser.", "Protège la balle et la fait circuler vite et vers l'avant face à une défense organisée."] },
+      { id: "o_espace", nom: "L'occupation de l'espace offensif", axes: ["progresser", "marquer"], niv: ["Se regroupe près du porteur, occupe mal la largeur et la profondeur.", "Occupe son poste, mais avec peu de mobilité et d'appels.", "Occupe largeur et profondeur, multiplie les appels et crée des intervalles."] }
+    ],
+    "1BAC": [
+      { id: "o_vitesse", nom: "La vitesse d'exécution et la prise de décision", axes: ["contreattaque", "progresser"], niv: ["Hésite, garde trop la balle, choix tardifs ou inadaptés.", "Choix pertinents, mais exécution lente qui laisse la défense se replacer.", "Lit le jeu et enchaîne vite réception, décision et action."] },
+      { id: "o_soutien", nom: "Le jeu sans ballon (appels et soutien)", axes: ["progresser", "conserver"], niv: ["Peu mobile, ne propose pas de solution au porteur.", "Se propose, mais souvent en retard ou dans un espace fermé.", "Appels et soutiens permanents, au bon moment et dans l'espace libre."] }
+    ],
+    "2BAC": [
+      { id: "o_final", nom: "La finition", axes: ["marquer"], niv: ["Tire en mauvaise position ou renonce à tirer.", "Tire en position favorable, mais avec une réussite irrégulière.", "Choisit la meilleure position et conclut avec efficacité."] },
+      { id: "o_projet", nom: "Le rôle dans le projet collectif", axes: ["progresser", "defendre"], niv: ["Ignore son rôle et joue pour lui-même.", "Tient son rôle, mais l'adapte peu au rapport de force.", "Tient et adapte son rôle au rapport de force, au service du projet d'équipe."] }
+    ]
+  };
+  function smIndOff(cl) { if (!cl || smApsId() === "volley") return []; const n = smNivCode(cl) || (typeof pvNiveau === "function" ? pvNiveau(cl) : ""); return SM_IND_NIV[n] || []; }
+  function compDiagTous(cl) { cl = cl || (typeof classe === "function" ? classe() : null); return (cl ? smIndOff(cl) : []).concat(COMPETENCES); }   // critères du niveau en premier
+  /* critères retenus pour le diagnostic de la classe (les autres ne sont ni notés ni analysés) */
+  function diagExclus(cl) { cl = cl || (typeof classe === "function" ? classe() : null); return cl && Array.isArray(cl.diagExclus) ? cl.diagExclus : []; }
+  function compActives(cl) { const x = diagExclus(cl), t = compDiagTous(cl), a = t.filter(c => x.indexOf(c.id) < 0); return a.length ? a : t; }
+  function totalEleve(el, cl) {
+    const a = compActives(cl), s = a.reduce((t, c) => t + (Number(el.scores[c.id]) || 0), 0);
+    return a.length === 10 ? s : Math.round(s / (2 * a.length) * 20 * 10) / 10;   // ramené sur 20
   }
   function niveauFromScore20(t) {
     if (t <= 7) return "lacune";
@@ -34695,9 +34918,41 @@ window.JSYNC = window.JSYNC || (function () {
     return "maitrise";
   }
   function eleveEvalue(el) {
-    return COMPETENCES.some(c => el.scores[c.id] !== undefined && el.scores[c.id] !== null && el.scores[c.id] !== "");
+    return compActives().some(c => el.scores[c.id] !== undefined && el.scores[c.id] !== null && el.scores[c.id] !== "");
   }
 
+  /* résultats du diagnostic fait avec la grille importée (GrilleAPS) : maîtrise de chaque critère */
+  function gapsDiag(cl) {
+    if (!cl) return null;
+    let g = null, R = null;
+    try { g = JSON.parse(localStorage.getItem("GRILLE_APS::" + SM_APS) || "null"); R = JSON.parse(localStorage.getItem("GRILLE_APS_RES::" + SM_APS + "::" + String(cl.nom || "").trim().toLowerCase()) || "null"); } catch (e) {}
+    if (!g || !g.actif || !Array.isArray(g.criteres) || !R || !R.diag) return null;
+    const noms = (cl.eleves || []).map(e => String(e.nom || "").toLowerCase());
+    const crits = g.criteres.filter(c => (c.niveaux || []).length && Math.max.apply(null, c.niveaux.map(n => Number(n.pts) || 0)) > 0).map(c => {
+      const mx = Math.max.apply(null, c.niveaux.map(n => Number(n.pts) || 0));
+      const v = noms.map(k => (R.diag[k] || {})["g_" + c.id]).filter(x => x !== undefined && x !== null && x !== "").map(x => { const n = c.niveaux[Number(x)]; return n ? (Number(n.pts) || 0) / mx : null; }).filter(x => x != null);
+      return { id: c.id, nom: c.nom, grp: c.grp, n: v.length, pct: v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 100) : null };
+    }).filter(c => c.n);
+    return crits.length ? { titre: g.titre || "Grille importée", crits } : null;
+  }
+  /* un critère importé est rattaché à la compétence de la grille numérique qui partage le plus de mots avec lui */
+  function gapsCompetence(nom) {
+    const mots = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z\u0600-\u06ff]+/).filter(w => w.length >= 4).map(w => w.slice(0, 6));
+    const m = mots(nom); let best = null, bs = 0;
+    COMPETENCES.forEach(k => { const s = mots(k.nom).filter(w => m.indexOf(w) >= 0).length; if (s > bs) { bs = s; best = k; } });
+    return best;
+  }
+  function gapsAnalyseHTML(cl) {
+    const D = gapsDiag(cl); if (!D) return "";
+    const coul = p => p < 40 ? "var(--lacune)" : p < 70 ? "var(--inter)" : "var(--maitrise)";
+    const tri = D.crits.slice().sort((a, b) => a.pct - b.pct);
+    return `<div class="card"><div class="card-title">📄 Diagnostic avec la grille importée — ${esc(D.titre)}</div>
+      <table><thead><tr><th>Critère</th><th>Partie</th><th>Élèves</th><th>Maîtrise</th><th>Rattaché à</th></tr></thead><tbody>
+      ${tri.map(c => { const k = gapsCompetence(c.nom); return `<tr><td>${esc(c.nom)}</td><td>${c.grp === "C" ? "Collective" : "Individuelle"}</td><td>${c.n}</td>
+        <td><div class="bar"><span style="width:${c.pct}%;background:${coul(c.pct)}"></span></div><span class="muted" style="font-size:.8rem">${c.pct} %</span></td>
+        <td>${k ? esc(k.nom) : '<span class="muted">—</span>'}</td></tr>`; }).join("")}</tbody></table>
+      <p class="hint">Critères les plus faibles : ${tri.slice(0, 3).map(c => "<b>" + esc(c.nom) + "</b> (" + c.pct + " %)").join(" · ")}. Ils comptent dans les axes prioritaires par la compétence à laquelle ils sont rattachés.</p></div>`;
+  }
   function statsIndividuel(cl) {
     const evalues = (cl ? cl.eleves : []).filter(eleveEvalue);
     const res = {
@@ -34707,15 +34962,25 @@ window.JSYNC = window.JSYNC || (function () {
       repartition: { lacune: 0, intermediaire: 0, maitrise: 0 },
       competences: {}   // id -> { moyenne (sur 2), maitrisePct, prioritePct }
     };
-    COMPETENCES.forEach(c => { res.competences[c.id] = { moyenne: 0, maitrisePct: 0, prioritePct: 0, n: 0 }; });
-    if (!evalues.length) return res;
+    const CD = compDiagTous(cl);
+    CD.forEach(c => { res.competences[c.id] = { moyenne: 0, maitrisePct: 0, prioritePct: 0, n: 0 }; });
+    const GD = gapsDiag(cl), GDc = {};
+    if (GD) GD.crits.forEach(c => { const k = gapsCompetence(c.nom); if (k) (GDc[k.id] = GDc[k.id] || []).push(c.pct); });
+    const appliquerGD = () => {
+      Object.keys(GDc).forEach(id => {
+        const k = res.competences[id]; if (!k || k.exclu) return;
+        const g = Math.round(GDc[id].reduce((a, b) => a + b, 0) / GDc[id].length);
+        k.maitrisePct = k.n ? Math.round((k.maitrisePct + g) / 2) : g; k.prioritePct = 100 - k.maitrisePct; k.importe = true;
+      });
+    };
+    if (!evalues.length) { if (GD) { const exD0 = diagExclus(cl); COMPETENCES.forEach(c => { if (exD0.indexOf(c.id) >= 0) res.competences[c.id].exclu = true; }); appliquerGD(); } return res; }
 
     let somme = 0;
     evalues.forEach(el => {
-      const t = totalEleve(el);
+      const t = totalEleve(el, cl);
       somme += t;
       res.repartition[niveauFromScore20(t)]++;
-      COMPETENCES.forEach(c => {
+      CD.forEach(c => {
         const v = Number(el.scores[c.id]) || 0;
         res.competences[c.id].moyenne += v;
         res.competences[c.id].n++;
@@ -34723,12 +34988,15 @@ window.JSYNC = window.JSYNC || (function () {
     });
     res.moyenne = Math.round((somme / evalues.length) * 10) / 10;
     res.niveau = niveauFromScore20(res.moyenne);
-    COMPETENCES.forEach(c => {
+    const exD = diagExclus(cl);
+    CD.forEach(c => {
       const k = res.competences[c.id];
+      if (exD.indexOf(c.id) >= 0) { k.exclu = true; k.moyenne = 0; k.maitrisePct = 0; k.prioritePct = 0; return; }
       k.moyenne = k.n ? Math.round((k.moyenne / k.n) * 100) / 100 : 0;
       k.maitrisePct = Math.round((k.moyenne / 2) * 100);
       k.prioritePct = 100 - k.maitrisePct;
     });
+    appliquerGD();
     return res;
   }
 
@@ -35007,7 +35275,8 @@ window.JSYNC = window.JSYNC || (function () {
     // poids individuel : moyenne des priorités des compétences rattachées à l'axe
     const indiv = {};
     AXES.forEach(a => { indiv[a.id] = { somme: 0, n: 0 }; });
-    COMPETENCES.forEach(c => {
+    compDiagTous().forEach(c => {
+      if (!si.competences[c.id] || si.competences[c.id].exclu) return;          // critère non diagnostiqué
       const p = si.competences[c.id].prioritePct;
       c.axes.forEach(ax => { indiv[ax].somme += p; indiv[ax].n++; });
     });
@@ -35530,7 +35799,8 @@ window.JSYNC = window.JSYNC || (function () {
   function smScores(el) { return (el.sommative && el.sommative.scores) || {}; }
   function smNivCode(cl) { const n = pvNiveau(cl); return SM_GRILLE[n] ? n : ""; }
   function smGrille(cl) { return SM_GRILLE[smNivCode(cl)] || SM_GRILLE["1AC"]; }
-  window.__GAPS = { classe: function () { return classe(); }, G: function (cl) { return smGrille(cl); }, niv: function (cl) { return pvNiveau(cl) || smNivCode(cl); }, aps: function () { return SM_APS; }, nomAps: function () { return PV_CFG.aps; } };
+  window.__GAPS = { classe: function () { return classe(); }, G: function (cl) { return smGrille(cl); }, niv: function (cl) { return pvNiveau(cl) || smNivCode(cl); }, aps: function () { return SM_APS; }, nomAps: function () { return PV_CFG.aps; },
+    noteHors: function (cl, id, pid) { const e = (cl.eleves || []).find(x => x.id === id); if (!e) return null; const r = smCalc(e, cl, smJournal(cl)); return pid === "I" ? r.I.note : pid === "C" ? r.C.note : null; } };
   /* tous les critères (diagnostic + collectifs) avec leur rôle pour cette classe */
   function smCrits(cl) {
     const info = (cl && cl.sommativeInfo) || {}, role = info.role || {}, ex = info.exclus || [];
@@ -35854,15 +36124,16 @@ window.JSYNC = window.JSYNC || (function () {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
         <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:13pt;font-weight:700;font-style:italic;color:#8B2E3C">${diag ? "Grille de diagnostic collectif" : "Grille d'évaluation sommative"} ${esc(n)} — ${esc(PV_CFG.aps)}</div>
         <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:11pt;color:#1F4E79;min-width:40mm">Classe : <b>${esc(cl.nom)}</b></div></div>
-      <p style="font-size:8pt;margin:0 0 2mm">Date : …… / …… / ……… · Enseignant(e) : ${esc(en.enseignant || "……………………")} ${diag ? "" : "· Individuelle : cocher le niveau de chaque critère (0 = à renforcer · 1 = en cours · 2 = acquis)."}
+      <p style="font-size:8pt;margin:0 0 2mm">Date : …… / …… / ……… · Enseignant(e) : ${esc(en.enseignant || "……………………")} ${diag ? "" : KI.some(k => k.off) ? "· Individuelle : cocher le niveau de chaque critère (N1 = 1 pt · N2 = 2 pts · N3 = 3 pts — descriptifs en bas de page)." : "· Individuelle : cocher le niveau de chaque critère (0 = à renforcer · 1 = en cours · 2 = acquis)."}
         Collectif : faire un bâton à chaque balle jouée (${cpt.map(k => "<b>" + k.toUpperCase() + "</b> " + EQ_PLU[k]).join(" · ")}), puis calculer chaque critère : ${B.map(c => "<b>" + esc(c.lib) + "</b> = " + c.num.toUpperCase() + " ÷ " + (c.den || "bj").toUpperCase()).join(" · ")}.</p>
       <table class="eqg-t" style="table-layout:fixed"><colgroup><col style="width:8mm"><col style="width:${paysage ? 44 : 40}mm">${KI.map(() => "<col><col><col>").join("")}${diag ? "" : ""}${dens.map(() => `<col style="width:${paysage ? 17 : 15}mm">`).join("")}${B.map(() => `<col style="width:${paysage ? 17 : 15}mm"><col style="width:${paysage ? 11 : 10}mm">`).join("")}${diag ? "" : '<col style="width:13mm">'}</colgroup><thead>
         <tr><th rowspan="3" style="width:7mm">Eq</th><th rowspan="3" class="nm" style="width:${paysage ? 42 : 38}mm">Nom / Prénom</th>
           ${KI.length ? `<th colspan="${KI.length * 3}" class="gi">Individuel ${G.i} pts</th>` : ""}<th colspan="${ncol}" class="gc">${diag ? "Diagnostic collectif — % par critère" : "Collectif " + G.c + " pts"}</th></tr>
-        <tr>${KI.map(k => `<th colspan="3" class="gi">${esc(court(k.nom))}</th>`).join("")}${dens.map(k => `<th rowspan="2" class="gc">${esc(EQ_PLU[k].replace(/^./, x => x.toUpperCase()))}<br><small>(${k.toUpperCase()})</small></th>`).join("")}${B.map(c => `<th colspan="2" class="gc">${esc(c.lib)}${diag ? "" : " /" + maxC(c)}<br><small>${c.num.toUpperCase()} ÷ ${(c.den || "bj").toUpperCase()}</small></th>`).join("")}${diag ? "" : `<th rowspan="2" class="gc">Note<br>/${G.c}</th>`}</tr>
-        <tr>${KI.map(() => [0, 1, 2].map(v => `<th class="gi niv">${v}</th>`).join("")).join("")}${B.map(c => `<th class="gc" title="${esc(EQ_PLU[c.num])}">${c.num.toUpperCase()}</th><th class="gc">${diag ? "%" : "Pts"}</th>`).join("")}</tr></thead>
+        <tr>${KI.map(k => `<th colspan="3" class="gi">${esc(court(k.nom))}${k.off ? "<br><small>3 pts</small>" : ""}</th>`).join("")}${dens.map(k => `<th rowspan="2" class="gc">${esc(EQ_PLU[k].replace(/^./, x => x.toUpperCase()))}<br><small>(${k.toUpperCase()})</small></th>`).join("")}${B.map(c => `<th colspan="2" class="gc">${esc(c.lib)}${diag ? "" : " /" + maxC(c)}<br><small>${c.num.toUpperCase()} ÷ ${(c.den || "bj").toUpperCase()}</small></th>`).join("")}${diag ? "" : `<th rowspan="2" class="gc">Note<br>/${G.c}</th>`}</tr>
+        <tr>${KI.map(k => [0, 1, 2].map(v => `<th class="gi niv">${k.off ? "N" + (v + 1) + "<br><small>" + (v + 1) + "P</small>" : v}</th>`).join("")).join("")}${B.map(c => `<th class="gc" title="${esc(EQ_PLU[c.num])}">${c.num.toUpperCase()}</th><th class="gc">${diag ? "%" : "Pts"}</th>`).join("")}</tr></thead>
         ${groupes.map(g => `<tbody class="grp">${g.el.map((e, i) => `<tr style="height:${h}mm">${i === 0 ? `<td rowspan="${g.el.length}" class="eqc" style="background:${g.coul}">${g.t}</td>` : ""}<td class="nm">${esc(e.nom)}</td>${KI.map(() => "<td></td><td></td><td></td>").join("")}${i === 0 ? (g.sans ? `<td colspan="${ncol}" rowspan="${g.el.length}" style="background:#f4f4f4;font-size:7pt">Sans équipe</td>` : dens.map(() => `<td rowspan="${g.el.length}" class="cpt"></td>`).join("") + B.map(() => `<td rowspan="${g.el.length}" class="cpt"></td><td rowspan="${g.el.length}" class="pts"></td>`).join("") + (diag ? "" : `<td rowspan="${g.el.length}" class="cpt"></td>`)) : ""}</tr>`).join("")}</tbody>`).join("")}
       </table>
+      ${KI.some(k => k.off) ? `<p style="font-size:7pt;margin:2mm 0 0;line-height:1.35">${KI.filter(k => k.off).map(k => "<b>" + esc(k.nom) + "</b> — " + k.niv.map((t, i) => "N" + (i + 1) + " : " + esc(t)).join(" · ")).join("<br>")}</p>` : ""}
       <p style="font-size:7.5pt;margin:2mm 0 0"><b>Calcul :</b> ${B.map(c => "<b>" + esc(c.lib) + "</b> = " + c.num.toUpperCase() + " ÷ " + (c.den || "bj").toUpperCase() + " × 100" + (diag ? "" : " → " + c.tr.map(t => t[0] + "–" + t[1] + " % : " + String(t[2]).replace(".", ",")).join(" · ") + " pt")).join(" — ")}. Reporter ensuite les totaux dans le classeur : ${diag ? "les pourcentages se calculent tout seuls" : "la note se calcule toute seule"}.</p>
       <style>
         #sm-print .eqg-t th.gi{background:#D9EAD3 !important} #sm-print .eqg-t th.gc{background:#F4CCCC !important}
@@ -36838,6 +37109,10 @@ window.JSYNC = window.JSYNC || (function () {
           </tr>
         </table>
 
+        <details class="no-print" style="margin:6px 0 10px;border:1px dashed #C9D1DC;border-radius:10px;padding:8px 12px;background:#FAFBFC" ${diagExclus(cl).length ? "open" : ""}>
+          <summary style="cursor:pointer;font-weight:700">🎯 Critères à diagnostiquer — ${compActives(cl).length}/${compDiagTous(cl).length} retenus <span class="muted" style="font-weight:400">(valable pour toute la classe ; le total est ramené sur 20 et l'analyse ne tient compte que des critères retenus)</span></summary>
+          <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px">${compDiagTous(cl).map(k => `<label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer${k.niv ? ";font-weight:700;color:#1F4E79" : ""}"><input type="checkbox" data-dx="${k.id}" ${diagExclus(cl).indexOf(k.id) < 0 ? "checked" : ""}> ${k.nom}</label>`).join("")}</div>
+        </details>
         <p class="fiche-consigne">Consigne : observer l'élève dans des situations individuelles simples et cocher la case correspondant au niveau réellement constaté.</p>
 
         <table class="fiche-grille">
@@ -36851,12 +37126,12 @@ window.JSYNC = window.JSYNC || (function () {
             </tr>
           </thead>
           <tbody>
-            ${COMPETENCES.map(k => `<tr>
-              <td>${k.nom}</td>
+            ${compActives(cl).map(k => `<tr>
+              <td>${k.niv ? `<b>${k.nom}</b> <span style="font-size:.68rem;font-weight:700;color:#fff;background:#1F4E79;border-radius:5px;padding:1px 5px;white-space:nowrap">critère ${esc(smNivCode(cl) || "")}</span>` : k.nom}</td>
               ${[0, 1, 2].map(v => `<td class="ck">
                 <button class="case ${String(el.scores[k.id]) === String(v) ? "on" : ""}" data-c="${k.id}" data-v="${v}">
                   <span class="box"></span> ${v}
-                </button></td>`).join("")}
+                </button>${k.niv ? `<div style="font-size:.72rem;line-height:1.3;color:#475569;margin-top:3px;text-align:left">${esc(k.niv[v])}</div>` : ""}</td>`).join("")}
               <td class="bar-note">${el.scores[k.id] !== undefined ? el.scores[k.id] : "…"} /2</td>
             </tr>`).join("")}
           </tbody>
@@ -36909,6 +37184,12 @@ window.JSYNC = window.JSYNC || (function () {
       };
     });
 
+    box.querySelectorAll("[data-dx]").forEach(x => x.onchange = () => {
+      const ex = diagExclus(cl).slice(), i = ex.indexOf(x.dataset.dx);
+      if (x.checked && i >= 0) ex.splice(i, 1); else if (!x.checked && i < 0) ex.push(x.dataset.dx);
+      if (ex.length >= compDiagTous(cl).length) { toast("Gardez au moins un critère"); x.checked = true; return; }
+      cl.diagExclus = ex; save(); render();
+    });
     $("fiche-sel").onchange = (e) => { ficheEleveId = e.target.value; render(); };
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
@@ -37076,7 +37357,7 @@ window.JSYNC = window.JSYNC || (function () {
     const si = statsIndividuel(cl), sc = statsCollectif(cl);
     const niv = niveauClasse(si, sc);
     const prio = prioritesAxes(si, sc);
-    const faibles = COMPETENCES.slice()
+    const faibles = compDiagTous(cl).filter(k => si.competences[k.id] && !si.competences[k.id].exclu)
       .sort((a, b) => si.competences[b.id].prioritePct - si.competences[a.id].prioritePct);
 
     const cle = (si.niveau || "lacune") + "|" + (sc.niveau || "lacune");
@@ -37136,6 +37417,7 @@ window.JSYNC = window.JSYNC || (function () {
         <p class="hint">Chaque compétence faible alimente la priorité des principes auxquels elle est rattachée. Résultat : ${prio.slice(0, 3).map(p => "<b>" + p.axe.nom + "</b>").join(" → ")}.</p>
       </div>
 
+      ${gapsAnalyseHTML(cl)}
       <button class="btn btn-primary no-print" id="go-axes">🎯 Voir les axes prioritaires</button>`;
     $("go-axes").onclick = () => { page = "axes"; render(); };
   }
@@ -42897,6 +43179,10 @@ window.XlsxLite = (function () {
         o.parts[p.id] = r.note; o.mes = r; if (r.note == null) o.complet = false; return;
       }
       var s = 0, ok = true, cs = critsDe(g, p.id);
+      if (!cs.length) {   // partie sans critère dans la grille : note de l'application (hors grille)
+        var hg = CFG.horsGrille ? CFG.horsGrille(ctx, e, p.id) : null;
+        o.parts[p.id] = hg == null ? null : Math.round(hg * 100) / 100; if (o.parts[p.id] == null) o.complet = false; return;
+      }
       cs.forEach(function (c) { var n = noteCrit(c, x, mx[c.id]); if (n == null) ok = false; else s += n; });
       o.parts[p.id] = cs.length && ok ? Math.round(s * 100) / 100 : null;
       if (o.parts[p.id] == null) o.complet = false;
@@ -42985,7 +43271,7 @@ window.XlsxLite = (function () {
     var mx = maxSomm(g, ctx.M);
     return CFG.parts.map(function (p) {
       if (p.mesure) return p.lib + " /" + fN(ctx.M[p.id]) + " : " + p.mesure.lib;
-      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "aucun critère");
+      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "hors grille : note de l'application");
     }).join(" · ") + " · Conceptuel /" + ctx.M.conc + " · Comportemental /" + ctx.M.comp + " = /20";
   }
 
@@ -43030,7 +43316,7 @@ window.XlsxLite = (function () {
     CFG.parts.forEach(function (p) {
       if (p.mesure) { e1 += '<th colspan="2" rowspan="2" class="s">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + '<br><span style="font-weight:400;font-size:10.5px">barème officiel</span></th>'; e3 += '<th class="s">' + esc(p.mesure.court) + '</th><th class="s">Note</th>'; return; }
       var cs = critsDe(g, p.id), H = enteteCrit(cs, function (c) { return notesNiv(c, mx[c.id]); }, mx, true);
-      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + esc(g.titre) + '</th>';
+      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + (cs.length ? esc(g.titre) : "hors grille (note de l'application)") + '</th>';
       e2 += H.h1.replace(/<br><span style="font-weight:400;font-size:10px;opacity:.85">[^<]*<\/span>/g, "") + '<th rowspan="2">Total /' + fN(ctx.M[p.id]) + '</th>';
       e3 += H.h2;
     });
@@ -43198,8 +43484,6 @@ window.XlsxLite = (function () {
         var gardes = W.criteres.filter(function (c) { return String(c.nom || "").trim(); });
         if (!gardes.length) { msg("Écrivez le nom d'au moins un critère."); return; }
         if (gardes.some(function (c) { return !(mesure && c.grp === mesure.id) && maxC(c) <= 0; })) { msg("Chaque critère doit avoir un niveau avec des points (> 0)."); return; }
-        var manque = partsNotees().filter(function (p) { return !gardes.some(function (c) { return c.grp === p.id; }); });
-        if (manque.length) { msg("Ajoutez au moins un critère pour : " + manque.map(function (p) { return p.lib; }).join(", ") + "."); return; }
         gardes.forEach(function (c) { c.niveaux.sort(function (a, b) { return a.pts - b.pts; }); if (!c.id) c.id = uid(); });
         W.criteres = gardes; W.titre = (W.titre || "").trim() || "Grille importée"; W.actif = true;
         lsSet(cleGrille(), JSON.stringify(W)); fermerEd(); bouton(); dessiner();
@@ -43238,7 +43522,8 @@ window.XlsxLite = (function () {
     parts: [{ id: "I", lib: "Individuelle" }, { id: "C", lib: "Collective" }],
     contexte: function () { var c = A.classe(); if (!c) return null; return { classe: c, niv: A.niv(c), G: A.G(c), eleves: (c.eleves || []).map(function (e) { return { id: e.id, nom: e.nom, sexe: e.genre === "F" ? "F" : "G" }; }) }; },
     maxima: function (ctx) { var G = ctx.G; return { I: G.i, C: G.c, conc: G.conc, comp: G.comp }; },
-    champsJournal: function (o) { return { individ: o.parts.I, collec: o.parts.C, conceptuelles: o.conc }; }
+    champsJournal: function (o) { return { individ: o.parts.I, collec: o.parts.C, conceptuelles: o.conc }; },
+    horsGrille: function (ctx, e, pid) { return A.noteHors ? A.noteHors(ctx.classe, e.id, pid) : null; }
   });
 })();
 @@SCRIPTCLOSE7f3a@@>
@@ -45091,8 +45376,41 @@ window.JSYNC = window.JSYNC || (function () {
      ========================================================== */
 
   // --- individuel ---
-  function totalEleve(el) {
-    return COMPETENCES.reduce((s, c) => s + (Number(el.scores[c.id]) || 0), 0);
+  /* critères individuels officiels par niveau scolaire (sports de démarquage) : au diagnostic individuel : N1 = à renforcer (0) · N2 = en cours (1) · N3 = acquis (2) */
+  const SM_IND_NIV = {
+    "1AC": [
+      { id: "o_passe", nom: "La passe", axes: ["conserver", "progresser"], niv: ["Passe imprécise et mal choisie.", "Passe correcte, mais irrégulière.", "Passe précise et bien adaptée."] },
+      { id: "o_demarq", nom: "Le démarquage", axes: ["progresser", "conserver"], niv: ["Reste statique et rarement disponible.", "Se déplace peu et se libère difficilement.", "Se déplace efficacement et trouve l'espace libre."] }
+    ],
+    "2AC": [
+      { id: "o_progres", nom: "La progression avec la balle", axes: ["progresser", "contreattaque"], niv: ["Progresse rarement : s'arrête ou perd la balle dès qu'il est pressé.", "Progresse vers la cible, mais tête baissée et sans voir les partenaires.", "Progresse en variant direction et rythme, tête levée, et transmet au bon moment."] },
+      { id: "o_role", nom: "Le changement de rôle (attaquant ↔ défenseur)", axes: ["recuperer", "defendre", "contreattaque"], niv: ["Reste spectateur à la perte ou à la récupération de la balle.", "Change de rôle, mais avec retard ou de façon désordonnée.", "Change de rôle immédiatement : se replie à la perte, se démarque à la récupération."] }
+    ],
+    "3AC": [
+      { id: "o_place", nom: "Le placement", axes: ["opposer", "defendre"], niv: ["Suit le ballon sans penser à l'espace ou aux partenaires.", "Se place pour aider ou libérer un espace.", "Anticipe le jeu, crée des solutions et gêne l'adversaire."] },
+      { id: "o_repli", nom: "Le repli défensif", axes: ["opposer", "recuperer", "contreattaque"], niv: ["Lent, en retard, laissant des espaces libres.", "Assez vite, mais parfois mal placé ou mal orienté.", "Repli rapide, ferme les espaces et anticipe les actions adverses."] }
+    ],
+    "TC": [
+      { id: "o_conserv", nom: "La conservation sous pression", axes: ["conserver", "progresser"], niv: ["Perd la balle dès qu'il est pressé, joue dans l'urgence.", "Conserve la balle, mais par des passes latérales ou en retrait sans faire progresser.", "Protège la balle et la fait circuler vite et vers l'avant face à une défense organisée."] },
+      { id: "o_espace", nom: "L'occupation de l'espace offensif", axes: ["progresser", "marquer"], niv: ["Se regroupe près du porteur, occupe mal la largeur et la profondeur.", "Occupe son poste, mais avec peu de mobilité et d'appels.", "Occupe largeur et profondeur, multiplie les appels et crée des intervalles."] }
+    ],
+    "1BAC": [
+      { id: "o_vitesse", nom: "La vitesse d'exécution et la prise de décision", axes: ["contreattaque", "progresser"], niv: ["Hésite, garde trop la balle, choix tardifs ou inadaptés.", "Choix pertinents, mais exécution lente qui laisse la défense se replacer.", "Lit le jeu et enchaîne vite réception, décision et action."] },
+      { id: "o_soutien", nom: "Le jeu sans ballon (appels et soutien)", axes: ["progresser", "conserver"], niv: ["Peu mobile, ne propose pas de solution au porteur.", "Se propose, mais souvent en retard ou dans un espace fermé.", "Appels et soutiens permanents, au bon moment et dans l'espace libre."] }
+    ],
+    "2BAC": [
+      { id: "o_final", nom: "La finition", axes: ["marquer"], niv: ["Tire en mauvaise position ou renonce à tirer.", "Tire en position favorable, mais avec une réussite irrégulière.", "Choisit la meilleure position et conclut avec efficacité."] },
+      { id: "o_projet", nom: "Le rôle dans le projet collectif", axes: ["progresser", "defendre"], niv: ["Ignore son rôle et joue pour lui-même.", "Tient son rôle, mais l'adapte peu au rapport de force.", "Tient et adapte son rôle au rapport de force, au service du projet d'équipe."] }
+    ]
+  };
+  function smIndOff(cl) { if (!cl || smApsId() === "volley") return []; const n = smNivCode(cl) || (typeof pvNiveau === "function" ? pvNiveau(cl) : ""); return SM_IND_NIV[n] || []; }
+  function compDiagTous(cl) { cl = cl || (typeof classe === "function" ? classe() : null); return (cl ? smIndOff(cl) : []).concat(COMPETENCES); }   // critères du niveau en premier
+  /* critères retenus pour le diagnostic de la classe (les autres ne sont ni notés ni analysés) */
+  function diagExclus(cl) { cl = cl || (typeof classe === "function" ? classe() : null); return cl && Array.isArray(cl.diagExclus) ? cl.diagExclus : []; }
+  function compActives(cl) { const x = diagExclus(cl), t = compDiagTous(cl), a = t.filter(c => x.indexOf(c.id) < 0); return a.length ? a : t; }
+  function totalEleve(el, cl) {
+    const a = compActives(cl), s = a.reduce((t, c) => t + (Number(el.scores[c.id]) || 0), 0);
+    return a.length === 10 ? s : Math.round(s / (2 * a.length) * 20 * 10) / 10;   // ramené sur 20
   }
   function niveauFromScore20(t) {
     if (t <= 7) return "lacune";
@@ -45100,9 +45418,41 @@ window.JSYNC = window.JSYNC || (function () {
     return "maitrise";
   }
   function eleveEvalue(el) {
-    return COMPETENCES.some(c => el.scores[c.id] !== undefined && el.scores[c.id] !== null && el.scores[c.id] !== "");
+    return compActives().some(c => el.scores[c.id] !== undefined && el.scores[c.id] !== null && el.scores[c.id] !== "");
   }
 
+  /* résultats du diagnostic fait avec la grille importée (GrilleAPS) : maîtrise de chaque critère */
+  function gapsDiag(cl) {
+    if (!cl) return null;
+    let g = null, R = null;
+    try { g = JSON.parse(localStorage.getItem("GRILLE_APS::" + SM_APS) || "null"); R = JSON.parse(localStorage.getItem("GRILLE_APS_RES::" + SM_APS + "::" + String(cl.nom || "").trim().toLowerCase()) || "null"); } catch (e) {}
+    if (!g || !g.actif || !Array.isArray(g.criteres) || !R || !R.diag) return null;
+    const noms = (cl.eleves || []).map(e => String(e.nom || "").toLowerCase());
+    const crits = g.criteres.filter(c => (c.niveaux || []).length && Math.max.apply(null, c.niveaux.map(n => Number(n.pts) || 0)) > 0).map(c => {
+      const mx = Math.max.apply(null, c.niveaux.map(n => Number(n.pts) || 0));
+      const v = noms.map(k => (R.diag[k] || {})["g_" + c.id]).filter(x => x !== undefined && x !== null && x !== "").map(x => { const n = c.niveaux[Number(x)]; return n ? (Number(n.pts) || 0) / mx : null; }).filter(x => x != null);
+      return { id: c.id, nom: c.nom, grp: c.grp, n: v.length, pct: v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 100) : null };
+    }).filter(c => c.n);
+    return crits.length ? { titre: g.titre || "Grille importée", crits } : null;
+  }
+  /* un critère importé est rattaché à la compétence de la grille numérique qui partage le plus de mots avec lui */
+  function gapsCompetence(nom) {
+    const mots = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z\u0600-\u06ff]+/).filter(w => w.length >= 4).map(w => w.slice(0, 6));
+    const m = mots(nom); let best = null, bs = 0;
+    COMPETENCES.forEach(k => { const s = mots(k.nom).filter(w => m.indexOf(w) >= 0).length; if (s > bs) { bs = s; best = k; } });
+    return best;
+  }
+  function gapsAnalyseHTML(cl) {
+    const D = gapsDiag(cl); if (!D) return "";
+    const coul = p => p < 40 ? "var(--lacune)" : p < 70 ? "var(--inter)" : "var(--maitrise)";
+    const tri = D.crits.slice().sort((a, b) => a.pct - b.pct);
+    return `<div class="card"><div class="card-title">📄 Diagnostic avec la grille importée — ${esc(D.titre)}</div>
+      <table><thead><tr><th>Critère</th><th>Partie</th><th>Élèves</th><th>Maîtrise</th><th>Rattaché à</th></tr></thead><tbody>
+      ${tri.map(c => { const k = gapsCompetence(c.nom); return `<tr><td>${esc(c.nom)}</td><td>${c.grp === "C" ? "Collective" : "Individuelle"}</td><td>${c.n}</td>
+        <td><div class="bar"><span style="width:${c.pct}%;background:${coul(c.pct)}"></span></div><span class="muted" style="font-size:.8rem">${c.pct} %</span></td>
+        <td>${k ? esc(k.nom) : '<span class="muted">—</span>'}</td></tr>`; }).join("")}</tbody></table>
+      <p class="hint">Critères les plus faibles : ${tri.slice(0, 3).map(c => "<b>" + esc(c.nom) + "</b> (" + c.pct + " %)").join(" · ")}. Ils comptent dans les axes prioritaires par la compétence à laquelle ils sont rattachés.</p></div>`;
+  }
   function statsIndividuel(cl) {
     const evalues = (cl ? cl.eleves : []).filter(eleveEvalue);
     const res = {
@@ -45112,15 +45462,25 @@ window.JSYNC = window.JSYNC || (function () {
       repartition: { lacune: 0, intermediaire: 0, maitrise: 0 },
       competences: {}   // id -> { moyenne (sur 2), maitrisePct, prioritePct }
     };
-    COMPETENCES.forEach(c => { res.competences[c.id] = { moyenne: 0, maitrisePct: 0, prioritePct: 0, n: 0 }; });
-    if (!evalues.length) return res;
+    const CD = compDiagTous(cl);
+    CD.forEach(c => { res.competences[c.id] = { moyenne: 0, maitrisePct: 0, prioritePct: 0, n: 0 }; });
+    const GD = gapsDiag(cl), GDc = {};
+    if (GD) GD.crits.forEach(c => { const k = gapsCompetence(c.nom); if (k) (GDc[k.id] = GDc[k.id] || []).push(c.pct); });
+    const appliquerGD = () => {
+      Object.keys(GDc).forEach(id => {
+        const k = res.competences[id]; if (!k || k.exclu) return;
+        const g = Math.round(GDc[id].reduce((a, b) => a + b, 0) / GDc[id].length);
+        k.maitrisePct = k.n ? Math.round((k.maitrisePct + g) / 2) : g; k.prioritePct = 100 - k.maitrisePct; k.importe = true;
+      });
+    };
+    if (!evalues.length) { if (GD) { const exD0 = diagExclus(cl); COMPETENCES.forEach(c => { if (exD0.indexOf(c.id) >= 0) res.competences[c.id].exclu = true; }); appliquerGD(); } return res; }
 
     let somme = 0;
     evalues.forEach(el => {
-      const t = totalEleve(el);
+      const t = totalEleve(el, cl);
       somme += t;
       res.repartition[niveauFromScore20(t)]++;
-      COMPETENCES.forEach(c => {
+      CD.forEach(c => {
         const v = Number(el.scores[c.id]) || 0;
         res.competences[c.id].moyenne += v;
         res.competences[c.id].n++;
@@ -45128,12 +45488,15 @@ window.JSYNC = window.JSYNC || (function () {
     });
     res.moyenne = Math.round((somme / evalues.length) * 10) / 10;
     res.niveau = niveauFromScore20(res.moyenne);
-    COMPETENCES.forEach(c => {
+    const exD = diagExclus(cl);
+    CD.forEach(c => {
       const k = res.competences[c.id];
+      if (exD.indexOf(c.id) >= 0) { k.exclu = true; k.moyenne = 0; k.maitrisePct = 0; k.prioritePct = 0; return; }
       k.moyenne = k.n ? Math.round((k.moyenne / k.n) * 100) / 100 : 0;
       k.maitrisePct = Math.round((k.moyenne / 2) * 100);
       k.prioritePct = 100 - k.maitrisePct;
     });
+    appliquerGD();
     return res;
   }
 
@@ -45400,7 +45763,8 @@ window.JSYNC = window.JSYNC || (function () {
     // poids individuel : moyenne des priorités des compétences rattachées à l'axe
     const indiv = {};
     AXES.forEach(a => { indiv[a.id] = { somme: 0, n: 0 }; });
-    COMPETENCES.forEach(c => {
+    compDiagTous().forEach(c => {
+      if (!si.competences[c.id] || si.competences[c.id].exclu) return;          // critère non diagnostiqué
       const p = si.competences[c.id].prioritePct;
       c.axes.forEach(ax => { indiv[ax].somme += p; indiv[ax].n++; });
     });
@@ -45923,7 +46287,8 @@ window.JSYNC = window.JSYNC || (function () {
   function smScores(el) { return (el.sommative && el.sommative.scores) || {}; }
   function smNivCode(cl) { const n = pvNiveau(cl); return SM_GRILLE[n] ? n : ""; }
   function smGrille(cl) { return SM_GRILLE[smNivCode(cl)] || SM_GRILLE["1AC"]; }
-  window.__GAPS = { classe: function () { return classe(); }, G: function (cl) { return smGrille(cl); }, niv: function (cl) { return pvNiveau(cl) || smNivCode(cl); }, aps: function () { return SM_APS; }, nomAps: function () { return PV_CFG.aps; } };
+  window.__GAPS = { classe: function () { return classe(); }, G: function (cl) { return smGrille(cl); }, niv: function (cl) { return pvNiveau(cl) || smNivCode(cl); }, aps: function () { return SM_APS; }, nomAps: function () { return PV_CFG.aps; },
+    noteHors: function (cl, id, pid) { const e = (cl.eleves || []).find(x => x.id === id); if (!e) return null; const r = smCalc(e, cl, smJournal(cl)); return pid === "I" ? r.I.note : pid === "C" ? r.C.note : null; } };
   /* tous les critères (diagnostic + collectifs) avec leur rôle pour cette classe */
   function smCrits(cl) {
     const info = (cl && cl.sommativeInfo) || {}, role = info.role || {}, ex = info.exclus || [];
@@ -46247,15 +46612,16 @@ window.JSYNC = window.JSYNC || (function () {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
         <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:13pt;font-weight:700;font-style:italic;color:#8B2E3C">${diag ? "Grille de diagnostic collectif" : "Grille d'évaluation sommative"} ${esc(n)} — ${esc(PV_CFG.aps)}</div>
         <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:11pt;color:#1F4E79;min-width:40mm">Classe : <b>${esc(cl.nom)}</b></div></div>
-      <p style="font-size:8pt;margin:0 0 2mm">Date : …… / …… / ……… · Enseignant(e) : ${esc(en.enseignant || "……………………")} ${diag ? "" : "· Individuelle : cocher le niveau de chaque critère (0 = à renforcer · 1 = en cours · 2 = acquis)."}
+      <p style="font-size:8pt;margin:0 0 2mm">Date : …… / …… / ……… · Enseignant(e) : ${esc(en.enseignant || "……………………")} ${diag ? "" : KI.some(k => k.off) ? "· Individuelle : cocher le niveau de chaque critère (N1 = 1 pt · N2 = 2 pts · N3 = 3 pts — descriptifs en bas de page)." : "· Individuelle : cocher le niveau de chaque critère (0 = à renforcer · 1 = en cours · 2 = acquis)."}
         Collectif : faire un bâton à chaque balle jouée (${cpt.map(k => "<b>" + k.toUpperCase() + "</b> " + EQ_PLU[k]).join(" · ")}), puis calculer chaque critère : ${B.map(c => "<b>" + esc(c.lib) + "</b> = " + c.num.toUpperCase() + " ÷ " + (c.den || "bj").toUpperCase()).join(" · ")}.</p>
       <table class="eqg-t" style="table-layout:fixed"><colgroup><col style="width:8mm"><col style="width:${paysage ? 44 : 40}mm">${KI.map(() => "<col><col><col>").join("")}${diag ? "" : ""}${dens.map(() => `<col style="width:${paysage ? 17 : 15}mm">`).join("")}${B.map(() => `<col style="width:${paysage ? 17 : 15}mm"><col style="width:${paysage ? 11 : 10}mm">`).join("")}${diag ? "" : '<col style="width:13mm">'}</colgroup><thead>
         <tr><th rowspan="3" style="width:7mm">Eq</th><th rowspan="3" class="nm" style="width:${paysage ? 42 : 38}mm">Nom / Prénom</th>
           ${KI.length ? `<th colspan="${KI.length * 3}" class="gi">Individuel ${G.i} pts</th>` : ""}<th colspan="${ncol}" class="gc">${diag ? "Diagnostic collectif — % par critère" : "Collectif " + G.c + " pts"}</th></tr>
-        <tr>${KI.map(k => `<th colspan="3" class="gi">${esc(court(k.nom))}</th>`).join("")}${dens.map(k => `<th rowspan="2" class="gc">${esc(EQ_PLU[k].replace(/^./, x => x.toUpperCase()))}<br><small>(${k.toUpperCase()})</small></th>`).join("")}${B.map(c => `<th colspan="2" class="gc">${esc(c.lib)}${diag ? "" : " /" + maxC(c)}<br><small>${c.num.toUpperCase()} ÷ ${(c.den || "bj").toUpperCase()}</small></th>`).join("")}${diag ? "" : `<th rowspan="2" class="gc">Note<br>/${G.c}</th>`}</tr>
-        <tr>${KI.map(() => [0, 1, 2].map(v => `<th class="gi niv">${v}</th>`).join("")).join("")}${B.map(c => `<th class="gc" title="${esc(EQ_PLU[c.num])}">${c.num.toUpperCase()}</th><th class="gc">${diag ? "%" : "Pts"}</th>`).join("")}</tr></thead>
+        <tr>${KI.map(k => `<th colspan="3" class="gi">${esc(court(k.nom))}${k.off ? "<br><small>3 pts</small>" : ""}</th>`).join("")}${dens.map(k => `<th rowspan="2" class="gc">${esc(EQ_PLU[k].replace(/^./, x => x.toUpperCase()))}<br><small>(${k.toUpperCase()})</small></th>`).join("")}${B.map(c => `<th colspan="2" class="gc">${esc(c.lib)}${diag ? "" : " /" + maxC(c)}<br><small>${c.num.toUpperCase()} ÷ ${(c.den || "bj").toUpperCase()}</small></th>`).join("")}${diag ? "" : `<th rowspan="2" class="gc">Note<br>/${G.c}</th>`}</tr>
+        <tr>${KI.map(k => [0, 1, 2].map(v => `<th class="gi niv">${k.off ? "N" + (v + 1) + "<br><small>" + (v + 1) + "P</small>" : v}</th>`).join("")).join("")}${B.map(c => `<th class="gc" title="${esc(EQ_PLU[c.num])}">${c.num.toUpperCase()}</th><th class="gc">${diag ? "%" : "Pts"}</th>`).join("")}</tr></thead>
         ${groupes.map(g => `<tbody class="grp">${g.el.map((e, i) => `<tr style="height:${h}mm">${i === 0 ? `<td rowspan="${g.el.length}" class="eqc" style="background:${g.coul}">${g.t}</td>` : ""}<td class="nm">${esc(e.nom)}</td>${KI.map(() => "<td></td><td></td><td></td>").join("")}${i === 0 ? (g.sans ? `<td colspan="${ncol}" rowspan="${g.el.length}" style="background:#f4f4f4;font-size:7pt">Sans équipe</td>` : dens.map(() => `<td rowspan="${g.el.length}" class="cpt"></td>`).join("") + B.map(() => `<td rowspan="${g.el.length}" class="cpt"></td><td rowspan="${g.el.length}" class="pts"></td>`).join("") + (diag ? "" : `<td rowspan="${g.el.length}" class="cpt"></td>`)) : ""}</tr>`).join("")}</tbody>`).join("")}
       </table>
+      ${KI.some(k => k.off) ? `<p style="font-size:7pt;margin:2mm 0 0;line-height:1.35">${KI.filter(k => k.off).map(k => "<b>" + esc(k.nom) + "</b> — " + k.niv.map((t, i) => "N" + (i + 1) + " : " + esc(t)).join(" · ")).join("<br>")}</p>` : ""}
       <p style="font-size:7.5pt;margin:2mm 0 0"><b>Calcul :</b> ${B.map(c => "<b>" + esc(c.lib) + "</b> = " + c.num.toUpperCase() + " ÷ " + (c.den || "bj").toUpperCase() + " × 100" + (diag ? "" : " → " + c.tr.map(t => t[0] + "–" + t[1] + " % : " + String(t[2]).replace(".", ",")).join(" · ") + " pt")).join(" — ")}. Reporter ensuite les totaux dans le classeur : ${diag ? "les pourcentages se calculent tout seuls" : "la note se calcule toute seule"}.</p>
       <style>
         #sm-print .eqg-t th.gi{background:#D9EAD3 !important} #sm-print .eqg-t th.gc{background:#F4CCCC !important}
@@ -47231,6 +47597,10 @@ window.JSYNC = window.JSYNC || (function () {
           </tr>
         </table>
 
+        <details class="no-print" style="margin:6px 0 10px;border:1px dashed #C9D1DC;border-radius:10px;padding:8px 12px;background:#FAFBFC" ${diagExclus(cl).length ? "open" : ""}>
+          <summary style="cursor:pointer;font-weight:700">🎯 Critères à diagnostiquer — ${compActives(cl).length}/${compDiagTous(cl).length} retenus <span class="muted" style="font-weight:400">(valable pour toute la classe ; le total est ramené sur 20 et l'analyse ne tient compte que des critères retenus)</span></summary>
+          <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px">${compDiagTous(cl).map(k => `<label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer${k.niv ? ";font-weight:700;color:#1F4E79" : ""}"><input type="checkbox" data-dx="${k.id}" ${diagExclus(cl).indexOf(k.id) < 0 ? "checked" : ""}> ${k.nom}</label>`).join("")}</div>
+        </details>
         <p class="fiche-consigne">Consigne : observer l'élève dans des situations individuelles simples et cocher la case correspondant au niveau réellement constaté.</p>
 
         <table class="fiche-grille">
@@ -47244,12 +47614,12 @@ window.JSYNC = window.JSYNC || (function () {
             </tr>
           </thead>
           <tbody>
-            ${COMPETENCES.map(k => `<tr>
-              <td>${k.nom}</td>
+            ${compActives(cl).map(k => `<tr>
+              <td>${k.niv ? `<b>${k.nom}</b> <span style="font-size:.68rem;font-weight:700;color:#fff;background:#1F4E79;border-radius:5px;padding:1px 5px;white-space:nowrap">critère ${esc(smNivCode(cl) || "")}</span>` : k.nom}</td>
               ${[0, 1, 2].map(v => `<td class="ck">
                 <button class="case ${String(el.scores[k.id]) === String(v) ? "on" : ""}" data-c="${k.id}" data-v="${v}">
                   <span class="box"></span> ${v}
-                </button></td>`).join("")}
+                </button>${k.niv ? `<div style="font-size:.72rem;line-height:1.3;color:#475569;margin-top:3px;text-align:left">${esc(k.niv[v])}</div>` : ""}</td>`).join("")}
               <td class="bar-note">${el.scores[k.id] !== undefined ? el.scores[k.id] : "…"} /2</td>
             </tr>`).join("")}
           </tbody>
@@ -47302,6 +47672,12 @@ window.JSYNC = window.JSYNC || (function () {
       };
     });
 
+    box.querySelectorAll("[data-dx]").forEach(x => x.onchange = () => {
+      const ex = diagExclus(cl).slice(), i = ex.indexOf(x.dataset.dx);
+      if (x.checked && i >= 0) ex.splice(i, 1); else if (!x.checked && i < 0) ex.push(x.dataset.dx);
+      if (ex.length >= compDiagTous(cl).length) { toast("Gardez au moins un critère"); x.checked = true; return; }
+      cl.diagExclus = ex; save(); render();
+    });
     $("fiche-sel").onchange = (e) => { ficheEleveId = e.target.value; render(); };
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
@@ -47469,7 +47845,7 @@ window.JSYNC = window.JSYNC || (function () {
     const si = statsIndividuel(cl), sc = statsCollectif(cl);
     const niv = niveauClasse(si, sc);
     const prio = prioritesAxes(si, sc);
-    const faibles = COMPETENCES.slice()
+    const faibles = compDiagTous(cl).filter(k => si.competences[k.id] && !si.competences[k.id].exclu)
       .sort((a, b) => si.competences[b.id].prioritePct - si.competences[a.id].prioritePct);
 
     const cle = (si.niveau || "lacune") + "|" + (sc.niveau || "lacune");
@@ -47529,6 +47905,7 @@ window.JSYNC = window.JSYNC || (function () {
         <p class="hint">Chaque compétence faible alimente la priorité des principes auxquels elle est rattachée. Résultat : ${prio.slice(0, 3).map(p => "<b>" + p.axe.nom + "</b>").join(" → ")}.</p>
       </div>
 
+      ${gapsAnalyseHTML(cl)}
       <button class="btn btn-primary no-print" id="go-axes">🎯 Voir les axes prioritaires</button>`;
     $("go-axes").onclick = () => { page = "axes"; render(); };
   }
@@ -53206,6 +53583,10 @@ window.XlsxLite = (function () {
         o.parts[p.id] = r.note; o.mes = r; if (r.note == null) o.complet = false; return;
       }
       var s = 0, ok = true, cs = critsDe(g, p.id);
+      if (!cs.length) {   // partie sans critère dans la grille : note de l'application (hors grille)
+        var hg = CFG.horsGrille ? CFG.horsGrille(ctx, e, p.id) : null;
+        o.parts[p.id] = hg == null ? null : Math.round(hg * 100) / 100; if (o.parts[p.id] == null) o.complet = false; return;
+      }
       cs.forEach(function (c) { var n = noteCrit(c, x, mx[c.id]); if (n == null) ok = false; else s += n; });
       o.parts[p.id] = cs.length && ok ? Math.round(s * 100) / 100 : null;
       if (o.parts[p.id] == null) o.complet = false;
@@ -53294,7 +53675,7 @@ window.XlsxLite = (function () {
     var mx = maxSomm(g, ctx.M);
     return CFG.parts.map(function (p) {
       if (p.mesure) return p.lib + " /" + fN(ctx.M[p.id]) + " : " + p.mesure.lib;
-      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "aucun critère");
+      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "hors grille : note de l'application");
     }).join(" · ") + " · Conceptuel /" + ctx.M.conc + " · Comportemental /" + ctx.M.comp + " = /20";
   }
 
@@ -53339,7 +53720,7 @@ window.XlsxLite = (function () {
     CFG.parts.forEach(function (p) {
       if (p.mesure) { e1 += '<th colspan="2" rowspan="2" class="s">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + '<br><span style="font-weight:400;font-size:10.5px">barème officiel</span></th>'; e3 += '<th class="s">' + esc(p.mesure.court) + '</th><th class="s">Note</th>'; return; }
       var cs = critsDe(g, p.id), H = enteteCrit(cs, function (c) { return notesNiv(c, mx[c.id]); }, mx, true);
-      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + esc(g.titre) + '</th>';
+      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + (cs.length ? esc(g.titre) : "hors grille (note de l'application)") + '</th>';
       e2 += H.h1.replace(/<br><span style="font-weight:400;font-size:10px;opacity:.85">[^<]*<\/span>/g, "") + '<th rowspan="2">Total /' + fN(ctx.M[p.id]) + '</th>';
       e3 += H.h2;
     });
@@ -53507,8 +53888,6 @@ window.XlsxLite = (function () {
         var gardes = W.criteres.filter(function (c) { return String(c.nom || "").trim(); });
         if (!gardes.length) { msg("Écrivez le nom d'au moins un critère."); return; }
         if (gardes.some(function (c) { return !(mesure && c.grp === mesure.id) && maxC(c) <= 0; })) { msg("Chaque critère doit avoir un niveau avec des points (> 0)."); return; }
-        var manque = partsNotees().filter(function (p) { return !gardes.some(function (c) { return c.grp === p.id; }); });
-        if (manque.length) { msg("Ajoutez au moins un critère pour : " + manque.map(function (p) { return p.lib; }).join(", ") + "."); return; }
         gardes.forEach(function (c) { c.niveaux.sort(function (a, b) { return a.pts - b.pts; }); if (!c.id) c.id = uid(); });
         W.criteres = gardes; W.titre = (W.titre || "").trim() || "Grille importée"; W.actif = true;
         lsSet(cleGrille(), JSON.stringify(W)); fermerEd(); bouton(); dessiner();
@@ -53547,7 +53926,8 @@ window.XlsxLite = (function () {
     parts: [{ id: "I", lib: "Individuelle" }, { id: "C", lib: "Collective" }],
     contexte: function () { var c = A.classe(); if (!c) return null; return { classe: c, niv: A.niv(c), G: A.G(c), eleves: (c.eleves || []).map(function (e) { return { id: e.id, nom: e.nom, sexe: e.genre === "F" ? "F" : "G" }; }) }; },
     maxima: function (ctx) { var G = ctx.G; return { I: G.i, C: G.c, conc: G.conc, comp: G.comp }; },
-    champsJournal: function (o) { return { individ: o.parts.I, collec: o.parts.C, conceptuelles: o.conc }; }
+    champsJournal: function (o) { return { individ: o.parts.I, collec: o.parts.C, conceptuelles: o.conc }; },
+    horsGrille: function (ctx, e, pid) { return A.noteHors ? A.noteHors(ctx.classe, e.id, pid) : null; }
   });
 })();
 @@SCRIPTCLOSE7f3a@@>
@@ -75008,6 +75388,10 @@ window.XlsxLite = (function () {
         o.parts[p.id] = r.note; o.mes = r; if (r.note == null) o.complet = false; return;
       }
       var s = 0, ok = true, cs = critsDe(g, p.id);
+      if (!cs.length) {   // partie sans critère dans la grille : note de l'application (hors grille)
+        var hg = CFG.horsGrille ? CFG.horsGrille(ctx, e, p.id) : null;
+        o.parts[p.id] = hg == null ? null : Math.round(hg * 100) / 100; if (o.parts[p.id] == null) o.complet = false; return;
+      }
       cs.forEach(function (c) { var n = noteCrit(c, x, mx[c.id]); if (n == null) ok = false; else s += n; });
       o.parts[p.id] = cs.length && ok ? Math.round(s * 100) / 100 : null;
       if (o.parts[p.id] == null) o.complet = false;
@@ -75096,7 +75480,7 @@ window.XlsxLite = (function () {
     var mx = maxSomm(g, ctx.M);
     return CFG.parts.map(function (p) {
       if (p.mesure) return p.lib + " /" + fN(ctx.M[p.id]) + " : " + p.mesure.lib;
-      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "aucun critère");
+      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "hors grille : note de l'application");
     }).join(" · ") + " · Conceptuel /" + ctx.M.conc + " · Comportemental /" + ctx.M.comp + " = /20";
   }
 
@@ -75141,7 +75525,7 @@ window.XlsxLite = (function () {
     CFG.parts.forEach(function (p) {
       if (p.mesure) { e1 += '<th colspan="2" rowspan="2" class="s">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + '<br><span style="font-weight:400;font-size:10.5px">barème officiel</span></th>'; e3 += '<th class="s">' + esc(p.mesure.court) + '</th><th class="s">Note</th>'; return; }
       var cs = critsDe(g, p.id), H = enteteCrit(cs, function (c) { return notesNiv(c, mx[c.id]); }, mx, true);
-      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + esc(g.titre) + '</th>';
+      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + (cs.length ? esc(g.titre) : "hors grille (note de l'application)") + '</th>';
       e2 += H.h1.replace(/<br><span style="font-weight:400;font-size:10px;opacity:.85">[^<]*<\/span>/g, "") + '<th rowspan="2">Total /' + fN(ctx.M[p.id]) + '</th>';
       e3 += H.h2;
     });
@@ -75309,8 +75693,6 @@ window.XlsxLite = (function () {
         var gardes = W.criteres.filter(function (c) { return String(c.nom || "").trim(); });
         if (!gardes.length) { msg("Écrivez le nom d'au moins un critère."); return; }
         if (gardes.some(function (c) { return !(mesure && c.grp === mesure.id) && maxC(c) <= 0; })) { msg("Chaque critère doit avoir un niveau avec des points (> 0)."); return; }
-        var manque = partsNotees().filter(function (p) { return !gardes.some(function (c) { return c.grp === p.id; }); });
-        if (manque.length) { msg("Ajoutez au moins un critère pour : " + manque.map(function (p) { return p.lib; }).join(", ") + "."); return; }
         gardes.forEach(function (c) { c.niveaux.sort(function (a, b) { return a.pts - b.pts; }); if (!c.id) c.id = uid(); });
         W.criteres = gardes; W.titre = (W.titre || "").trim() || "Grille importée"; W.actif = true;
         lsSet(cleGrille(), JSON.stringify(W)); fermerEd(); bouton(); dessiner();
@@ -85588,6 +85970,10 @@ window.DISC = {
         o.parts[p.id] = r.note; o.mes = r; if (r.note == null) o.complet = false; return;
       }
       var s = 0, ok = true, cs = critsDe(g, p.id);
+      if (!cs.length) {   // partie sans critère dans la grille : note de l'application (hors grille)
+        var hg = CFG.horsGrille ? CFG.horsGrille(ctx, e, p.id) : null;
+        o.parts[p.id] = hg == null ? null : Math.round(hg * 100) / 100; if (o.parts[p.id] == null) o.complet = false; return;
+      }
       cs.forEach(function (c) { var n = noteCrit(c, x, mx[c.id]); if (n == null) ok = false; else s += n; });
       o.parts[p.id] = cs.length && ok ? Math.round(s * 100) / 100 : null;
       if (o.parts[p.id] == null) o.complet = false;
@@ -85676,7 +86062,7 @@ window.DISC = {
     var mx = maxSomm(g, ctx.M);
     return CFG.parts.map(function (p) {
       if (p.mesure) return p.lib + " /" + fN(ctx.M[p.id]) + " : " + p.mesure.lib;
-      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "aucun critère");
+      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "hors grille : note de l'application");
     }).join(" · ") + " · Conceptuel /" + ctx.M.conc + " · Comportemental /" + ctx.M.comp + " = /20";
   }
 
@@ -85721,7 +86107,7 @@ window.DISC = {
     CFG.parts.forEach(function (p) {
       if (p.mesure) { e1 += '<th colspan="2" rowspan="2" class="s">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + '<br><span style="font-weight:400;font-size:10.5px">barème officiel</span></th>'; e3 += '<th class="s">' + esc(p.mesure.court) + '</th><th class="s">Note</th>'; return; }
       var cs = critsDe(g, p.id), H = enteteCrit(cs, function (c) { return notesNiv(c, mx[c.id]); }, mx, true);
-      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + esc(g.titre) + '</th>';
+      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + (cs.length ? esc(g.titre) : "hors grille (note de l'application)") + '</th>';
       e2 += H.h1.replace(/<br><span style="font-weight:400;font-size:10px;opacity:.85">[^<]*<\/span>/g, "") + '<th rowspan="2">Total /' + fN(ctx.M[p.id]) + '</th>';
       e3 += H.h2;
     });
@@ -85889,8 +86275,6 @@ window.DISC = {
         var gardes = W.criteres.filter(function (c) { return String(c.nom || "").trim(); });
         if (!gardes.length) { msg("Écrivez le nom d'au moins un critère."); return; }
         if (gardes.some(function (c) { return !(mesure && c.grp === mesure.id) && maxC(c) <= 0; })) { msg("Chaque critère doit avoir un niveau avec des points (> 0)."); return; }
-        var manque = partsNotees().filter(function (p) { return !gardes.some(function (c) { return c.grp === p.id; }); });
-        if (manque.length) { msg("Ajoutez au moins un critère pour : " + manque.map(function (p) { return p.lib; }).join(", ") + "."); return; }
         gardes.forEach(function (c) { c.niveaux.sort(function (a, b) { return a.pts - b.pts; }); if (!c.id) c.id = uid(); });
         W.criteres = gardes; W.titre = (W.titre || "").trim() || "Grille importée"; W.actif = true;
         lsSet(cleGrille(), JSON.stringify(W)); fermerEd(); bouton(); dessiner();
@@ -89116,6 +89500,10 @@ window.DISC = {
         o.parts[p.id] = r.note; o.mes = r; if (r.note == null) o.complet = false; return;
       }
       var s = 0, ok = true, cs = critsDe(g, p.id);
+      if (!cs.length) {   // partie sans critère dans la grille : note de l'application (hors grille)
+        var hg = CFG.horsGrille ? CFG.horsGrille(ctx, e, p.id) : null;
+        o.parts[p.id] = hg == null ? null : Math.round(hg * 100) / 100; if (o.parts[p.id] == null) o.complet = false; return;
+      }
       cs.forEach(function (c) { var n = noteCrit(c, x, mx[c.id]); if (n == null) ok = false; else s += n; });
       o.parts[p.id] = cs.length && ok ? Math.round(s * 100) / 100 : null;
       if (o.parts[p.id] == null) o.complet = false;
@@ -89204,7 +89592,7 @@ window.DISC = {
     var mx = maxSomm(g, ctx.M);
     return CFG.parts.map(function (p) {
       if (p.mesure) return p.lib + " /" + fN(ctx.M[p.id]) + " : " + p.mesure.lib;
-      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "aucun critère");
+      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "hors grille : note de l'application");
     }).join(" · ") + " · Conceptuel /" + ctx.M.conc + " · Comportemental /" + ctx.M.comp + " = /20";
   }
 
@@ -89249,7 +89637,7 @@ window.DISC = {
     CFG.parts.forEach(function (p) {
       if (p.mesure) { e1 += '<th colspan="2" rowspan="2" class="s">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + '<br><span style="font-weight:400;font-size:10.5px">barème officiel</span></th>'; e3 += '<th class="s">' + esc(p.mesure.court) + '</th><th class="s">Note</th>'; return; }
       var cs = critsDe(g, p.id), H = enteteCrit(cs, function (c) { return notesNiv(c, mx[c.id]); }, mx, true);
-      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + esc(g.titre) + '</th>';
+      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + (cs.length ? esc(g.titre) : "hors grille (note de l'application)") + '</th>';
       e2 += H.h1.replace(/<br><span style="font-weight:400;font-size:10px;opacity:.85">[^<]*<\/span>/g, "") + '<th rowspan="2">Total /' + fN(ctx.M[p.id]) + '</th>';
       e3 += H.h2;
     });
@@ -89417,8 +89805,6 @@ window.DISC = {
         var gardes = W.criteres.filter(function (c) { return String(c.nom || "").trim(); });
         if (!gardes.length) { msg("Écrivez le nom d'au moins un critère."); return; }
         if (gardes.some(function (c) { return !(mesure && c.grp === mesure.id) && maxC(c) <= 0; })) { msg("Chaque critère doit avoir un niveau avec des points (> 0)."); return; }
-        var manque = partsNotees().filter(function (p) { return !gardes.some(function (c) { return c.grp === p.id; }); });
-        if (manque.length) { msg("Ajoutez au moins un critère pour : " + manque.map(function (p) { return p.lib; }).join(", ") + "."); return; }
         gardes.forEach(function (c) { c.niveaux.sort(function (a, b) { return a.pts - b.pts; }); if (!c.id) c.id = uid(); });
         W.criteres = gardes; W.titre = (W.titre || "").trim() || "Grille importée"; W.actif = true;
         lsSet(cleGrille(), JSON.stringify(W)); fermerEd(); bouton(); dessiner();
@@ -92468,6 +92854,10 @@ window.DISC = {
         o.parts[p.id] = r.note; o.mes = r; if (r.note == null) o.complet = false; return;
       }
       var s = 0, ok = true, cs = critsDe(g, p.id);
+      if (!cs.length) {   // partie sans critère dans la grille : note de l'application (hors grille)
+        var hg = CFG.horsGrille ? CFG.horsGrille(ctx, e, p.id) : null;
+        o.parts[p.id] = hg == null ? null : Math.round(hg * 100) / 100; if (o.parts[p.id] == null) o.complet = false; return;
+      }
       cs.forEach(function (c) { var n = noteCrit(c, x, mx[c.id]); if (n == null) ok = false; else s += n; });
       o.parts[p.id] = cs.length && ok ? Math.round(s * 100) / 100 : null;
       if (o.parts[p.id] == null) o.complet = false;
@@ -92556,7 +92946,7 @@ window.DISC = {
     var mx = maxSomm(g, ctx.M);
     return CFG.parts.map(function (p) {
       if (p.mesure) return p.lib + " /" + fN(ctx.M[p.id]) + " : " + p.mesure.lib;
-      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "aucun critère");
+      return p.lib + " /" + fN(ctx.M[p.id]) + " = " + (critsDe(g, p.id).map(function (c) { return esc(c.nom) + " /" + fN(mx[c.id]); }).join(" + ") || "hors grille : note de l'application");
     }).join(" · ") + " · Conceptuel /" + ctx.M.conc + " · Comportemental /" + ctx.M.comp + " = /20";
   }
 
@@ -92601,7 +92991,7 @@ window.DISC = {
     CFG.parts.forEach(function (p) {
       if (p.mesure) { e1 += '<th colspan="2" rowspan="2" class="s">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + '<br><span style="font-weight:400;font-size:10.5px">barème officiel</span></th>'; e3 += '<th class="s">' + esc(p.mesure.court) + '</th><th class="s">Note</th>'; return; }
       var cs = critsDe(g, p.id), H = enteteCrit(cs, function (c) { return notesNiv(c, mx[c.id]); }, mx, true);
-      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + esc(g.titre) + '</th>';
+      e1 += '<th colspan="' + (cs.reduce(function (s, c) { return s + c.niveaux.length + 1; }, 0) + 1) + '">' + esc(p.lib) + ' /' + fN(ctx.M[p.id]) + ' — ' + (cs.length ? esc(g.titre) : "hors grille (note de l'application)") + '</th>';
       e2 += H.h1.replace(/<br><span style="font-weight:400;font-size:10px;opacity:.85">[^<]*<\/span>/g, "") + '<th rowspan="2">Total /' + fN(ctx.M[p.id]) + '</th>';
       e3 += H.h2;
     });
@@ -92769,8 +93159,6 @@ window.DISC = {
         var gardes = W.criteres.filter(function (c) { return String(c.nom || "").trim(); });
         if (!gardes.length) { msg("Écrivez le nom d'au moins un critère."); return; }
         if (gardes.some(function (c) { return !(mesure && c.grp === mesure.id) && maxC(c) <= 0; })) { msg("Chaque critère doit avoir un niveau avec des points (> 0)."); return; }
-        var manque = partsNotees().filter(function (p) { return !gardes.some(function (c) { return c.grp === p.id; }); });
-        if (manque.length) { msg("Ajoutez au moins un critère pour : " + manque.map(function (p) { return p.lib; }).join(", ") + "."); return; }
         gardes.forEach(function (c) { c.niveaux.sort(function (a, b) { return a.pts - b.pts; }); if (!c.id) c.id = uid(); });
         W.criteres = gardes; W.titre = (W.titre || "").trim() || "Grille importée"; W.actif = true;
         lsSet(cleGrille(), JSON.stringify(W)); fermerEd(); bouton(); dessiner();
