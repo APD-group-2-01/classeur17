@@ -2163,6 +2163,14 @@ const JOURNAL_DEFAUT = {
     const cleC = s => (window.parent && window.parent.SyncClassesEPS) ? window.parent.SyncClassesEPS.cleClasse(s) : String(s || "").trim().toLowerCase();
     file.forEach(it => {
       const nd = state.data.niveaux[it.niveau]; if (!nd) return;
+      if (it.supprimer) {
+        const old = nd.classes.filter(c => cleC(c) === cleC(it.supprimer))[0]; if (!old) return;
+        nd.classes = nd.classes.filter(c => c !== old);
+        delete nd.cycles[old]; delete nd.aptitudes[old];
+        if (nd.planification) delete nd.planification[old];
+        if (nd.activeClasse === old) nd.activeClasse = nd.classes[0] || null;
+        return;
+      }
       if (it.renommer) {
         const old = it.renommer, nom = it.nom;
         if (nd.classes.indexOf(old) === -1 || nd.classes.indexOf(nom) !== -1) return;
@@ -93063,8 +93071,8 @@ window.DISC = {
      dans toutes les autres (cahier journalier compris), avec ses élèves ;
    - les élèves ajoutés à une classe sont ajoutés aux autres applications ;
    - une classe renommée est renommée partout ;
-   - une classe (ou un élève) supprimée dans une application n'y revient
-     pas, mais reste dans les autres (aucune donnée n'est effacée ailleurs).
+   - une classe supprimée dans une application (cahier journalier compris)
+     est supprimée dans toutes les autres ; un élève supprimé n'y revient pas.
    ══════════════════════════════════════════════════════════════ */
 (function () {
   "use strict";
@@ -93189,6 +93197,13 @@ window.DISC = {
       q.onsuccess = function () { ok(q.result || []); }; q.onerror = function () { ko(q.error); };
     });
   }
+  function idbSupprimer(db, stores, cles) {   // cles : [[store, clé], …]
+    return new Promise(function (ok, ko) {
+      var tx = db.transaction(stores, "readwrite");
+      cles.forEach(function (o) { tx.objectStore(o[0]).delete(o[1]); });
+      tx.oncomplete = function () { ok(true); }; tx.onerror = function () { ko(tx.error); }; tx.onabort = function () { ko(tx.error); };
+    });
+  }
   function idbEcrire(db, stores, objets) {   // objets : [[store, obj], …]
     return new Promise(function (ok, ko) {
       var tx = db.transaction(stores, "readwrite");
@@ -93219,6 +93234,7 @@ window.DISC = {
       });
       // file en attente (cahier pas encore rouvert)
       jp(get("classeurEPS::fileClasses::journal::" + an), []).forEach(function (it) {
+        if (it.supprimer) { out = out.filter(function (c) { return !(c.ref.niveau === it.niveau && cleClasse(c.nom) === cleClasse(it.supprimer)); }); return; }
         if (it.renommer) { out.forEach(function (c) { if (c.ref.niveau === it.niveau && c.ref.nom === it.renommer) { c.nom = it.nom; c.ref = { niveau: it.niveau, nom: it.nom }; } }); return; }
         var c = out.filter(function (x) { return x.ref.niveau === it.niveau && cleClasse(x.nom) === cleClasse(it.nom); })[0];
         if (!c) { c = { nom: it.nom, niveau: it.niveau, eleves: [], ref: { niveau: it.niveau, nom: it.nom } }; out.push(c); }
@@ -93235,6 +93251,7 @@ window.DISC = {
         f.push({ niveau: niv, nom: c.nom, eleves: c.eleves.map(function (e) { return e.nom; }) }); n++;
       });
       p.ajouts.forEach(function (a) { f.push({ niveau: a.ref.niveau, nom: a.ref.nom, eleves: a.eleves.map(function (e) { return e.nom; }) }); n++; });
+      (p.supprimer || []).forEach(function (r) { f.push({ niveau: r.niveau, supprimer: r.nom }); n++; });
       if (!n) return Promise.resolve(false);
       ls.setItem(K, JSON.stringify(f));
       return Promise.resolve(true);
@@ -93259,6 +93276,8 @@ window.DISC = {
         p.nouvelles.forEach(function (c) { d.classes.push({ id: uid("id"), nom: c.nom, niveauScolaire: c.niveau || undefined, eleves: c.eleves.map(el), projet: null }); });
         p.ajouts.forEach(function (a) { var k = d.classes.filter(function (c) { return c.id === a.ref; })[0]; if (k) k.eleves = (k.eleves || []).concat(a.eleves.map(el)); });
         p.renommer.forEach(function (r) { var k = d.classes.filter(function (c) { return c.id === r.ref; })[0]; if (k) k.nom = r.nom; });
+        var sup = p.supprimer || [];
+        if (sup.length) { d.classes = d.classes.filter(function (c) { return sup.indexOf(c.id) < 0; }); if (sup.indexOf(d.activeId) >= 0) d.activeId = null; }
         if (!d.activeId && d.classes.length) d.activeId = d.classes[0].id;
         ls.setItem(K, JSON.stringify(d));
         return Promise.resolve(true);
@@ -93295,6 +93314,16 @@ window.DISC = {
         k.nom = x.nom; n++;
         if (k.id === r.activeId) { var SK = "DIDUR_V6_SESSION::" + an, se = jp(get(SK), null); if (se && typeof se === "object") { se.classe = x.nom; ls.setItem(SK, JSON.stringify(se)); } }
       });
+      var sup = p.supprimer || [];
+      if (sup.length) {
+        var avant = r.classes.length;
+        r.classes = r.classes.filter(function (c) { return sup.indexOf(c.id) < 0; });
+        n += avant - r.classes.length;
+        if (sup.indexOf(r.activeId) >= 0) {
+          r.activeId = null;                                        // l'application ouvrira la classe suivante
+          if (!r.classes.length) { ls.setItem("DIDUR_V6_SESSION::" + an, ""); ls.setItem("DIDUR_SOMMATIVE::" + an, "{}"); }
+        }
+      }
       if (!n) return Promise.resolve(false);
       ls.setItem(K, JSON.stringify(r));
       return Promise.resolve(true);
@@ -93334,10 +93363,17 @@ window.DISC = {
         p.nouvelles.forEach(function (c) { var id = uid("classe_"); o.push(["classes", { id: id, nom: c.nom, niveauScolaire: c.niveau || "", createdAt: t }]); c.eleves.forEach(function (e) { o.push(st(id, e)); }); });
         p.ajouts.forEach(function (a) { a.eleves.forEach(function (e) { o.push(st(a.ref, e)); }); });
         var ren = p.renommer.length ? idbTout(db, "classes") : Promise.resolve([]);
+        var sup = p.supprimer || [];
         return ren.then(function (cls) {
           p.renommer.forEach(function (r) { var k = cls.filter(function (c) { return c.id === r.ref; })[0]; if (k) { k.nom = r.nom; o.push(["classes", k]); } });
-          if (!o.length) { db.close(); return false; }
-          return idbEcrire(db, ["classes", "students"], o).then(function () { db.close(); return true; });
+          if (!o.length && !sup.length) { db.close(); return false; }
+          return (o.length ? idbEcrire(db, ["classes", "students"], o) : Promise.resolve()).then(function () {
+            if (!sup.length) return;
+            return idbTout(db, "students").then(function (sts) {
+              var dl = sup.map(function (id) { return ["classes", id]; }).concat(sts.filter(function (s) { return sup.indexOf(s.classeId) >= 0; }).map(function (s) { return ["students", s.id]; }));
+              return idbSupprimer(db, ["classes", "students"], dl);
+            });
+          }).then(function () { db.close(); return true; });
         });
       });
     }
@@ -93377,8 +93413,15 @@ window.DISC = {
             p.ajouts.forEach(function (a) { var k = parId[a.ref]; if (k) { k.eleves = (k.eleves || []).concat(a.eleves.map(el)); k._m = 1; } });
             p.renommer.forEach(function (r) { var k = parId[r.ref]; if (k) { k.nom = r.nom; k._m = 1; } });
             l.forEach(function (k) { if (k._m) { delete k._m; o.push(["classes", k]); } });
-            if (!o.length) { db.close(); return false; }
-            return idbEcrire(db, ["classes"], o).then(function () { db.close(); return true; });
+            var sup = (p.supprimer || []).filter(function (id) { return parId[id]; });
+            if (!o.length && !sup.length) { db.close(); return false; }
+            return (o.length ? idbEcrire(db, ["classes"], o) : Promise.resolve()).then(function () {
+              if (!sup.length) return;
+              return idbTout(db, "evaluations").then(function (ev) {
+                var dl = sup.map(function (id) { return ["classes", id]; }).concat(ev.filter(function (e) { return sup.indexOf(e.classeId) >= 0; }).map(function (e) { return ["evaluations", e.id]; }));
+                return idbSupprimer(db, ["classes", "evaluations"], dl);
+              }, function () { return idbSupprimer(db, ["classes"], sup.map(function (id) { return ["classes", id]; })); });
+            }).then(function () { db.close(); return true; });
           });
         });
       }
@@ -93405,6 +93448,8 @@ window.DISC = {
         p.nouvelles.forEach(function (c) { d.classes.push(x[3](c, c.eleves.map(x[2]))); });
         p.ajouts.forEach(function (a) { var k = d.classes.filter(function (c) { return c.id === a.ref; })[0]; if (k) k.eleves = (k.eleves || []).concat(a.eleves.map(x[2])); });
         p.renommer.forEach(function (r) { var k = d.classes.filter(function (c) { return c.id === r.ref; })[0]; if (k) k.nom = r.nom; });
+        var sup = p.supprimer || [];
+        if (sup.length) { d.classes = d.classes.filter(function (c) { return sup.indexOf(c.id) < 0; }); d.active = 0; }
         ls.setItem(K, JSON.stringify(d));
         return Promise.resolve(true);
       }
@@ -93447,7 +93492,9 @@ window.DISC = {
   function executer(sauf) {
     var RK = "classeurEPS::syncClasses::" + anJournal();
     var reg = jp(get(RK), null) || {};
-    reg.vus = reg.vus || {}; reg.ign = reg.ign || {}; reg.ignEl = reg.ignEl || {}; reg.alias = reg.alias || {};
+    reg.vus = reg.vus || {}; reg.ign = reg.ign || {}; reg.ignEl = reg.ignEl || {}; reg.alias = reg.alias || {}; reg.supp = reg.supp || {};
+    // classes déjà supprimées du cahier journalier avant cette version : supprimées partout
+    if (!reg.suppInit) { reg.suppInit = 1; Object.keys(reg.ign.journal || {}).forEach(function (ck) { reg.supp[ck] = { app: "journal", t: Date.now() }; }); }
     /* classe renommée : une application qui garde l'ancien nom est rattachée au nouveau */
     function resoudre(ck) { var vu = {}; while (reg.alias[ck] && !vu[ck]) { vu[ck] = 1; ck = reg.alias[ck]; } return ck; }
     function rattacher(c) {
@@ -93458,6 +93505,7 @@ window.DISC = {
       var cur = {};
       A.forEach(function (a, i) { if (lus[i]) cur[a.id] = rattacher(lus[i]); });
       var renoms = [];   // [{ app, de, vers }]
+      var venuesApp = {};
 
       /* 1. ce qui a changé dans chaque application depuis la dernière fois */
       Object.keys(cur).forEach(function (app) {
@@ -93476,6 +93524,9 @@ window.DISC = {
             }
           }
           parties.forEach(function (ck) { ign[ck] = 1; });
+          // classe supprimée par le professeur : à supprimer partout (sauf si l'application a été vidée d'un coup : réinitialisation)
+          if (Object.keys(c).length || Object.keys(v).length < 2) parties.forEach(function (ck) { reg.supp[ck] = { app: app, t: Date.now() }; });
+          venuesApp[app] = venues;
           Object.keys(v).forEach(function (ck) {
             if (!c[ck]) return;
             v[ck].forEach(function (ek) { if (!c[ck].eleves[ek]) (ie[ck] = ie[ck] || {})[ek] = 1; });
@@ -93489,7 +93540,20 @@ window.DISC = {
 
       /* 2. renommages : appliqués aux autres applications */
       var plans = {};
-      function plan(app) { return plans[app] = plans[app] || { nouvelles: [], ajouts: [], renommer: [] }; }
+      function plan(app) { return plans[app] = plans[app] || { nouvelles: [], ajouts: [], renommer: [], supprimer: [] }; }
+      /* 2bis. classes supprimées : retirées de toutes les applications (une classe recréée sous le même nom revient) */
+      var supprimees = {};
+      Object.keys(reg.supp).forEach(function (ck) {
+        if (Object.keys(venuesApp).some(function (app) { return venuesApp[app].indexOf(ck) >= 0; })) {
+          delete reg.supp[ck]; Object.keys(reg.ign).forEach(function (a) { if (reg.ign[a]) delete reg.ign[a][ck]; }); return;   // recréée : revient partout
+        }
+        Object.keys(cur).forEach(function (app) {
+          var x = cur[app][ck]; if (!x || app === sauf) return;
+          plan(app).supprimer.push(x.ref);
+          (supprimees[x.nom] = supprimees[x.nom] || []).push(app);
+          delete cur[app][ck];
+        });
+      });
       renoms.forEach(function (r) {
         var nv = cur[r.app][r.vers];
         Object.keys(cur).forEach(function (app) {
@@ -93508,6 +93572,7 @@ window.DISC = {
       ORDRE.forEach(function (app) {
         var c = cur[app]; if (!c) return;
         Object.keys(c).forEach(function (ck) {
+          if (reg.supp[ck]) return;
           var x = c[ck], u = U[ck];
           if (!u) u = U[ck] = { nom: x.nom, niveau: "", eleves: {}, ordre: [] };
           if (!u.niveau && NIVEAUX.indexOf(x.niveau) >= 0) u.niveau = x.niveau;
@@ -93567,14 +93632,15 @@ window.DISC = {
         if (relus) A.forEach(function (a, i) { if (relus[i]) cur[a.id] = rattacher(relus[i]); });
         Object.keys(cur).forEach(function (app) { reg.vus[app] = photo(cur[app]); });
         try { ls.setItem(RK, JSON.stringify(reg)); } catch (e) {}
-        var noms = Object.keys(ajoutees), msg = "";
-        if (noms.length) msg = "🔄 " + (noms.length === 1 ? "Classe « " + noms[0] + " » ajoutée" : noms.length + " classes ajoutées (" + noms.slice(0, 4).join(", ") + (noms.length > 4 ? "…" : "") + ")") +
+        var noms = Object.keys(ajoutees), msg = "", sn = Object.keys(supprimees);
+        if (sn.length) msg = "🗑 " + (sn.length === 1 ? "Classe « " + sn[0] + " » supprimée" : sn.length + " classes supprimées (" + sn.slice(0, 4).join(", ") + (sn.length > 4 ? "…" : "") + ")") + " dans les autres applications. ";
+        if (noms.length) msg += "🔄 " + (noms.length === 1 ? "Classe « " + noms[0] + " » ajoutée" : noms.length + " classes ajoutées (" + noms.slice(0, 4).join(", ") + (noms.length > 4 ? "…" : "") + ")") +
           " dans " + (function (l) { var t = {}; noms.forEach(function (n) { ajoutees[n].forEach(function (a) { t[a] = 1; }); }); l = Object.keys(t).map(function (a) { return NOMS[a] || a; }); return l.length > 3 ? l.length + " applications" : l.join(", "); })() + ".";
-        else if (renoms.length) msg = "🔄 Classe renommée dans toutes les applications : " + cur[renoms[0].app][renoms[0].vers].nom + ".";
+        else if (renoms.length) msg += "🔄 Classe renommée dans toutes les applications : " + cur[renoms[0].app][renoms[0].vers].nom + ".";
         else if (Object.keys(elevesAj).length) {
           var ne = Object.keys(elevesAj).length, cls = {}; Object.keys(elevesAj).forEach(function (k) { cls[elevesAj[k]] = 1; });
           var na = Object.keys(appsEl).length;
-          msg = "🔄 " + ne + (ne > 1 ? " élèves ajoutés" : " élève ajouté") + " (" + Object.keys(cls).slice(0, 3).join(", ") + ") dans " + (na > 3 ? na + " applications" : Object.keys(appsEl).map(function (a) { return NOMS[a] || a; }).join(", ")) + ".";
+          msg += "🔄 " + ne + (ne > 1 ? " élèves ajoutés" : " élève ajouté") + " (" + Object.keys(cls).slice(0, 3).join(", ") + ") dans " + (na > 3 ? na + " applications" : Object.keys(appsEl).map(function (a) { return NOMS[a] || a; }).join(", ")) + ".";
         }
         return { modifiees: modifiees, message: msg };
       });
