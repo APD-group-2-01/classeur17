@@ -13839,6 +13839,7 @@ window.JSYNC = window.JSYNC || (function () {
     // niveau collectif = catégorie dominante : R1 = N1, R2 = N2, R3 = N3
     const max = Math.max(res.pctR1, res.pctR2, res.pctR3);
     res.niveau = (max === res.pctR3) ? "maitrise" : (max === res.pctR2 ? "intermediaire" : "lacune");
+    if (eqd && eqd.niveauEq) res.niveau = eqd.niveauEq;   // niveau d'après les critères du diagnostic par équipe
     return res;
   }
 
@@ -14095,6 +14096,9 @@ window.JSYNC = window.JSYNC || (function () {
       // construire : plus la construction en 3 touches est rare, plus c'est prioritaire
       coll.construire = Math.round((100 - sc.pctR3) * 0.7 + sc.pctR1 * 0.3);
     }
+    // diagnostic collectif par équipe : poids des axes d'après les critères du niveau
+    const eqA = (typeof eqDiagAxes === "function") ? eqDiagAxes(classe()) : null;
+    if (eqA) Object.keys(eqA).forEach(k => { coll[k] = eqA[k]; });
 
     // Pertinence didactique : un axe n'a pas le même sens selon le niveau.
     // Une classe qui joue en renvoi direct (niveau Lacunes) doit d'abord
@@ -14967,7 +14971,7 @@ window.JSYNC = window.JSYNC || (function () {
         <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:1.05rem">Équipe ${t}</b><span class="muted" style="font-size:.8rem">${nb} élève(s)</span></div>
         <div style="display:grid;grid-template-columns:repeat(${1 + coches.length},minmax(0,1fr));gap:6px;margin:8px 0">${["bj"].concat(coches).map(k => `<label style="display:flex;flex-direction:column;align-items:center;gap:3px;font-size:.72rem;font-weight:700;color:#5A6B7D;text-align:center" title="${EQ_PLU[k]}">${k.toUpperCase()}<input type="number" min="0" step="1" inputmode="numeric" data-eqd-t="${t}|${k}" value="${esc(tot[k] == null ? "" : tot[k])}" style="width:100%;max-width:70px;padding:6px 4px;text-align:center;font-size:1rem;font-weight:700;border:1.5px solid #c9d3e0;border-radius:8px"></label>`).join("")}</div>
         <div style="font-size:.84rem;line-height:1.5;border-top:1px dashed #DDE3EA;padding-top:6px">${P.map(x => `<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="flex:1">${esc(x.c.lib)} <small class="muted">(${x.c.num.toUpperCase()} ÷ ${(x.c.den || "bj").toUpperCase()})</small></span>
-          <span style="width:70px;height:8px;background:#EEF1F5;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${Math.min(100, x.pct || 0)}%;background:${coul(x.pct)}"></span></span><b style="min-width:46px;text-align:right;color:${coul(x.pct)}">${f(x.pct)}</b></div>`).join("")}</div></div>`;
+          <span style="width:70px;height:8px;background:#EEF1F5;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${Math.min(100, x.pct || 0)}%;background:${coul(x.c.inverse && x.pct != null ? 100 - x.pct : x.pct)}"></span></span><b style="min-width:46px;text-align:right;color:${coul(x.c.inverse && x.pct != null ? 100 - x.pct : x.pct)}">${f(x.pct)}</b></div>`).join("")}</div></div>`;
     }).join("");
     const Pc = eqPct(cl, Object.assign(eqStatsTot({}), totC));
     return `<div class="card eqd-card no-print-x">
@@ -14981,7 +14985,8 @@ window.JSYNC = window.JSYNC || (function () {
       ${eqCompoHTML(cl, q, eqs)}
       ${eqs.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">${cartes}</div>
       <div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:#F3EEFA;border:1px solid #D9CCEE"><b>Classe entière</b> (toutes les équipes) — BJ = ${totC.bj}${coches.map(k => " · " + k.toUpperCase() + " = " + totC[k]).join("")}<br>
-        ${Pc.map(x => `${esc(x.c.lib)} : <b style="color:${coul(x.pct)}">${f(x.pct)}</b>`).join(" · ")}</div>` : `<p class="hint">Répartissez d'abord la classe en équipes (⚡ ou cases ci-dessus).</p>`}
+        ${Pc.map(x => `${esc(x.c.lib)} : <b style="color:${coul(x.c.inverse && x.pct != null ? 100 - x.pct : x.pct)}">${f(x.pct)}</b>`).join(" · ")}
+        ${(() => { const D = eqDiagClasse(cl); return D ? `<br><b>Niveau collectif :</b> ${typeof tagNiveau === "function" ? tagNiveau(D.niveau) : D.niveau} <span class="muted">(réussite moyenne ${D.moy} %)</span><br><span style="font-size:.9rem">${eqLecture(D)}</span>` : ""; })()}</div>` : `<p class="hint">Répartissez d'abord la classe en équipes (⚡ ou cases ci-dessus).</p>`}
     </div>`;
   }
   function eqDiagMonter(c, cl) {
@@ -14994,6 +14999,7 @@ window.JSYNC = window.JSYNC || (function () {
     const cache = document.createElement("div"); cache.style.display = "none"; cache.id = "eqd-ancien"; c.appendChild(cache);
     [lc, tw, bt, c.querySelector("#bloc-scan-col-page")].forEach(x => { if (x) cache.appendChild(x); });
     const e1 = c.querySelector("#co-eq1"), tr1 = e1 && e1.closest("tr"); if (tr1) tr1.style.display = "none";
+    const syn = c.querySelector("#coll-synthese"); if (syn && eqDiagClasse(cl)) syn.style.display = "none";
     const rafraichir = () => { const y = window.scrollY; render(); window.scrollTo(0, y); };
     eqBrancher(z, cl, rafraichir);
     z.querySelectorAll("[data-eqd-t]").forEach(x => x.onchange = () => { const p = x.dataset.eqdT.split("|"); eqDiagTot(cl, p[0])[p[1]] = x.value.trim(); save(); rafraichir(); });
@@ -15013,7 +15019,62 @@ window.JSYNC = window.JSYNC || (function () {
     else if (coches.indexOf("ba") >= 0) { r3 = 0; r2 = Math.min(T.ba, T.bj); r1 = Math.max(0, T.bj - r2); }
     else return null;
     const z = { jouees: 0, r1: 0, r2: 0, r3: 0, sr: 0 };
-    return { r1, r2, r3, jouees: T.bj, servicesRates: 0, parEquipe: { e1: Object.assign({}, z), e2: Object.assign({}, z) } };
+    const D = eqDiagClasse(cl);
+    return { r1, r2, r3, jouees: T.bj, servicesRates: 0, niveauEq: D ? D.niveau : null, parEquipe: { e1: Object.assign({}, z), e2: Object.assign({}, z) } };
+  }
+
+  /* ── ANALYSE À PARTIR DU DIAGNOSTIC COLLECTIF PAR ÉQUIPE ──
+     réussite d'un critère = % (ou 100 − % pour un critère inversé : balles perdues) */
+  function eqDiagClasse(cl) {
+    if (!eqPossible() || !cl || !cl.collectif || !cl.collectif.eqDiag) return null;
+    const T = eqStatsTot({}); let n = 0;
+    eqEquipesUtilisees(cl).forEach(t => { const s = eqStatsTot(eqDiagTot(cl, t)); if (s.bj) n++; Object.keys(T).forEach(k => { T[k] += s[k] || 0; }); });
+    if (!n || !T.bj) return null;
+    const P = eqPct(cl, T).map(x => Object.assign(x, { succ: x.pct == null ? null : (x.c.inverse ? 100 - x.pct : x.pct) }));
+    const v = P.filter(x => x.succ != null), moy = v.length ? Math.round(v.reduce((a, x) => a + x.succ, 0) / v.length) : null;
+    const niveau = moy == null ? null : moy < 35 ? "lacune" : moy < 60 ? "intermediaire" : "maitrise";
+    return { T, P, n, moy, niveau };
+  }
+  const EQ_LECT = {
+    prog: "Les balles arrivent rarement en zone avant : jeu groupé autour du ballon, peu de démarquage. Priorité : progresser vers la cible (démarquage, passe vers l'avant, occupation des couloirs).",
+    recup: "L'équipe récupère peu de balles : défense passive. Priorité : récupérer la balle (repli, pression sur le porteur, interceptions) et défendre la cible.",
+    def: "L'équipe conquiert peu de balles : défense passive. Priorité : récupérer la balle (repli, pression sur le porteur, interceptions) et s'opposer à la progression adverse.",
+    att: "Peu de tirs tentés par rapport aux balles jouées : l'attaque n'aboutit pas. Priorité : progresser et se créer des positions de tir.",
+    eff: "Les tirs sont peu efficaces : choisir des positions favorables et travailler la qualité du tir (marquer).",
+    cons: "Beaucoup de balles perdues : priorité à la conservation (réception, protection du ballon, passe sûre)."
+  };
+  function eqLecture(D) {
+    const v = D.P.filter(x => x.succ != null).sort((a, b) => a.succ - b.succ);
+    if (!v.length) return "";
+    const f = v[0], fort = v[v.length - 1];
+    return (EQ_LECT[f.c.id] || ("Critère le plus faible : " + esc(f.c.lib) + ".")) + (v.length > 1 && fort.succ >= 50 ? " Point d'appui : " + esc(fort.c.lib.toLowerCase()) + " (" + fort.pct + " %)." : "");
+  }
+  /* poids des axes (0–100 : plus c'est haut, plus l'axe est prioritaire) */
+  function eqDiagAxes(cl) {
+    const D = eqDiagClasse(cl); if (!D) return null;
+    const S = {}; D.P.forEach(x => { if (x.succ != null) S[x.c.id] = x.succ; });
+    const fb = (...ids) => { for (const i of ids) if (S[i] != null) return 100 - S[i]; return null; };
+    const moy2 = (a, b) => a == null ? b : b == null ? a : Math.round((a + b) / 2);
+    const w = {
+      conserver: fb("cons", "prog", "att"),
+      progresser: fb("prog", "att", "cons"),
+      marquer: fb("eff", "att"),
+      recuperer: fb("recup", "def"),
+      defendre: fb("def", "recup"),
+      opposer: fb("def", "recup"),
+      contreattaque: moy2(fb("def", "recup"), fb("att", "prog"))
+    };
+    Object.keys(w).forEach(k => { if (w[k] == null) delete w[k]; });
+    return w;
+  }
+  function eqAnalyseHTML(cl) {
+    const D = eqDiagClasse(cl); if (!D) return "";
+    const coul = (p) => p == null ? "#9AA5B1" : p < 20 ? "var(--lacune,#C62828)" : p <= 40 ? "#E07B00" : p <= 60 ? "var(--inter,#B8A000)" : "var(--maitrise,#2E7D32)";
+    return `<p class="muted" style="font-size:.9rem;">${D.n} équipe(s) observée(s) — ${D.T.bj} balles jouées · critères ${esc(smNivCode(cl) || "")}</p>
+      ${D.P.map(x => `<div style="display:flex;align-items:center;gap:10px;margin:6px 0"><span style="flex:1">${esc(x.c.lib)} <small class="muted">(${x.c.num.toUpperCase()} ÷ ${(x.c.den || "bj").toUpperCase()}${x.c.inverse ? ", moins c'est mieux" : ""})</small></span>
+        <span class="bar" style="width:120px;height:10px;display:inline-block"><span style="display:block;height:100%;width:${Math.min(100, x.pct || 0)}%;background:${coul(x.succ)}"></span></span><b style="min-width:48px;text-align:right;color:${coul(x.succ)}">${x.pct == null ? "—" : x.pct + " %"}</b></div>`).join("")}
+      <p style="font-size:.9rem;line-height:1.75;margin-top:8px">${eqLecture(D)}</p>
+      <p class="hint">Réussite moyenne des critères : <b>${D.moy} %</b> → niveau ${D.niveau === "lacune" ? "Lacunes (< 35 %)" : D.niveau === "intermediaire" ? "Intermédiaire (35–59 %)" : "Maîtrise (≥ 60 %)"}. Source : diagnostic collectif par équipe.</p>`;
   }
   function viewSommative(c, cl) {
     smStyle();
@@ -16111,7 +16172,7 @@ window.JSYNC = window.JSYNC || (function () {
 
         <div class="card">
           <div class="card-title">Niveau collectif ${tagNiveau(sc.niveau)}</div>
-          ${sc.saisi ? `
+          ${(typeof eqAnalyseHTML === "function" && eqAnalyseHTML(cl)) || (sc.saisi ? `
           <p class="muted" style="font-size:.9rem;">${sc.totalR} possessions observées — R1 ${sc.pctR1} % · R2 ${sc.pctR2} % · R3 ${sc.pctR3} %</p>
           <div class="bar" style="height:16px;display:flex;margin-bottom:10px;">
             <span style="width:${sc.pctR1}%;background:var(--lacune);"></span>
@@ -16120,7 +16181,7 @@ window.JSYNC = window.JSYNC || (function () {
           </div>
           <p style="font-size:.9rem;line-height:1.75;">${lectureCollective(sc)}</p>
           <p class="hint">Services ratés : ${sc.pctServiceRate} % des balles — ${sc.pctServiceRate > 25 ? "la mise en jeu est un frein important." : "la mise en jeu est globalement assurée."}</p>`
-          : `<p class="muted">Grille collective non renseignée.</p>`}
+          : `<p class="muted">Grille collective non renseignée.</p>`)}
         </div>
       </div>
 
@@ -24244,6 +24305,7 @@ window.JSYNC = window.JSYNC || (function () {
     // niveau collectif = catégorie dominante : R1 = N1, R2 = N2, R3 = N3
     const max = Math.max(res.pctR1, res.pctR2, res.pctR3);
     res.niveau = (max === res.pctR3) ? "maitrise" : (max === res.pctR2 ? "intermediaire" : "lacune");
+    if (eqd && eqd.niveauEq) res.niveau = eqd.niveauEq;   // niveau d'après les critères du diagnostic par équipe
     return res;
   }
 
@@ -24500,6 +24562,9 @@ window.JSYNC = window.JSYNC || (function () {
       // construire : plus la construction en 3 touches est rare, plus c'est prioritaire
       coll.construire = Math.round((100 - sc.pctR3) * 0.7 + sc.pctR1 * 0.3);
     }
+    // diagnostic collectif par équipe : poids des axes d'après les critères du niveau
+    const eqA = (typeof eqDiagAxes === "function") ? eqDiagAxes(classe()) : null;
+    if (eqA) Object.keys(eqA).forEach(k => { coll[k] = eqA[k]; });
 
     // Pertinence didactique : un axe n'a pas le même sens selon le niveau.
     // Une classe qui joue en renvoi direct (niveau Lacunes) doit d'abord
@@ -25372,7 +25437,7 @@ window.JSYNC = window.JSYNC || (function () {
         <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:1.05rem">Équipe ${t}</b><span class="muted" style="font-size:.8rem">${nb} élève(s)</span></div>
         <div style="display:grid;grid-template-columns:repeat(${1 + coches.length},minmax(0,1fr));gap:6px;margin:8px 0">${["bj"].concat(coches).map(k => `<label style="display:flex;flex-direction:column;align-items:center;gap:3px;font-size:.72rem;font-weight:700;color:#5A6B7D;text-align:center" title="${EQ_PLU[k]}">${k.toUpperCase()}<input type="number" min="0" step="1" inputmode="numeric" data-eqd-t="${t}|${k}" value="${esc(tot[k] == null ? "" : tot[k])}" style="width:100%;max-width:70px;padding:6px 4px;text-align:center;font-size:1rem;font-weight:700;border:1.5px solid #c9d3e0;border-radius:8px"></label>`).join("")}</div>
         <div style="font-size:.84rem;line-height:1.5;border-top:1px dashed #DDE3EA;padding-top:6px">${P.map(x => `<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="flex:1">${esc(x.c.lib)} <small class="muted">(${x.c.num.toUpperCase()} ÷ ${(x.c.den || "bj").toUpperCase()})</small></span>
-          <span style="width:70px;height:8px;background:#EEF1F5;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${Math.min(100, x.pct || 0)}%;background:${coul(x.pct)}"></span></span><b style="min-width:46px;text-align:right;color:${coul(x.pct)}">${f(x.pct)}</b></div>`).join("")}</div></div>`;
+          <span style="width:70px;height:8px;background:#EEF1F5;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${Math.min(100, x.pct || 0)}%;background:${coul(x.c.inverse && x.pct != null ? 100 - x.pct : x.pct)}"></span></span><b style="min-width:46px;text-align:right;color:${coul(x.c.inverse && x.pct != null ? 100 - x.pct : x.pct)}">${f(x.pct)}</b></div>`).join("")}</div></div>`;
     }).join("");
     const Pc = eqPct(cl, Object.assign(eqStatsTot({}), totC));
     return `<div class="card eqd-card no-print-x">
@@ -25386,7 +25451,8 @@ window.JSYNC = window.JSYNC || (function () {
       ${eqCompoHTML(cl, q, eqs)}
       ${eqs.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">${cartes}</div>
       <div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:#F3EEFA;border:1px solid #D9CCEE"><b>Classe entière</b> (toutes les équipes) — BJ = ${totC.bj}${coches.map(k => " · " + k.toUpperCase() + " = " + totC[k]).join("")}<br>
-        ${Pc.map(x => `${esc(x.c.lib)} : <b style="color:${coul(x.pct)}">${f(x.pct)}</b>`).join(" · ")}</div>` : `<p class="hint">Répartissez d'abord la classe en équipes (⚡ ou cases ci-dessus).</p>`}
+        ${Pc.map(x => `${esc(x.c.lib)} : <b style="color:${coul(x.c.inverse && x.pct != null ? 100 - x.pct : x.pct)}">${f(x.pct)}</b>`).join(" · ")}
+        ${(() => { const D = eqDiagClasse(cl); return D ? `<br><b>Niveau collectif :</b> ${typeof tagNiveau === "function" ? tagNiveau(D.niveau) : D.niveau} <span class="muted">(réussite moyenne ${D.moy} %)</span><br><span style="font-size:.9rem">${eqLecture(D)}</span>` : ""; })()}</div>` : `<p class="hint">Répartissez d'abord la classe en équipes (⚡ ou cases ci-dessus).</p>`}
     </div>`;
   }
   function eqDiagMonter(c, cl) {
@@ -25399,6 +25465,7 @@ window.JSYNC = window.JSYNC || (function () {
     const cache = document.createElement("div"); cache.style.display = "none"; cache.id = "eqd-ancien"; c.appendChild(cache);
     [lc, tw, bt, c.querySelector("#bloc-scan-col-page")].forEach(x => { if (x) cache.appendChild(x); });
     const e1 = c.querySelector("#co-eq1"), tr1 = e1 && e1.closest("tr"); if (tr1) tr1.style.display = "none";
+    const syn = c.querySelector("#coll-synthese"); if (syn && eqDiagClasse(cl)) syn.style.display = "none";
     const rafraichir = () => { const y = window.scrollY; render(); window.scrollTo(0, y); };
     eqBrancher(z, cl, rafraichir);
     z.querySelectorAll("[data-eqd-t]").forEach(x => x.onchange = () => { const p = x.dataset.eqdT.split("|"); eqDiagTot(cl, p[0])[p[1]] = x.value.trim(); save(); rafraichir(); });
@@ -25418,7 +25485,62 @@ window.JSYNC = window.JSYNC || (function () {
     else if (coches.indexOf("ba") >= 0) { r3 = 0; r2 = Math.min(T.ba, T.bj); r1 = Math.max(0, T.bj - r2); }
     else return null;
     const z = { jouees: 0, r1: 0, r2: 0, r3: 0, sr: 0 };
-    return { r1, r2, r3, jouees: T.bj, servicesRates: 0, parEquipe: { e1: Object.assign({}, z), e2: Object.assign({}, z) } };
+    const D = eqDiagClasse(cl);
+    return { r1, r2, r3, jouees: T.bj, servicesRates: 0, niveauEq: D ? D.niveau : null, parEquipe: { e1: Object.assign({}, z), e2: Object.assign({}, z) } };
+  }
+
+  /* ── ANALYSE À PARTIR DU DIAGNOSTIC COLLECTIF PAR ÉQUIPE ──
+     réussite d'un critère = % (ou 100 − % pour un critère inversé : balles perdues) */
+  function eqDiagClasse(cl) {
+    if (!eqPossible() || !cl || !cl.collectif || !cl.collectif.eqDiag) return null;
+    const T = eqStatsTot({}); let n = 0;
+    eqEquipesUtilisees(cl).forEach(t => { const s = eqStatsTot(eqDiagTot(cl, t)); if (s.bj) n++; Object.keys(T).forEach(k => { T[k] += s[k] || 0; }); });
+    if (!n || !T.bj) return null;
+    const P = eqPct(cl, T).map(x => Object.assign(x, { succ: x.pct == null ? null : (x.c.inverse ? 100 - x.pct : x.pct) }));
+    const v = P.filter(x => x.succ != null), moy = v.length ? Math.round(v.reduce((a, x) => a + x.succ, 0) / v.length) : null;
+    const niveau = moy == null ? null : moy < 35 ? "lacune" : moy < 60 ? "intermediaire" : "maitrise";
+    return { T, P, n, moy, niveau };
+  }
+  const EQ_LECT = {
+    prog: "Les balles arrivent rarement en zone avant : jeu groupé autour du ballon, peu de démarquage. Priorité : progresser vers la cible (démarquage, passe vers l'avant, occupation des couloirs).",
+    recup: "L'équipe récupère peu de balles : défense passive. Priorité : récupérer la balle (repli, pression sur le porteur, interceptions) et défendre la cible.",
+    def: "L'équipe conquiert peu de balles : défense passive. Priorité : récupérer la balle (repli, pression sur le porteur, interceptions) et s'opposer à la progression adverse.",
+    att: "Peu de tirs tentés par rapport aux balles jouées : l'attaque n'aboutit pas. Priorité : progresser et se créer des positions de tir.",
+    eff: "Les tirs sont peu efficaces : choisir des positions favorables et travailler la qualité du tir (marquer).",
+    cons: "Beaucoup de balles perdues : priorité à la conservation (réception, protection du ballon, passe sûre)."
+  };
+  function eqLecture(D) {
+    const v = D.P.filter(x => x.succ != null).sort((a, b) => a.succ - b.succ);
+    if (!v.length) return "";
+    const f = v[0], fort = v[v.length - 1];
+    return (EQ_LECT[f.c.id] || ("Critère le plus faible : " + esc(f.c.lib) + ".")) + (v.length > 1 && fort.succ >= 50 ? " Point d'appui : " + esc(fort.c.lib.toLowerCase()) + " (" + fort.pct + " %)." : "");
+  }
+  /* poids des axes (0–100 : plus c'est haut, plus l'axe est prioritaire) */
+  function eqDiagAxes(cl) {
+    const D = eqDiagClasse(cl); if (!D) return null;
+    const S = {}; D.P.forEach(x => { if (x.succ != null) S[x.c.id] = x.succ; });
+    const fb = (...ids) => { for (const i of ids) if (S[i] != null) return 100 - S[i]; return null; };
+    const moy2 = (a, b) => a == null ? b : b == null ? a : Math.round((a + b) / 2);
+    const w = {
+      conserver: fb("cons", "prog", "att"),
+      progresser: fb("prog", "att", "cons"),
+      marquer: fb("eff", "att"),
+      recuperer: fb("recup", "def"),
+      defendre: fb("def", "recup"),
+      opposer: fb("def", "recup"),
+      contreattaque: moy2(fb("def", "recup"), fb("att", "prog"))
+    };
+    Object.keys(w).forEach(k => { if (w[k] == null) delete w[k]; });
+    return w;
+  }
+  function eqAnalyseHTML(cl) {
+    const D = eqDiagClasse(cl); if (!D) return "";
+    const coul = (p) => p == null ? "#9AA5B1" : p < 20 ? "var(--lacune,#C62828)" : p <= 40 ? "#E07B00" : p <= 60 ? "var(--inter,#B8A000)" : "var(--maitrise,#2E7D32)";
+    return `<p class="muted" style="font-size:.9rem;">${D.n} équipe(s) observée(s) — ${D.T.bj} balles jouées · critères ${esc(smNivCode(cl) || "")}</p>
+      ${D.P.map(x => `<div style="display:flex;align-items:center;gap:10px;margin:6px 0"><span style="flex:1">${esc(x.c.lib)} <small class="muted">(${x.c.num.toUpperCase()} ÷ ${(x.c.den || "bj").toUpperCase()}${x.c.inverse ? ", moins c'est mieux" : ""})</small></span>
+        <span class="bar" style="width:120px;height:10px;display:inline-block"><span style="display:block;height:100%;width:${Math.min(100, x.pct || 0)}%;background:${coul(x.succ)}"></span></span><b style="min-width:48px;text-align:right;color:${coul(x.succ)}">${x.pct == null ? "—" : x.pct + " %"}</b></div>`).join("")}
+      <p style="font-size:.9rem;line-height:1.75;margin-top:8px">${eqLecture(D)}</p>
+      <p class="hint">Réussite moyenne des critères : <b>${D.moy} %</b> → niveau ${D.niveau === "lacune" ? "Lacunes (< 35 %)" : D.niveau === "intermediaire" ? "Intermédiaire (35–59 %)" : "Maîtrise (≥ 60 %)"}. Source : diagnostic collectif par équipe.</p>`;
   }
   function viewSommative(c, cl) {
     smStyle();
@@ -26516,7 +26638,7 @@ window.JSYNC = window.JSYNC || (function () {
 
         <div class="card">
           <div class="card-title">Niveau collectif ${tagNiveau(sc.niveau)}</div>
-          ${sc.saisi ? `
+          ${(typeof eqAnalyseHTML === "function" && eqAnalyseHTML(cl)) || (sc.saisi ? `
           <p class="muted" style="font-size:.9rem;">${sc.totalR} possessions observées — R1 ${sc.pctR1} % · R2 ${sc.pctR2} % · R3 ${sc.pctR3} %</p>
           <div class="bar" style="height:16px;display:flex;margin-bottom:10px;">
             <span style="width:${sc.pctR1}%;background:var(--lacune);"></span>
@@ -26525,7 +26647,7 @@ window.JSYNC = window.JSYNC || (function () {
           </div>
           <p style="font-size:.9rem;line-height:1.75;">${lectureCollective(sc)}</p>
           <p class="hint">Services ratés : ${sc.pctServiceRate} % des balles — ${sc.pctServiceRate > 25 ? "la mise en jeu est un frein important." : "la mise en jeu est globalement assurée."}</p>`
-          : `<p class="muted">Grille collective non renseignée.</p>`}
+          : `<p class="muted">Grille collective non renseignée.</p>`)}
         </div>
       </div>
 
@@ -34646,6 +34768,7 @@ window.JSYNC = window.JSYNC || (function () {
     // niveau collectif = catégorie dominante : R1 = N1, R2 = N2, R3 = N3
     const max = Math.max(res.pctR1, res.pctR2, res.pctR3);
     res.niveau = (max === res.pctR3) ? "maitrise" : (max === res.pctR2 ? "intermediaire" : "lacune");
+    if (eqd && eqd.niveauEq) res.niveau = eqd.niveauEq;   // niveau d'après les critères du diagnostic par équipe
     return res;
   }
 
@@ -34902,6 +35025,9 @@ window.JSYNC = window.JSYNC || (function () {
       // construire : plus la construction en 3 touches est rare, plus c'est prioritaire
       coll.construire = Math.round((100 - sc.pctR3) * 0.7 + sc.pctR1 * 0.3);
     }
+    // diagnostic collectif par équipe : poids des axes d'après les critères du niveau
+    const eqA = (typeof eqDiagAxes === "function") ? eqDiagAxes(classe()) : null;
+    if (eqA) Object.keys(eqA).forEach(k => { coll[k] = eqA[k]; });
 
     // Pertinence didactique : un axe n'a pas le même sens selon le niveau.
     // Une classe qui joue en renvoi direct (niveau Lacunes) doit d'abord
@@ -35774,7 +35900,7 @@ window.JSYNC = window.JSYNC || (function () {
         <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:1.05rem">Équipe ${t}</b><span class="muted" style="font-size:.8rem">${nb} élève(s)</span></div>
         <div style="display:grid;grid-template-columns:repeat(${1 + coches.length},minmax(0,1fr));gap:6px;margin:8px 0">${["bj"].concat(coches).map(k => `<label style="display:flex;flex-direction:column;align-items:center;gap:3px;font-size:.72rem;font-weight:700;color:#5A6B7D;text-align:center" title="${EQ_PLU[k]}">${k.toUpperCase()}<input type="number" min="0" step="1" inputmode="numeric" data-eqd-t="${t}|${k}" value="${esc(tot[k] == null ? "" : tot[k])}" style="width:100%;max-width:70px;padding:6px 4px;text-align:center;font-size:1rem;font-weight:700;border:1.5px solid #c9d3e0;border-radius:8px"></label>`).join("")}</div>
         <div style="font-size:.84rem;line-height:1.5;border-top:1px dashed #DDE3EA;padding-top:6px">${P.map(x => `<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="flex:1">${esc(x.c.lib)} <small class="muted">(${x.c.num.toUpperCase()} ÷ ${(x.c.den || "bj").toUpperCase()})</small></span>
-          <span style="width:70px;height:8px;background:#EEF1F5;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${Math.min(100, x.pct || 0)}%;background:${coul(x.pct)}"></span></span><b style="min-width:46px;text-align:right;color:${coul(x.pct)}">${f(x.pct)}</b></div>`).join("")}</div></div>`;
+          <span style="width:70px;height:8px;background:#EEF1F5;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${Math.min(100, x.pct || 0)}%;background:${coul(x.c.inverse && x.pct != null ? 100 - x.pct : x.pct)}"></span></span><b style="min-width:46px;text-align:right;color:${coul(x.c.inverse && x.pct != null ? 100 - x.pct : x.pct)}">${f(x.pct)}</b></div>`).join("")}</div></div>`;
     }).join("");
     const Pc = eqPct(cl, Object.assign(eqStatsTot({}), totC));
     return `<div class="card eqd-card no-print-x">
@@ -35788,7 +35914,8 @@ window.JSYNC = window.JSYNC || (function () {
       ${eqCompoHTML(cl, q, eqs)}
       ${eqs.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">${cartes}</div>
       <div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:#F3EEFA;border:1px solid #D9CCEE"><b>Classe entière</b> (toutes les équipes) — BJ = ${totC.bj}${coches.map(k => " · " + k.toUpperCase() + " = " + totC[k]).join("")}<br>
-        ${Pc.map(x => `${esc(x.c.lib)} : <b style="color:${coul(x.pct)}">${f(x.pct)}</b>`).join(" · ")}</div>` : `<p class="hint">Répartissez d'abord la classe en équipes (⚡ ou cases ci-dessus).</p>`}
+        ${Pc.map(x => `${esc(x.c.lib)} : <b style="color:${coul(x.c.inverse && x.pct != null ? 100 - x.pct : x.pct)}">${f(x.pct)}</b>`).join(" · ")}
+        ${(() => { const D = eqDiagClasse(cl); return D ? `<br><b>Niveau collectif :</b> ${typeof tagNiveau === "function" ? tagNiveau(D.niveau) : D.niveau} <span class="muted">(réussite moyenne ${D.moy} %)</span><br><span style="font-size:.9rem">${eqLecture(D)}</span>` : ""; })()}</div>` : `<p class="hint">Répartissez d'abord la classe en équipes (⚡ ou cases ci-dessus).</p>`}
     </div>`;
   }
   function eqDiagMonter(c, cl) {
@@ -35801,6 +35928,7 @@ window.JSYNC = window.JSYNC || (function () {
     const cache = document.createElement("div"); cache.style.display = "none"; cache.id = "eqd-ancien"; c.appendChild(cache);
     [lc, tw, bt, c.querySelector("#bloc-scan-col-page")].forEach(x => { if (x) cache.appendChild(x); });
     const e1 = c.querySelector("#co-eq1"), tr1 = e1 && e1.closest("tr"); if (tr1) tr1.style.display = "none";
+    const syn = c.querySelector("#coll-synthese"); if (syn && eqDiagClasse(cl)) syn.style.display = "none";
     const rafraichir = () => { const y = window.scrollY; render(); window.scrollTo(0, y); };
     eqBrancher(z, cl, rafraichir);
     z.querySelectorAll("[data-eqd-t]").forEach(x => x.onchange = () => { const p = x.dataset.eqdT.split("|"); eqDiagTot(cl, p[0])[p[1]] = x.value.trim(); save(); rafraichir(); });
@@ -35820,7 +35948,62 @@ window.JSYNC = window.JSYNC || (function () {
     else if (coches.indexOf("ba") >= 0) { r3 = 0; r2 = Math.min(T.ba, T.bj); r1 = Math.max(0, T.bj - r2); }
     else return null;
     const z = { jouees: 0, r1: 0, r2: 0, r3: 0, sr: 0 };
-    return { r1, r2, r3, jouees: T.bj, servicesRates: 0, parEquipe: { e1: Object.assign({}, z), e2: Object.assign({}, z) } };
+    const D = eqDiagClasse(cl);
+    return { r1, r2, r3, jouees: T.bj, servicesRates: 0, niveauEq: D ? D.niveau : null, parEquipe: { e1: Object.assign({}, z), e2: Object.assign({}, z) } };
+  }
+
+  /* ── ANALYSE À PARTIR DU DIAGNOSTIC COLLECTIF PAR ÉQUIPE ──
+     réussite d'un critère = % (ou 100 − % pour un critère inversé : balles perdues) */
+  function eqDiagClasse(cl) {
+    if (!eqPossible() || !cl || !cl.collectif || !cl.collectif.eqDiag) return null;
+    const T = eqStatsTot({}); let n = 0;
+    eqEquipesUtilisees(cl).forEach(t => { const s = eqStatsTot(eqDiagTot(cl, t)); if (s.bj) n++; Object.keys(T).forEach(k => { T[k] += s[k] || 0; }); });
+    if (!n || !T.bj) return null;
+    const P = eqPct(cl, T).map(x => Object.assign(x, { succ: x.pct == null ? null : (x.c.inverse ? 100 - x.pct : x.pct) }));
+    const v = P.filter(x => x.succ != null), moy = v.length ? Math.round(v.reduce((a, x) => a + x.succ, 0) / v.length) : null;
+    const niveau = moy == null ? null : moy < 35 ? "lacune" : moy < 60 ? "intermediaire" : "maitrise";
+    return { T, P, n, moy, niveau };
+  }
+  const EQ_LECT = {
+    prog: "Les balles arrivent rarement en zone avant : jeu groupé autour du ballon, peu de démarquage. Priorité : progresser vers la cible (démarquage, passe vers l'avant, occupation des couloirs).",
+    recup: "L'équipe récupère peu de balles : défense passive. Priorité : récupérer la balle (repli, pression sur le porteur, interceptions) et défendre la cible.",
+    def: "L'équipe conquiert peu de balles : défense passive. Priorité : récupérer la balle (repli, pression sur le porteur, interceptions) et s'opposer à la progression adverse.",
+    att: "Peu de tirs tentés par rapport aux balles jouées : l'attaque n'aboutit pas. Priorité : progresser et se créer des positions de tir.",
+    eff: "Les tirs sont peu efficaces : choisir des positions favorables et travailler la qualité du tir (marquer).",
+    cons: "Beaucoup de balles perdues : priorité à la conservation (réception, protection du ballon, passe sûre)."
+  };
+  function eqLecture(D) {
+    const v = D.P.filter(x => x.succ != null).sort((a, b) => a.succ - b.succ);
+    if (!v.length) return "";
+    const f = v[0], fort = v[v.length - 1];
+    return (EQ_LECT[f.c.id] || ("Critère le plus faible : " + esc(f.c.lib) + ".")) + (v.length > 1 && fort.succ >= 50 ? " Point d'appui : " + esc(fort.c.lib.toLowerCase()) + " (" + fort.pct + " %)." : "");
+  }
+  /* poids des axes (0–100 : plus c'est haut, plus l'axe est prioritaire) */
+  function eqDiagAxes(cl) {
+    const D = eqDiagClasse(cl); if (!D) return null;
+    const S = {}; D.P.forEach(x => { if (x.succ != null) S[x.c.id] = x.succ; });
+    const fb = (...ids) => { for (const i of ids) if (S[i] != null) return 100 - S[i]; return null; };
+    const moy2 = (a, b) => a == null ? b : b == null ? a : Math.round((a + b) / 2);
+    const w = {
+      conserver: fb("cons", "prog", "att"),
+      progresser: fb("prog", "att", "cons"),
+      marquer: fb("eff", "att"),
+      recuperer: fb("recup", "def"),
+      defendre: fb("def", "recup"),
+      opposer: fb("def", "recup"),
+      contreattaque: moy2(fb("def", "recup"), fb("att", "prog"))
+    };
+    Object.keys(w).forEach(k => { if (w[k] == null) delete w[k]; });
+    return w;
+  }
+  function eqAnalyseHTML(cl) {
+    const D = eqDiagClasse(cl); if (!D) return "";
+    const coul = (p) => p == null ? "#9AA5B1" : p < 20 ? "var(--lacune,#C62828)" : p <= 40 ? "#E07B00" : p <= 60 ? "var(--inter,#B8A000)" : "var(--maitrise,#2E7D32)";
+    return `<p class="muted" style="font-size:.9rem;">${D.n} équipe(s) observée(s) — ${D.T.bj} balles jouées · critères ${esc(smNivCode(cl) || "")}</p>
+      ${D.P.map(x => `<div style="display:flex;align-items:center;gap:10px;margin:6px 0"><span style="flex:1">${esc(x.c.lib)} <small class="muted">(${x.c.num.toUpperCase()} ÷ ${(x.c.den || "bj").toUpperCase()}${x.c.inverse ? ", moins c'est mieux" : ""})</small></span>
+        <span class="bar" style="width:120px;height:10px;display:inline-block"><span style="display:block;height:100%;width:${Math.min(100, x.pct || 0)}%;background:${coul(x.succ)}"></span></span><b style="min-width:48px;text-align:right;color:${coul(x.succ)}">${x.pct == null ? "—" : x.pct + " %"}</b></div>`).join("")}
+      <p style="font-size:.9rem;line-height:1.75;margin-top:8px">${eqLecture(D)}</p>
+      <p class="hint">Réussite moyenne des critères : <b>${D.moy} %</b> → niveau ${D.niveau === "lacune" ? "Lacunes (< 35 %)" : D.niveau === "intermediaire" ? "Intermédiaire (35–59 %)" : "Maîtrise (≥ 60 %)"}. Source : diagnostic collectif par équipe.</p>`;
   }
   function viewSommative(c, cl) {
     smStyle();
@@ -36918,7 +37101,7 @@ window.JSYNC = window.JSYNC || (function () {
 
         <div class="card">
           <div class="card-title">Niveau collectif ${tagNiveau(sc.niveau)}</div>
-          ${sc.saisi ? `
+          ${(typeof eqAnalyseHTML === "function" && eqAnalyseHTML(cl)) || (sc.saisi ? `
           <p class="muted" style="font-size:.9rem;">${sc.totalR} possessions observées — R1 ${sc.pctR1} % · R2 ${sc.pctR2} % · R3 ${sc.pctR3} %</p>
           <div class="bar" style="height:16px;display:flex;margin-bottom:10px;">
             <span style="width:${sc.pctR1}%;background:var(--lacune);"></span>
@@ -36927,7 +37110,7 @@ window.JSYNC = window.JSYNC || (function () {
           </div>
           <p style="font-size:.9rem;line-height:1.75;">${lectureCollective(sc)}</p>
           <p class="hint">Services ratés : ${sc.pctServiceRate} % des balles — ${sc.pctServiceRate > 25 ? "la mise en jeu est un frein important." : "la mise en jeu est globalement assurée."}</p>`
-          : `<p class="muted">Grille collective non renseignée.</p>`}
+          : `<p class="muted">Grille collective non renseignée.</p>`)}
         </div>
       </div>
 
@@ -44990,6 +45173,7 @@ window.JSYNC = window.JSYNC || (function () {
     // niveau collectif = catégorie dominante : R1 = N1, R2 = N2, R3 = N3
     const max = Math.max(res.pctR1, res.pctR2, res.pctR3);
     res.niveau = (max === res.pctR3) ? "maitrise" : (max === res.pctR2 ? "intermediaire" : "lacune");
+    if (eqd && eqd.niveauEq) res.niveau = eqd.niveauEq;   // niveau d'après les critères du diagnostic par équipe
     return res;
   }
 
@@ -45234,6 +45418,9 @@ window.JSYNC = window.JSYNC || (function () {
       // construire : plus la construction en 3 touches est rare, plus c'est prioritaire
       coll.construire = Math.round((100 - sc.pctR3) * 0.7 + sc.pctR1 * 0.3);
     }
+    // diagnostic collectif par équipe : poids des axes d'après les critères du niveau
+    const eqA = (typeof eqDiagAxes === "function") ? eqDiagAxes(classe()) : null;
+    if (eqA) Object.keys(eqA).forEach(k => { coll[k] = eqA[k]; });
 
     // Pertinence didactique : un axe n'a pas le même sens selon le niveau.
     // Une classe qui joue en renvoi direct (niveau Lacunes) doit d'abord
@@ -46106,7 +46293,7 @@ window.JSYNC = window.JSYNC || (function () {
         <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:1.05rem">Équipe ${t}</b><span class="muted" style="font-size:.8rem">${nb} élève(s)</span></div>
         <div style="display:grid;grid-template-columns:repeat(${1 + coches.length},minmax(0,1fr));gap:6px;margin:8px 0">${["bj"].concat(coches).map(k => `<label style="display:flex;flex-direction:column;align-items:center;gap:3px;font-size:.72rem;font-weight:700;color:#5A6B7D;text-align:center" title="${EQ_PLU[k]}">${k.toUpperCase()}<input type="number" min="0" step="1" inputmode="numeric" data-eqd-t="${t}|${k}" value="${esc(tot[k] == null ? "" : tot[k])}" style="width:100%;max-width:70px;padding:6px 4px;text-align:center;font-size:1rem;font-weight:700;border:1.5px solid #c9d3e0;border-radius:8px"></label>`).join("")}</div>
         <div style="font-size:.84rem;line-height:1.5;border-top:1px dashed #DDE3EA;padding-top:6px">${P.map(x => `<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="flex:1">${esc(x.c.lib)} <small class="muted">(${x.c.num.toUpperCase()} ÷ ${(x.c.den || "bj").toUpperCase()})</small></span>
-          <span style="width:70px;height:8px;background:#EEF1F5;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${Math.min(100, x.pct || 0)}%;background:${coul(x.pct)}"></span></span><b style="min-width:46px;text-align:right;color:${coul(x.pct)}">${f(x.pct)}</b></div>`).join("")}</div></div>`;
+          <span style="width:70px;height:8px;background:#EEF1F5;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${Math.min(100, x.pct || 0)}%;background:${coul(x.c.inverse && x.pct != null ? 100 - x.pct : x.pct)}"></span></span><b style="min-width:46px;text-align:right;color:${coul(x.c.inverse && x.pct != null ? 100 - x.pct : x.pct)}">${f(x.pct)}</b></div>`).join("")}</div></div>`;
     }).join("");
     const Pc = eqPct(cl, Object.assign(eqStatsTot({}), totC));
     return `<div class="card eqd-card no-print-x">
@@ -46120,7 +46307,8 @@ window.JSYNC = window.JSYNC || (function () {
       ${eqCompoHTML(cl, q, eqs)}
       ${eqs.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">${cartes}</div>
       <div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:#F3EEFA;border:1px solid #D9CCEE"><b>Classe entière</b> (toutes les équipes) — BJ = ${totC.bj}${coches.map(k => " · " + k.toUpperCase() + " = " + totC[k]).join("")}<br>
-        ${Pc.map(x => `${esc(x.c.lib)} : <b style="color:${coul(x.pct)}">${f(x.pct)}</b>`).join(" · ")}</div>` : `<p class="hint">Répartissez d'abord la classe en équipes (⚡ ou cases ci-dessus).</p>`}
+        ${Pc.map(x => `${esc(x.c.lib)} : <b style="color:${coul(x.c.inverse && x.pct != null ? 100 - x.pct : x.pct)}">${f(x.pct)}</b>`).join(" · ")}
+        ${(() => { const D = eqDiagClasse(cl); return D ? `<br><b>Niveau collectif :</b> ${typeof tagNiveau === "function" ? tagNiveau(D.niveau) : D.niveau} <span class="muted">(réussite moyenne ${D.moy} %)</span><br><span style="font-size:.9rem">${eqLecture(D)}</span>` : ""; })()}</div>` : `<p class="hint">Répartissez d'abord la classe en équipes (⚡ ou cases ci-dessus).</p>`}
     </div>`;
   }
   function eqDiagMonter(c, cl) {
@@ -46133,6 +46321,7 @@ window.JSYNC = window.JSYNC || (function () {
     const cache = document.createElement("div"); cache.style.display = "none"; cache.id = "eqd-ancien"; c.appendChild(cache);
     [lc, tw, bt, c.querySelector("#bloc-scan-col-page")].forEach(x => { if (x) cache.appendChild(x); });
     const e1 = c.querySelector("#co-eq1"), tr1 = e1 && e1.closest("tr"); if (tr1) tr1.style.display = "none";
+    const syn = c.querySelector("#coll-synthese"); if (syn && eqDiagClasse(cl)) syn.style.display = "none";
     const rafraichir = () => { const y = window.scrollY; render(); window.scrollTo(0, y); };
     eqBrancher(z, cl, rafraichir);
     z.querySelectorAll("[data-eqd-t]").forEach(x => x.onchange = () => { const p = x.dataset.eqdT.split("|"); eqDiagTot(cl, p[0])[p[1]] = x.value.trim(); save(); rafraichir(); });
@@ -46152,7 +46341,62 @@ window.JSYNC = window.JSYNC || (function () {
     else if (coches.indexOf("ba") >= 0) { r3 = 0; r2 = Math.min(T.ba, T.bj); r1 = Math.max(0, T.bj - r2); }
     else return null;
     const z = { jouees: 0, r1: 0, r2: 0, r3: 0, sr: 0 };
-    return { r1, r2, r3, jouees: T.bj, servicesRates: 0, parEquipe: { e1: Object.assign({}, z), e2: Object.assign({}, z) } };
+    const D = eqDiagClasse(cl);
+    return { r1, r2, r3, jouees: T.bj, servicesRates: 0, niveauEq: D ? D.niveau : null, parEquipe: { e1: Object.assign({}, z), e2: Object.assign({}, z) } };
+  }
+
+  /* ── ANALYSE À PARTIR DU DIAGNOSTIC COLLECTIF PAR ÉQUIPE ──
+     réussite d'un critère = % (ou 100 − % pour un critère inversé : balles perdues) */
+  function eqDiagClasse(cl) {
+    if (!eqPossible() || !cl || !cl.collectif || !cl.collectif.eqDiag) return null;
+    const T = eqStatsTot({}); let n = 0;
+    eqEquipesUtilisees(cl).forEach(t => { const s = eqStatsTot(eqDiagTot(cl, t)); if (s.bj) n++; Object.keys(T).forEach(k => { T[k] += s[k] || 0; }); });
+    if (!n || !T.bj) return null;
+    const P = eqPct(cl, T).map(x => Object.assign(x, { succ: x.pct == null ? null : (x.c.inverse ? 100 - x.pct : x.pct) }));
+    const v = P.filter(x => x.succ != null), moy = v.length ? Math.round(v.reduce((a, x) => a + x.succ, 0) / v.length) : null;
+    const niveau = moy == null ? null : moy < 35 ? "lacune" : moy < 60 ? "intermediaire" : "maitrise";
+    return { T, P, n, moy, niveau };
+  }
+  const EQ_LECT = {
+    prog: "Les balles arrivent rarement en zone avant : jeu groupé autour du ballon, peu de démarquage. Priorité : progresser vers la cible (démarquage, passe vers l'avant, occupation des couloirs).",
+    recup: "L'équipe récupère peu de balles : défense passive. Priorité : récupérer la balle (repli, pression sur le porteur, interceptions) et défendre la cible.",
+    def: "L'équipe conquiert peu de balles : défense passive. Priorité : récupérer la balle (repli, pression sur le porteur, interceptions) et s'opposer à la progression adverse.",
+    att: "Peu de tirs tentés par rapport aux balles jouées : l'attaque n'aboutit pas. Priorité : progresser et se créer des positions de tir.",
+    eff: "Les tirs sont peu efficaces : choisir des positions favorables et travailler la qualité du tir (marquer).",
+    cons: "Beaucoup de balles perdues : priorité à la conservation (réception, protection du ballon, passe sûre)."
+  };
+  function eqLecture(D) {
+    const v = D.P.filter(x => x.succ != null).sort((a, b) => a.succ - b.succ);
+    if (!v.length) return "";
+    const f = v[0], fort = v[v.length - 1];
+    return (EQ_LECT[f.c.id] || ("Critère le plus faible : " + esc(f.c.lib) + ".")) + (v.length > 1 && fort.succ >= 50 ? " Point d'appui : " + esc(fort.c.lib.toLowerCase()) + " (" + fort.pct + " %)." : "");
+  }
+  /* poids des axes (0–100 : plus c'est haut, plus l'axe est prioritaire) */
+  function eqDiagAxes(cl) {
+    const D = eqDiagClasse(cl); if (!D) return null;
+    const S = {}; D.P.forEach(x => { if (x.succ != null) S[x.c.id] = x.succ; });
+    const fb = (...ids) => { for (const i of ids) if (S[i] != null) return 100 - S[i]; return null; };
+    const moy2 = (a, b) => a == null ? b : b == null ? a : Math.round((a + b) / 2);
+    const w = {
+      conserver: fb("cons", "prog", "att"),
+      progresser: fb("prog", "att", "cons"),
+      marquer: fb("eff", "att"),
+      recuperer: fb("recup", "def"),
+      defendre: fb("def", "recup"),
+      opposer: fb("def", "recup"),
+      contreattaque: moy2(fb("def", "recup"), fb("att", "prog"))
+    };
+    Object.keys(w).forEach(k => { if (w[k] == null) delete w[k]; });
+    return w;
+  }
+  function eqAnalyseHTML(cl) {
+    const D = eqDiagClasse(cl); if (!D) return "";
+    const coul = (p) => p == null ? "#9AA5B1" : p < 20 ? "var(--lacune,#C62828)" : p <= 40 ? "#E07B00" : p <= 60 ? "var(--inter,#B8A000)" : "var(--maitrise,#2E7D32)";
+    return `<p class="muted" style="font-size:.9rem;">${D.n} équipe(s) observée(s) — ${D.T.bj} balles jouées · critères ${esc(smNivCode(cl) || "")}</p>
+      ${D.P.map(x => `<div style="display:flex;align-items:center;gap:10px;margin:6px 0"><span style="flex:1">${esc(x.c.lib)} <small class="muted">(${x.c.num.toUpperCase()} ÷ ${(x.c.den || "bj").toUpperCase()}${x.c.inverse ? ", moins c'est mieux" : ""})</small></span>
+        <span class="bar" style="width:120px;height:10px;display:inline-block"><span style="display:block;height:100%;width:${Math.min(100, x.pct || 0)}%;background:${coul(x.succ)}"></span></span><b style="min-width:48px;text-align:right;color:${coul(x.succ)}">${x.pct == null ? "—" : x.pct + " %"}</b></div>`).join("")}
+      <p style="font-size:.9rem;line-height:1.75;margin-top:8px">${eqLecture(D)}</p>
+      <p class="hint">Réussite moyenne des critères : <b>${D.moy} %</b> → niveau ${D.niveau === "lacune" ? "Lacunes (< 35 %)" : D.niveau === "intermediaire" ? "Intermédiaire (35–59 %)" : "Maîtrise (≥ 60 %)"}. Source : diagnostic collectif par équipe.</p>`;
   }
   function viewSommative(c, cl) {
     smStyle();
@@ -47250,7 +47494,7 @@ window.JSYNC = window.JSYNC || (function () {
 
         <div class="card">
           <div class="card-title">Niveau collectif ${tagNiveau(sc.niveau)}</div>
-          ${sc.saisi ? `
+          ${(typeof eqAnalyseHTML === "function" && eqAnalyseHTML(cl)) || (sc.saisi ? `
           <p class="muted" style="font-size:.9rem;">${sc.totalR} renvois observés — R1 ${sc.pctR1} % · R2 ${sc.pctR2} % · R3 ${sc.pctR3} %</p>
           <div class="bar" style="height:16px;display:flex;margin-bottom:10px;">
             <span style="width:${sc.pctR1}%;background:var(--lacune);"></span>
@@ -47259,7 +47503,7 @@ window.JSYNC = window.JSYNC || (function () {
           </div>
           <p style="font-size:.9rem;line-height:1.75;">${lectureCollective(sc)}</p>
           <p class="hint">Services ratés : ${sc.pctServiceRate} % des balles — ${sc.pctServiceRate > 25 ? "la mise en jeu est un frein important." : "la mise en jeu est globalement assurée."}</p>`
-          : `<p class="muted">Grille collective non renseignée.</p>`}
+          : `<p class="muted">Grille collective non renseignée.</p>`)}
         </div>
       </div>
 
