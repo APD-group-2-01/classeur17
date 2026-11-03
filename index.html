@@ -15163,6 +15163,49 @@ window.JSYNC = window.JSYNC || (function () {
       <p style="font-size:.9rem;line-height:1.75;margin-top:8px">${eqLecture(D)}</p>
       <p class="hint">Réussite moyenne des critères : <b>${D.moy} %</b> → niveau ${D.niveau === "lacune" ? "Lacunes (< 35 %)" : D.niveau === "intermediaire" ? "Intermédiaire (35–59 %)" : "Maîtrise (≥ 60 %)"}. Source : diagnostic collectif par équipe.</p>`;
   }
+
+  /* ── GRILLE DE CLASSE À IMPRIMER — DIAGNOSTIC INDIVIDUEL (même présentation que la grille collective) ── */
+  function diagImprimerGrille(cl) {
+    if (typeof smStyle === "function") smStyle();
+    const K = compActives(cl), n = smNivCode(cl) || "", en = (typeof entete === "function") ? entete(cl) : {};
+    const el = cl.eleves || [];
+    if (!el.length) { toast("Aucun élève dans cette classe"); return; }
+    const court = (x) => String(x).replace(/\s*\(.*?\)\s*/g, " ").replace(/\s+—.*$/, "").trim();
+    const h = Math.max(3.6, Math.min(8, (158 / Math.max(el.length, 1)))).toFixed(1);
+    const page1 = `<div class="smp eqg">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
+        <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:13pt;font-weight:700;font-style:italic;color:#8B2E3C">Grille de diagnostic individuel ${esc(n)} — ${esc(PV_CFG.aps)}</div>
+        <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:11pt;color:#1F4E79;min-width:40mm">Classe : <b>${esc(cl.nom)}</b></div></div>
+      <p style="font-size:8pt;margin:0 0 2mm">Date : …… / …… / ……… · Enseignant(e) : ${esc(en.enseignant || "……………………")} · Cocher le niveau constaté pour chaque critère : <b>N1</b> = à renforcer (0) · <b>N2</b> = en cours (1) · <b>N3</b> = acquis (2). Total ramené sur 20. Descriptifs des niveaux en page 2.</p>
+      <table class="eqg-t" style="table-layout:fixed"><colgroup><col style="width:7mm"><col style="width:40mm">${K.map(() => "<col><col><col>").join("")}<col style="width:12mm"></colgroup><thead>
+        <tr><th rowspan="2">N°</th><th rowspan="2" class="nm">Nom / Prénom</th>${K.map(k => `<th colspan="3" class="${k.off ? "gc" : "gi"}">${esc(court(k.nom))}${k.off ? "<br><small>critère " + esc(n) + "</small>" : ""}</th>`).join("")}<th rowspan="2" class="gi">Total<br>/20</th></tr>
+        <tr>${K.map(k => ["N1", "N2", "N3"].map(x => `<th class="${k.off ? "gc" : "gi"} niv">${x}</th>`).join("")).join("")}</tr></thead>
+        <tbody>${el.map((e, i) => `<tr style="height:${h}mm"><td>${i + 1}</td><td class="nm">${esc(e.nom)}</td>${K.map(() => "<td></td><td></td><td></td>").join("")}<td></td></tr>`).join("")}</tbody>
+      </table>
+      <style>
+        #sm-print .eqg{padding:6mm 7mm} #sm-print .eqg-t td,#sm-print .eqg-t th{padding:.3mm .6mm;line-height:1.15} #sm-print .eqg-t thead th{font-size:6.4pt;letter-spacing:0 !important;overflow-wrap:anywhere;hyphens:auto;overflow:hidden}
+        #sm-print .eqg-t th.gi{background:#D9EAD3 !important} #sm-print .eqg-t th.gc{background:#F4CCCC !important}
+        #sm-print .eqg-t td.nm{font-size:7.5pt;white-space:nowrap;overflow:hidden} #sm-print .eqg-t tbody td{font-size:7.5pt;padding:0 .6mm;line-height:1} #sm-print .eqg-t tbody tr:nth-child(even) td{background:#F7F9FC !important}
+        #sm-print .eqg-t tbody td:nth-child(3n){border-left:.5mm solid #555}
+        #sm-print .eqd-t{width:100%;border-collapse:collapse;table-layout:fixed} #sm-print .eqd-t td,#sm-print .eqd-t th{border:.3mm solid #444;padding:1mm 1.5mm;font-size:7.6pt;text-align:left;vertical-align:top}
+        #sm-print .eqd-t th{background:#E8E8E8 !important;font-size:8pt}
+      </style></div>`;
+    const page2 = `<div class="smp">
+      <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:12pt;font-weight:700;font-style:italic;color:#8B2E3C;display:inline-block;margin-bottom:3mm">Descriptifs des niveaux — ${esc(n)} — ${esc(PV_CFG.aps)}</div>
+      <table class="eqd-t"><colgroup><col style="width:22%"><col><col><col></colgroup>
+        <thead><tr><th>Critère</th><th>N1 — à renforcer (0)</th><th>N2 — en cours (1)</th><th>N3 — acquis (2)</th></tr></thead>
+        <tbody>${K.map(k => `<tr><td><b>${esc(k.nom)}</b>${k.off ? " <i>(critère " + esc(n) + ")</i>" : ""}</td>${[0, 1, 2].map(v => `<td>${esc(k.niv ? k.niv[v] : "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    let z = document.getElementById("sm-print");
+    if (!z) { z = document.createElement("div"); z.id = "sm-print"; document.body.appendChild(z); }
+    z.innerHTML = page1 + page2;
+    let pg = document.getElementById("sm-page");
+    if (!pg) { pg = document.createElement("style"); pg.id = "sm-page"; document.head.appendChild(pg); }
+    pg.textContent = "@page{size:A4 landscape;margin:0;}";
+    document.body.classList.add("sm-printing");
+    const fin = () => { document.body.classList.remove("sm-printing"); z.innerHTML = ""; pg.textContent = ""; window.removeEventListener("afterprint", fin); };
+    window.addEventListener("afterprint", fin);
+    setTimeout(() => window.print(), 60);
+  }
   function viewSommative(c, cl) {
     smStyle();
     if (!cl.eleves.length) {
@@ -15970,6 +16013,7 @@ window.JSYNC = window.JSYNC || (function () {
         <button class="btn" id="fiche-next" ${idx === cl.eleves.length - 1 ? "disabled" : ""}>Suivant →</button>
         <span style="flex:1"></span>
         <button class="btn" id="fiche-raz" ${eleveEvalue(el) ? "" : "disabled"}>🧹 Effacer le diagnostic de cet élève</button>
+        <button class="btn" id="fiche-grille">🖨 Grille de la classe</button>
         <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
       </div>
 
@@ -16081,6 +16125,7 @@ window.JSYNC = window.JSYNC || (function () {
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
     $("fiche-print").onclick = () => { finPrintFeuilles(); window.print(); };
+    $("fiche-grille").onclick = () => diagImprimerGrille(cl);
     $("fiche-raz").onclick = () => confirmModal("Effacer le diagnostic", "Toutes les notes du diagnostic individuel de « " + el.nom + " » seront effacées. Continuer ?", "Effacer", () => {
       el.scores = {}; save(); toast("Diagnostic de « " + el.nom + " » effacé"); render();
     });
@@ -25730,6 +25775,49 @@ window.JSYNC = window.JSYNC || (function () {
       <p style="font-size:.9rem;line-height:1.75;margin-top:8px">${eqLecture(D)}</p>
       <p class="hint">Réussite moyenne des critères : <b>${D.moy} %</b> → niveau ${D.niveau === "lacune" ? "Lacunes (< 35 %)" : D.niveau === "intermediaire" ? "Intermédiaire (35–59 %)" : "Maîtrise (≥ 60 %)"}. Source : diagnostic collectif par équipe.</p>`;
   }
+
+  /* ── GRILLE DE CLASSE À IMPRIMER — DIAGNOSTIC INDIVIDUEL (même présentation que la grille collective) ── */
+  function diagImprimerGrille(cl) {
+    if (typeof smStyle === "function") smStyle();
+    const K = compActives(cl), n = smNivCode(cl) || "", en = (typeof entete === "function") ? entete(cl) : {};
+    const el = cl.eleves || [];
+    if (!el.length) { toast("Aucun élève dans cette classe"); return; }
+    const court = (x) => String(x).replace(/\s*\(.*?\)\s*/g, " ").replace(/\s+—.*$/, "").trim();
+    const h = Math.max(3.6, Math.min(8, (158 / Math.max(el.length, 1)))).toFixed(1);
+    const page1 = `<div class="smp eqg">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
+        <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:13pt;font-weight:700;font-style:italic;color:#8B2E3C">Grille de diagnostic individuel ${esc(n)} — ${esc(PV_CFG.aps)}</div>
+        <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:11pt;color:#1F4E79;min-width:40mm">Classe : <b>${esc(cl.nom)}</b></div></div>
+      <p style="font-size:8pt;margin:0 0 2mm">Date : …… / …… / ……… · Enseignant(e) : ${esc(en.enseignant || "……………………")} · Cocher le niveau constaté pour chaque critère : <b>N1</b> = à renforcer (0) · <b>N2</b> = en cours (1) · <b>N3</b> = acquis (2). Total ramené sur 20. Descriptifs des niveaux en page 2.</p>
+      <table class="eqg-t" style="table-layout:fixed"><colgroup><col style="width:7mm"><col style="width:40mm">${K.map(() => "<col><col><col>").join("")}<col style="width:12mm"></colgroup><thead>
+        <tr><th rowspan="2">N°</th><th rowspan="2" class="nm">Nom / Prénom</th>${K.map(k => `<th colspan="3" class="${k.off ? "gc" : "gi"}">${esc(court(k.nom))}${k.off ? "<br><small>critère " + esc(n) + "</small>" : ""}</th>`).join("")}<th rowspan="2" class="gi">Total<br>/20</th></tr>
+        <tr>${K.map(k => ["N1", "N2", "N3"].map(x => `<th class="${k.off ? "gc" : "gi"} niv">${x}</th>`).join("")).join("")}</tr></thead>
+        <tbody>${el.map((e, i) => `<tr style="height:${h}mm"><td>${i + 1}</td><td class="nm">${esc(e.nom)}</td>${K.map(() => "<td></td><td></td><td></td>").join("")}<td></td></tr>`).join("")}</tbody>
+      </table>
+      <style>
+        #sm-print .eqg{padding:6mm 7mm} #sm-print .eqg-t td,#sm-print .eqg-t th{padding:.3mm .6mm;line-height:1.15} #sm-print .eqg-t thead th{font-size:6.4pt;letter-spacing:0 !important;overflow-wrap:anywhere;hyphens:auto;overflow:hidden}
+        #sm-print .eqg-t th.gi{background:#D9EAD3 !important} #sm-print .eqg-t th.gc{background:#F4CCCC !important}
+        #sm-print .eqg-t td.nm{font-size:7.5pt;white-space:nowrap;overflow:hidden} #sm-print .eqg-t tbody td{font-size:7.5pt;padding:0 .6mm;line-height:1} #sm-print .eqg-t tbody tr:nth-child(even) td{background:#F7F9FC !important}
+        #sm-print .eqg-t tbody td:nth-child(3n){border-left:.5mm solid #555}
+        #sm-print .eqd-t{width:100%;border-collapse:collapse;table-layout:fixed} #sm-print .eqd-t td,#sm-print .eqd-t th{border:.3mm solid #444;padding:1mm 1.5mm;font-size:7.6pt;text-align:left;vertical-align:top}
+        #sm-print .eqd-t th{background:#E8E8E8 !important;font-size:8pt}
+      </style></div>`;
+    const page2 = `<div class="smp">
+      <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:12pt;font-weight:700;font-style:italic;color:#8B2E3C;display:inline-block;margin-bottom:3mm">Descriptifs des niveaux — ${esc(n)} — ${esc(PV_CFG.aps)}</div>
+      <table class="eqd-t"><colgroup><col style="width:22%"><col><col><col></colgroup>
+        <thead><tr><th>Critère</th><th>N1 — à renforcer (0)</th><th>N2 — en cours (1)</th><th>N3 — acquis (2)</th></tr></thead>
+        <tbody>${K.map(k => `<tr><td><b>${esc(k.nom)}</b>${k.off ? " <i>(critère " + esc(n) + ")</i>" : ""}</td>${[0, 1, 2].map(v => `<td>${esc(k.niv ? k.niv[v] : "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    let z = document.getElementById("sm-print");
+    if (!z) { z = document.createElement("div"); z.id = "sm-print"; document.body.appendChild(z); }
+    z.innerHTML = page1 + page2;
+    let pg = document.getElementById("sm-page");
+    if (!pg) { pg = document.createElement("style"); pg.id = "sm-page"; document.head.appendChild(pg); }
+    pg.textContent = "@page{size:A4 landscape;margin:0;}";
+    document.body.classList.add("sm-printing");
+    const fin = () => { document.body.classList.remove("sm-printing"); z.innerHTML = ""; pg.textContent = ""; window.removeEventListener("afterprint", fin); };
+    window.addEventListener("afterprint", fin);
+    setTimeout(() => window.print(), 60);
+  }
   function viewSommative(c, cl) {
     smStyle();
     if (!cl.eleves.length) {
@@ -26537,6 +26625,7 @@ window.JSYNC = window.JSYNC || (function () {
         <button class="btn" id="fiche-next" ${idx === cl.eleves.length - 1 ? "disabled" : ""}>Suivant →</button>
         <span style="flex:1"></span>
         <button class="btn" id="fiche-raz" ${eleveEvalue(el) ? "" : "disabled"}>🧹 Effacer le diagnostic de cet élève</button>
+        <button class="btn" id="fiche-grille">🖨 Grille de la classe</button>
         <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
       </div>
 
@@ -26648,6 +26737,7 @@ window.JSYNC = window.JSYNC || (function () {
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
     $("fiche-print").onclick = () => { finPrintFeuilles(); window.print(); };
+    $("fiche-grille").onclick = () => diagImprimerGrille(cl);
     $("fiche-raz").onclick = () => confirmModal("Effacer le diagnostic", "Toutes les notes du diagnostic individuel de « " + el.nom + " » seront effacées. Continuer ?", "Effacer", () => {
       el.scores = {}; save(); toast("Diagnostic de « " + el.nom + " » effacé"); render();
     });
@@ -36294,6 +36384,49 @@ window.JSYNC = window.JSYNC || (function () {
       <p style="font-size:.9rem;line-height:1.75;margin-top:8px">${eqLecture(D)}</p>
       <p class="hint">Réussite moyenne des critères : <b>${D.moy} %</b> → niveau ${D.niveau === "lacune" ? "Lacunes (< 35 %)" : D.niveau === "intermediaire" ? "Intermédiaire (35–59 %)" : "Maîtrise (≥ 60 %)"}. Source : diagnostic collectif par équipe.</p>`;
   }
+
+  /* ── GRILLE DE CLASSE À IMPRIMER — DIAGNOSTIC INDIVIDUEL (même présentation que la grille collective) ── */
+  function diagImprimerGrille(cl) {
+    if (typeof smStyle === "function") smStyle();
+    const K = compActives(cl), n = smNivCode(cl) || "", en = (typeof entete === "function") ? entete(cl) : {};
+    const el = cl.eleves || [];
+    if (!el.length) { toast("Aucun élève dans cette classe"); return; }
+    const court = (x) => String(x).replace(/\s*\(.*?\)\s*/g, " ").replace(/\s+—.*$/, "").trim();
+    const h = Math.max(3.6, Math.min(8, (158 / Math.max(el.length, 1)))).toFixed(1);
+    const page1 = `<div class="smp eqg">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
+        <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:13pt;font-weight:700;font-style:italic;color:#8B2E3C">Grille de diagnostic individuel ${esc(n)} — ${esc(PV_CFG.aps)}</div>
+        <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:11pt;color:#1F4E79;min-width:40mm">Classe : <b>${esc(cl.nom)}</b></div></div>
+      <p style="font-size:8pt;margin:0 0 2mm">Date : …… / …… / ……… · Enseignant(e) : ${esc(en.enseignant || "……………………")} · Cocher le niveau constaté pour chaque critère : <b>N1</b> = à renforcer (0) · <b>N2</b> = en cours (1) · <b>N3</b> = acquis (2). Total ramené sur 20. Descriptifs des niveaux en page 2.</p>
+      <table class="eqg-t" style="table-layout:fixed"><colgroup><col style="width:7mm"><col style="width:40mm">${K.map(() => "<col><col><col>").join("")}<col style="width:12mm"></colgroup><thead>
+        <tr><th rowspan="2">N°</th><th rowspan="2" class="nm">Nom / Prénom</th>${K.map(k => `<th colspan="3" class="${k.off ? "gc" : "gi"}">${esc(court(k.nom))}${k.off ? "<br><small>critère " + esc(n) + "</small>" : ""}</th>`).join("")}<th rowspan="2" class="gi">Total<br>/20</th></tr>
+        <tr>${K.map(k => ["N1", "N2", "N3"].map(x => `<th class="${k.off ? "gc" : "gi"} niv">${x}</th>`).join("")).join("")}</tr></thead>
+        <tbody>${el.map((e, i) => `<tr style="height:${h}mm"><td>${i + 1}</td><td class="nm">${esc(e.nom)}</td>${K.map(() => "<td></td><td></td><td></td>").join("")}<td></td></tr>`).join("")}</tbody>
+      </table>
+      <style>
+        #sm-print .eqg{padding:6mm 7mm} #sm-print .eqg-t td,#sm-print .eqg-t th{padding:.3mm .6mm;line-height:1.15} #sm-print .eqg-t thead th{font-size:6.4pt;letter-spacing:0 !important;overflow-wrap:anywhere;hyphens:auto;overflow:hidden}
+        #sm-print .eqg-t th.gi{background:#D9EAD3 !important} #sm-print .eqg-t th.gc{background:#F4CCCC !important}
+        #sm-print .eqg-t td.nm{font-size:7.5pt;white-space:nowrap;overflow:hidden} #sm-print .eqg-t tbody td{font-size:7.5pt;padding:0 .6mm;line-height:1} #sm-print .eqg-t tbody tr:nth-child(even) td{background:#F7F9FC !important}
+        #sm-print .eqg-t tbody td:nth-child(3n){border-left:.5mm solid #555}
+        #sm-print .eqd-t{width:100%;border-collapse:collapse;table-layout:fixed} #sm-print .eqd-t td,#sm-print .eqd-t th{border:.3mm solid #444;padding:1mm 1.5mm;font-size:7.6pt;text-align:left;vertical-align:top}
+        #sm-print .eqd-t th{background:#E8E8E8 !important;font-size:8pt}
+      </style></div>`;
+    const page2 = `<div class="smp">
+      <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:12pt;font-weight:700;font-style:italic;color:#8B2E3C;display:inline-block;margin-bottom:3mm">Descriptifs des niveaux — ${esc(n)} — ${esc(PV_CFG.aps)}</div>
+      <table class="eqd-t"><colgroup><col style="width:22%"><col><col><col></colgroup>
+        <thead><tr><th>Critère</th><th>N1 — à renforcer (0)</th><th>N2 — en cours (1)</th><th>N3 — acquis (2)</th></tr></thead>
+        <tbody>${K.map(k => `<tr><td><b>${esc(k.nom)}</b>${k.off ? " <i>(critère " + esc(n) + ")</i>" : ""}</td>${[0, 1, 2].map(v => `<td>${esc(k.niv ? k.niv[v] : "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    let z = document.getElementById("sm-print");
+    if (!z) { z = document.createElement("div"); z.id = "sm-print"; document.body.appendChild(z); }
+    z.innerHTML = page1 + page2;
+    let pg = document.getElementById("sm-page");
+    if (!pg) { pg = document.createElement("style"); pg.id = "sm-page"; document.head.appendChild(pg); }
+    pg.textContent = "@page{size:A4 landscape;margin:0;}";
+    document.body.classList.add("sm-printing");
+    const fin = () => { document.body.classList.remove("sm-printing"); z.innerHTML = ""; pg.textContent = ""; window.removeEventListener("afterprint", fin); };
+    window.addEventListener("afterprint", fin);
+    setTimeout(() => window.print(), 60);
+  }
   function viewSommative(c, cl) {
     smStyle();
     if (!cl.eleves.length) {
@@ -37101,6 +37234,7 @@ window.JSYNC = window.JSYNC || (function () {
         <button class="btn" id="fiche-next" ${idx === cl.eleves.length - 1 ? "disabled" : ""}>Suivant →</button>
         <span style="flex:1"></span>
         <button class="btn" id="fiche-raz" ${eleveEvalue(el) ? "" : "disabled"}>🧹 Effacer le diagnostic de cet élève</button>
+        <button class="btn" id="fiche-grille">🖨 Grille de la classe</button>
         <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
       </div>
 
@@ -37212,6 +37346,7 @@ window.JSYNC = window.JSYNC || (function () {
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
     $("fiche-print").onclick = () => { finPrintFeuilles(); window.print(); };
+    $("fiche-grille").onclick = () => diagImprimerGrille(cl);
     $("fiche-raz").onclick = () => confirmModal("Effacer le diagnostic", "Toutes les notes du diagnostic individuel de « " + el.nom + " » seront effacées. Continuer ?", "Effacer", () => {
       el.scores = {}; save(); toast("Diagnostic de « " + el.nom + " » effacé"); render();
     });
@@ -46788,6 +46923,49 @@ window.JSYNC = window.JSYNC || (function () {
       <p style="font-size:.9rem;line-height:1.75;margin-top:8px">${eqLecture(D)}</p>
       <p class="hint">Réussite moyenne des critères : <b>${D.moy} %</b> → niveau ${D.niveau === "lacune" ? "Lacunes (< 35 %)" : D.niveau === "intermediaire" ? "Intermédiaire (35–59 %)" : "Maîtrise (≥ 60 %)"}. Source : diagnostic collectif par équipe.</p>`;
   }
+
+  /* ── GRILLE DE CLASSE À IMPRIMER — DIAGNOSTIC INDIVIDUEL (même présentation que la grille collective) ── */
+  function diagImprimerGrille(cl) {
+    if (typeof smStyle === "function") smStyle();
+    const K = compActives(cl), n = smNivCode(cl) || "", en = (typeof entete === "function") ? entete(cl) : {};
+    const el = cl.eleves || [];
+    if (!el.length) { toast("Aucun élève dans cette classe"); return; }
+    const court = (x) => String(x).replace(/\s*\(.*?\)\s*/g, " ").replace(/\s+—.*$/, "").trim();
+    const h = Math.max(3.6, Math.min(8, (158 / Math.max(el.length, 1)))).toFixed(1);
+    const page1 = `<div class="smp eqg">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
+        <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:13pt;font-weight:700;font-style:italic;color:#8B2E3C">Grille de diagnostic individuel ${esc(n)} — ${esc(PV_CFG.aps)}</div>
+        <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:11pt;color:#1F4E79;min-width:40mm">Classe : <b>${esc(cl.nom)}</b></div></div>
+      <p style="font-size:8pt;margin:0 0 2mm">Date : …… / …… / ……… · Enseignant(e) : ${esc(en.enseignant || "……………………")} · Cocher le niveau constaté pour chaque critère : <b>N1</b> = à renforcer (0) · <b>N2</b> = en cours (1) · <b>N3</b> = acquis (2). Total ramené sur 20. Descriptifs des niveaux en page 2.</p>
+      <table class="eqg-t" style="table-layout:fixed"><colgroup><col style="width:7mm"><col style="width:40mm">${K.map(() => "<col><col><col>").join("")}<col style="width:12mm"></colgroup><thead>
+        <tr><th rowspan="2">N°</th><th rowspan="2" class="nm">Nom / Prénom</th>${K.map(k => `<th colspan="3" class="${k.off ? "gc" : "gi"}">${esc(court(k.nom))}${k.off ? "<br><small>critère " + esc(n) + "</small>" : ""}</th>`).join("")}<th rowspan="2" class="gi">Total<br>/20</th></tr>
+        <tr>${K.map(k => ["N1", "N2", "N3"].map(x => `<th class="${k.off ? "gc" : "gi"} niv">${x}</th>`).join("")).join("")}</tr></thead>
+        <tbody>${el.map((e, i) => `<tr style="height:${h}mm"><td>${i + 1}</td><td class="nm">${esc(e.nom)}</td>${K.map(() => "<td></td><td></td><td></td>").join("")}<td></td></tr>`).join("")}</tbody>
+      </table>
+      <style>
+        #sm-print .eqg{padding:6mm 7mm} #sm-print .eqg-t td,#sm-print .eqg-t th{padding:.3mm .6mm;line-height:1.15} #sm-print .eqg-t thead th{font-size:6.4pt;letter-spacing:0 !important;overflow-wrap:anywhere;hyphens:auto;overflow:hidden}
+        #sm-print .eqg-t th.gi{background:#D9EAD3 !important} #sm-print .eqg-t th.gc{background:#F4CCCC !important}
+        #sm-print .eqg-t td.nm{font-size:7.5pt;white-space:nowrap;overflow:hidden} #sm-print .eqg-t tbody td{font-size:7.5pt;padding:0 .6mm;line-height:1} #sm-print .eqg-t tbody tr:nth-child(even) td{background:#F7F9FC !important}
+        #sm-print .eqg-t tbody td:nth-child(3n){border-left:.5mm solid #555}
+        #sm-print .eqd-t{width:100%;border-collapse:collapse;table-layout:fixed} #sm-print .eqd-t td,#sm-print .eqd-t th{border:.3mm solid #444;padding:1mm 1.5mm;font-size:7.6pt;text-align:left;vertical-align:top}
+        #sm-print .eqd-t th{background:#E8E8E8 !important;font-size:8pt}
+      </style></div>`;
+    const page2 = `<div class="smp">
+      <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:12pt;font-weight:700;font-style:italic;color:#8B2E3C;display:inline-block;margin-bottom:3mm">Descriptifs des niveaux — ${esc(n)} — ${esc(PV_CFG.aps)}</div>
+      <table class="eqd-t"><colgroup><col style="width:22%"><col><col><col></colgroup>
+        <thead><tr><th>Critère</th><th>N1 — à renforcer (0)</th><th>N2 — en cours (1)</th><th>N3 — acquis (2)</th></tr></thead>
+        <tbody>${K.map(k => `<tr><td><b>${esc(k.nom)}</b>${k.off ? " <i>(critère " + esc(n) + ")</i>" : ""}</td>${[0, 1, 2].map(v => `<td>${esc(k.niv ? k.niv[v] : "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    let z = document.getElementById("sm-print");
+    if (!z) { z = document.createElement("div"); z.id = "sm-print"; document.body.appendChild(z); }
+    z.innerHTML = page1 + page2;
+    let pg = document.getElementById("sm-page");
+    if (!pg) { pg = document.createElement("style"); pg.id = "sm-page"; document.head.appendChild(pg); }
+    pg.textContent = "@page{size:A4 landscape;margin:0;}";
+    document.body.classList.add("sm-printing");
+    const fin = () => { document.body.classList.remove("sm-printing"); z.innerHTML = ""; pg.textContent = ""; window.removeEventListener("afterprint", fin); };
+    window.addEventListener("afterprint", fin);
+    setTimeout(() => window.print(), 60);
+  }
   function viewSommative(c, cl) {
     smStyle();
     if (!cl.eleves.length) {
@@ -47595,6 +47773,7 @@ window.JSYNC = window.JSYNC || (function () {
         <button class="btn" id="fiche-next" ${idx === cl.eleves.length - 1 ? "disabled" : ""}>Suivant →</button>
         <span style="flex:1"></span>
         <button class="btn" id="fiche-raz" ${eleveEvalue(el) ? "" : "disabled"}>🧹 Effacer le diagnostic de cet élève</button>
+        <button class="btn" id="fiche-grille">🖨 Grille de la classe</button>
         <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
       </div>
 
@@ -47706,6 +47885,7 @@ window.JSYNC = window.JSYNC || (function () {
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
     $("fiche-print").onclick = () => { finPrintFeuilles(); window.print(); };
+    $("fiche-grille").onclick = () => diagImprimerGrille(cl);
     $("fiche-raz").onclick = () => confirmModal("Effacer le diagnostic", "Toutes les notes du diagnostic individuel de « " + el.nom + " » seront effacées. Continuer ?", "Effacer", () => {
       el.scores = {}; save(); toast("Diagnostic de « " + el.nom + " » effacé"); render();
     });
@@ -94618,5 +94798,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 03-11-2026 · 23h30</div>
 </body>
 </html>
