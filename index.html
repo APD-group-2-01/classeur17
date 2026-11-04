@@ -2017,6 +2017,7 @@ const JOURNAL_DEFAUT = {
   function renderAllForCurrentContext() {
     renderAptitudes();
     renderCycleDetail();
+    renderGroupes();
   }
 
   function switchNiveau(niveau) {
@@ -2728,6 +2729,7 @@ const JOURNAL_DEFAUT = {
     if (!target) return;
     target.classList.add("active");
     if (page === "repartition") renderPlanification();
+    if (page === "groupes") renderGroupes();
     if (page !== "cycles") appliquerTeinte(null);
     document.querySelectorAll(".nav-link").forEach(a => a.classList.toggle("active", a.dataset.page === page));
     state.data.lastPage = page;
@@ -3094,21 +3096,284 @@ const JOURNAL_DEFAUT = {
   }
 
   /* ------------------------------ Répartition des Groupes ------------------------------ */
+  /* ---------- Répartition des groupes : tirage aléatoire équilibré G/F, un tirage par APS ---------- */
+  const grDevinerSexe = (function () {
+  var SEXE_F_LAT = ["imane","iman","salma","khadija","fatima","fatimazahra","fatimaezzahra","aya","sara","sarah","nour","noura","yasmine","yassmine","hiba","rim","rime","maryam","meriem","myriam","mariam","hajar","hajjar","ghita","ghizlane","asmaa","asma","loubna","ikram","nada","soukaina","soukayna","zineb","zaineb","kenza","lina","lamia","laila","leila","layla","nawal","najwa","houda","hind","wiam","wissal","chaimae","chaima","doha","douae","douaa","doae","ines","inas","manal","malak","oumaima","oumayma","omaima","rania","safae","safaa","sanaa","sanae","siham","yousra","yosra","youssra","zahra","zahira","ibtissam","amina","amal","samira","naima","najat","souad","karima","latifa","rachida","saida","aicha","aisha","mouna","jihane","jihan","basma","bouchra","dounia","donia","fadwa","ghizlan","habiba","hanae","hanane","hanaa","houria","khaoula","khawla","leyla","majda","mounia","nawel","rajae","rajaa","sabah","salima","samia","sofia","sophia","yasmina","zoubida","zhour","mina","rabha","fatiha","malika","wafaa","wafae","maha","meryem","nisrine","nesrine","ilham","ahlam","rihab","rihame","ranya","rokaya","roqaya","hafsa","asmae","chaymae","chayma","hasna","hasnae","israe","israa","alae","alaa_f","nouhaila","nouhayla","oumnia","oumniya","rahma","romaissae","romaissa","rym","sana","sabrina","sarra","selma","soumia","soumaya","sumaya","tasnim","tasnime","wijdane","wijdan","yakout","zakia","zineb","nora","narjiss","narjis","khadijah","hind","hanaa","rita","ritaj","jana","joud","lamyae","lamya","lamiae","maroua","marwa","nihal","ouiam","ouissal","safia","saloua","salwa","sihame","touria","widad","yasmin","hayat","hayate","ibtisam","kaoutar","kawtar","kaltoum","keltoum","mariem","nadia","nadya","raja","rajaa","samah","sawsane","sawsan","siwar","soundouss","wafa"];
+  var SEXE_M_LAT = ["mohsin","mohcine","mohssine","mohsine","mohcin","redouane","redwan","ridouane","yasser","soulaimane","soulaiman","slimane","taoufik","tawfik","hakim","mokhtar","larbi","lahcen","hassan","houssine","hussein","issam","aboubakr","boubker","yacoub","jalal","adnane","imrane","ammar","mahmoud","hamid","moulay","anouar","khalil","akram","seif","saif","nouh","fahd","maher","mazen","rami","kacem","haroun","zaid","zakaria","zakariae","nasser","rabie","lotfi","najib","habib","abdelali","abdellah","abdelilah","abderrahmane","abderrahim","abdelkarim","abdellatif","abdelaziz","abdelhak","abdessamad","abdelmajid","abdeslam","abdelkader","abdelouahed","abdeljalil","abdelfattah","abdelhadi","abdelhamid","abdelbasset","abdelmalek","abdelouahab","mbark","miloud","mahjoub","seddik","brahim","ibrahim","hicham","hachem","mehdi","aymane","aymen","adib","mohamed","mohammed","ahmed","youssef","yassine","hamza","oussama","ossama","anas","ayoub","amine","ilyas","ilias","omar","othmane","adam","rayane","rayan","zakaria","mehdi","mahdi","yahya","taha","reda","mustapha","moussa","issa","ali","hassan","hussein","karim","khalid","said","nabil","walid","hicham","bilal","soufiane","sofiane","ismail","imad","badr","saad","salah","abdellah","abdelilah","abderrahim","abderrahmane","younes","yunes","driss","idriss","ibrahim","brahim","kamal","jamal","nizar","tarik","tariq","yahia","houssam","hatim","marouane","marwane","mourad","nassim","noureddine","othman","rachid","sami","samir","wassim","zouhair","achraf","ayman","aymane","haitam","haytham","ilyass","ismael"];
+  var SEXE_F_AR = ["مريم","فاطمة","فاطمه","خديجة","عائشة","عايشة","زينب","ريم","مها","هند","نور","نورا","نورة","سلمى","ليلى","هدى","منى","نهى","سلوى","بشرى","ذكرى","ضحى","دعاء","هناء","ميساء","اسماء","سناء","وفاء","رجاء","صفاء","شيماء","لمياء","علياء","نجلاء","حسناء","اسراء","الاء","هيفاء","سماح","ايمان","ابتسام","اكرام","وئام","وصال","جيهان","سهام","حنان","غزلان","كوثر","ياسمين","ياسمينة","هاجر","سارة","ساره","اية","لينا","رانيا","ملاك","امل","نوال","نجوى","ايناس","منار","دنيا","كنزة","غيثة","سكينة","اميمة","امينة","حليمة","كريمة","لطيفة","نعيمة","سميرة","سعيدة","رشيدة","مليكة","حبيبة","جميلة","زهرة","الزهراء","هبة","فدوى","ماجدة","منية","رحمة","رقية","سمية","صفية","نادية","سامية","سهى","رؤى","لبنى","الهام","احلام","اخلاص","نسرين","شهرزاد","ريحانة","ريتاج","تسنيم","جنات","جنى","لجين","روان","بسمة","بثينة","حفصة","صباح","نجاة","عفاف","وداد","سعاد","فريدة","نبيلة","عزيزة","خولة","زكية","فتيحة","يسرى","يسرا","اسيل","ديما","لمى","ندى","هالة","ولاء","رهف","شهد","ريهام","نورهان","حياة","كلثوم","ثريا","سلوة","مروة","نهال","وجدان","ياقوت","رحاب","امنية","حسنى","نرجس","سوسن","سهيلة","فرح","مريامة","اسمهان","خيرة","فاطمةالزهراء","زهور","مينة","ربحة","ملكة","دلال","رباب","غادة","لبنة","ليلة"];
+  var SEXE_M_AR = ["محسن","محسين","عبدالرحمان","عبدالرحمن","عبدالرحيم","عبدالكريم","عبداللطيف","عبدالغفور","عبدالعزيز","عبدالحق","عبدالاله","عبدالصمد","عبدالمجيد","عبدالرزاق","عبدالسلام","عبدالحكيم","عبدالقادر","عبدالواحد","عبدالجليل","عبدالفتاح","عبدالهادي","عبدالمنعم","عبدالعالي","عبدالباسط","عبدالمالك","عبدالوهاب","عبدالحميد","عبدالنور","عبدالرؤوف","رضوان","ياسر","سليمان","سليم","شكري","توفيق","حكيم","مختار","المختار","العربي","الحسين","الحسن","لحسن","امحمد","الطيب","عصام","ابوبكر","بوبكر","اسحاق","يعقوب","جلال","منصف","نعمان","عدنان","عمران","عمار","باسم","حمد","حامد","محمود","مولاي","انور","خليل","شريف","مامون","اكرم","عزالدين","سيف","نوح","حميد","فهد","فراس","ماهر","مازن","منذر","رامي","رائد","قاسم","هارون","يزيد","زيد","اسلام","زين","زينالدين","ناصر","نصر","نصرالدين","بدرالدين","وديع","ربيع","لطفي","نجيب","حبيب","اناس","يحي","عبدو","الحاج","العيد","ميلود","مبارك","محجوب","المعطي","عبدالرحيم","الصديق","صديق","ابراهيم","هاشم","الهاشمي","العياشي","اسماعين","حسني","مهدي","ايمن","اديب","الاديب","محمد","احمد","يوسف","ياسين","حمزة","اسامة","انس","ايوب","امين","الياس","عمر","عثمان","ادم","ريان","زكرياء","زكريا","مهدي","المهدي","يحيى","طه","رضا","مصطفى","المصطفى","موسى","عيسى","علي","حسن","حسين","كريم","خالد","سعيد","نبيل","وليد","هشام","بلال","سفيان","اسماعيل","عماد","بدر","سعد","صلاح","عبدالله","عبد","يونس","ادريس","ابراهيم","كمال","جمال","نزار","طارق","حسام","حاتم","مروان","مراد","نسيم","نورالدين","رشيد","سامي","سمير","وسيم","زهير","اشرف","ايمن","هيثم","نصير","سهيل","كمال","طلحة","عبيدة","معاوية","قتادة","عروة","عكرمة","حذيفة","عبادة","ثعلبة","خزيمة","مسلمة","علاء","ضياء","بهاء","مرتضى","مجتبى","صهيب","انيس","اسامه","حمزه","عزيز","فؤاد","منير","نوفل","جواد","زياد","اياد","معاذ","مالك","فارس","عادل","رياض","وائل","هاني","نادر","شعيب","غسان","لقمان","لؤي","صابر","صالح","فيصل","كريم","مصعب"];
+  var SEXE_PREFIXES_NOM = /^(ال|بن|بو|ابن|ابو|ولد|اولاد|ايت|اوت|بال|بل)/;
+  function sexeNormAr(w) {
+    return String(w || "").replace(/[ً-ٰٟـ]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ؤ/g, "ؤ").trim();
+  }
+  function devinerSexe(nomComplet) {
+    var s = String(nomComplet || "").trim();
+    if (!s) return null;
+    var f = false, m = false, fin = false, bint = false, sauter = false;
+    // écriture latine
+    var lat = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z]+/).filter(Boolean);
+    for (var i = 0; i < lat.length; i++) {
+      if (lat[i] === "bent" || lat[i] === "bint") { bint = true; i++; continue; }
+      if (lat[i] === "ben" || lat[i] === "ibn" || lat[i] === "ould") { i++; continue; }
+      if (SEXE_F_LAT.indexOf(lat[i]) !== -1) f = true;
+      else if (SEXE_M_LAT.indexOf(lat[i]) !== -1) m = true;
+    }
+    // écriture arabe
+    var arTxt = sexeNormAr(s);
+    var ar = arTxt.split(/[^ء-ي]+/).filter(Boolean);
+    var arF = SEXE_F_AR.map(sexeNormAr), arM = SEXE_M_AR.map(sexeNormAr);
+    var colle = ar.join("");
+    if (arF.indexOf(colle) !== -1) f = true;
+    if (/فاطمة ?الزهراء|فاطمه ?الزهراء/.test(arTxt)) f = true;
+    for (var j = 0; j < ar.length; j++) {
+      var w = ar[j];
+      if (sauter) { sauter = false; continue; }                                   // nom du père (après بن / بنت / ولد)
+      if (w === "بنت") { bint = true; sauter = true; continue; }
+      if (w === "بن" || w === "ابن" || w === "ولد") { sauter = true; continue; }
+      if (arF.indexOf(w) !== -1) { f = true; continue; }
+      if (arM.indexOf(w) !== -1) { m = true; continue; }
+      if (SEXE_PREFIXES_NOM.test(w) || w.length < 3) continue;          // nom de famille probable
+      if (/ة$/.test(w) || /اء$/.test(w) || /ى$/.test(w)) fin = true;     // terminaison féminine : indice faible (le nom de famille peut finir par ة)
+    }
+    if (bint) return "F";            // « … بنت … » : fille, quel que soit le prénom du père
+    if (fin && !f && !m) f = true;   // terminaison féminine seulement si aucun prénom connu n'a été trouvé
+    if (f && !m) return "F";
+    if (m && !f) return "M";
+    if (f && m) return null;   // ambigu : l'enseignant tranche
+    return null;
+  }
+    return devinerSexe;
+  })();
+  const GR_LETTRES = "ABCDEFGH".split("");
+  const grEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const grCle = s => String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
+  let grAps = null;   // APS affichée
+
+  function grEleves(nd, classe) {
+    const vus = {}, out = [];
+    const cyc = (nd.cycles || {})[classe] || {};
+    const ajoute = rows => (rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(); if (n && !vus[grCle(n)]) { vus[grCle(n)] = 1; out.push(n); } });
+    ajoute((cyc[REF_CYCLE_ID] || {}).rows);
+    Object.keys(cyc).forEach(k => ajoute((cyc[k] || {}).rows));
+    ajoute(((nd.aptitudes || {})[classe] || {}).rows);
+    return out;
+  }
+  function grSexes(nd, classe) {
+    nd.grSexes = nd.grSexes || {};
+    return (nd.grSexes[classe] = nd.grSexes[classe] || {});
+  }
+  function grSexe(nd, classe, nom) {
+    const m = grSexes(nd, classe)[grCle(nom)];
+    if (m === "F" || m === "G") return m;
+    return grDevinerSexe(nom) === "F" ? "F" : "G";
+  }
+  function grStore(nd, classe) {
+    nd.grTirages = nd.grTirages || {};
+    return (nd.grTirages[classe] = nd.grTirages[classe] || {});
+  }
+  function grMelange(t) { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; }
+  /* filles puis garçons, chacun placé dans le groupe le moins rempli (à égalité : le moins pourvu de ce sexe, puis au hasard) */
+  function grTirer(nd, classe, nb) {
+    const el = grEleves(nd, classe);
+    const F = grMelange(el.filter(n => grSexe(nd, classe, n) === "F"));
+    const G = grMelange(el.filter(n => grSexe(nd, classe, n) !== "F"));
+    const gr = Array.from({ length: nb }, () => []), cpt = Array.from({ length: nb }, () => ({ F: 0, G: 0 }));
+    [["F", F], ["G", G]].forEach(([sx, liste]) => liste.forEach(n => {
+      const ordre = grMelange(gr.map((_, i) => i));
+      ordre.sort((a, b) => (gr[a].length - gr[b].length) || (cpt[a][sx] - cpt[b][sx]));
+      gr[ordre[0]].push(n); cpt[ordre[0]][sx]++;
+    }));
+    return gr.map(g => g.sort((a, b) => a.localeCompare(b, "fr")));
+  }
+  const grSignature = gr => gr.map(g => g.map(grCle).sort().join("|")).sort().join("#");
+  /* tirage d'une APS, différent des tirages déjà faits pour les autres APS de la classe */
+  function grNouveau(nd, classe, apsId, nb) {
+    const st = grStore(nd, classe);
+    const autres = Object.keys(st).filter(k => k !== apsId && st[k] && st[k].groupes).map(k => grSignature(st[k].groupes));
+    let gr = grTirer(nd, classe, nb);
+    for (let i = 0; i < 30 && autres.indexOf(grSignature(gr)) >= 0; i++) gr = grTirer(nd, classe, nb);
+    st[apsId] = { nb: nb, groupes: gr, date: new Date().toISOString().slice(0, 10) };
+    return st[apsId];
+  }
+  function grTirage(nd, classe, apsId, nb) {
+    const st = grStore(nd, classe), t = st[apsId];
+    if (t && Array.isArray(t.groupes) && t.groupes.length) return t;
+    return grNouveau(nd, classe, apsId, nb || 4);
+  }
+  /* élèves arrivés après le tirage : ajoutés au groupe le plus petit ; élèves partis : retirés */
+  function grActualiser(nd, classe, t) {
+    const el = grEleves(nd, classe), cles = {};
+    el.forEach(n => cles[grCle(n)] = n);
+    let change = false;
+    const places = {};
+    t.groupes = t.groupes.map(g => g.filter(n => { const k = grCle(n); if (!cles[k] || places[k]) { change = true; return false; } places[k] = 1; return true; }));
+    el.forEach(n => {
+      if (places[grCle(n)]) return;
+      const sx = grSexe(nd, classe, n);
+      let best = 0;
+      t.groupes.forEach((g, i) => {
+        const nF = g.filter(x => grSexe(nd, classe, x) === sx).length, bF = t.groupes[best].filter(x => grSexe(nd, classe, x) === sx).length;
+        if (g.length < t.groupes[best].length || (g.length === t.groupes[best].length && nF < bF)) best = i;
+      });
+      t.groupes[best].push(n); places[grCle(n)] = 1; change = true;
+    });
+    return change;
+  }
+  function grApsListe() { return cyclesProgrammes().liste; }
+
   function renderGroupes() {
+    const page = document.getElementById("page-groupes");
     const grid = document.getElementById("groupes-grid");
+    if (!page || !grid) return;
+    const nd = curNiveauData() || {}, classe = nd.activeClasse;
+    let bar = document.getElementById("gr-barre");
+    if (!bar) { bar = document.createElement("div"); bar.id = "gr-barre"; grid.insertAdjacentElement("beforebegin", bar); }
+    if (!classe) { bar.innerHTML = '<p class="gr-aide">Aucune classe : créez ou importez une classe dans le cahier.</p>'; grid.innerHTML = ""; return; }
+    const eleves = grEleves(nd, classe);
+    const liste = grApsListe();
+    if (!grAps || !liste.some(c => c.id === grAps)) grAps = liste.some(c => c.id === state.currentCycle) ? state.currentCycle : liste[0].id;
+    const aps = CYCLES.find(c => c.id === grAps) || liste[0];
+    const optsCl = (nd.classes || []).map(c => `<option${c === classe ? " selected" : ""}>${grEsc(c)}</option>`).join("");
+    const optsAps = liste.map(c => `<option value="${grEsc(c.id)}"${c.id === grAps ? " selected" : ""}>${grEsc(c.nom)}</option>`).join("");
+    let t = null;
+    if (eleves.length) {
+      const avant = JSON.stringify(grStore(nd, classe)[grAps] || null);
+      t = grTirage(nd, classe, grAps, 4);
+      grActualiser(nd, classe, t);
+      if (JSON.stringify(t) !== avant) saveDebounced();
+    }
+    const nb = t ? t.groupes.length : 4;
+    const optsNb = [2, 3, 4, 5, 6, 7, 8].map(n => `<option${n === nb ? " selected" : ""}>${n}</option>`).join("");
+    const nF = eleves.filter(n => grSexe(nd, classe, n) === "F").length;
+    bar.innerHTML = `
+      <div class="gr-ctrl">
+        <label>Classe <select id="gr-classe">${optsCl}</select></label>
+        <label>APS <select id="gr-aps">${optsAps}</select></label>
+        <label>Groupes <select id="gr-nb">${optsNb}</select></label>
+        <button class="gr-btn gr-tirer" id="gr-tirer" type="button">↻ Nouveau tirage</button>
+        <button class="gr-btn" id="gr-imp-aps" type="button">🖨 Fiche (cette APS)</button>
+        <button class="gr-btn gr-imp" id="gr-imp-cl" type="button">🖨 Fiche de la classe (toutes les APS)</button>
+      </div>
+      <p class="gr-aide">${eleves.length} élève(s) · <b>${eleves.length - nF} G</b> / <b>${nF} F</b> — répartition aléatoire équilibrée garçons/filles, <b>un tirage différent pour chaque APS</b>${t && t.date ? " (tirage du " + t.date.split("-").reverse().join("/") + ")" : ""}. Cliquez sur <b>G</b>/<b>F</b> pour corriger le sexe d'un élève ; utilisez ⇄ pour changer un élève de groupe.</p>`;
     grid.innerHTML = "";
-    Object.keys(state.data.groupes).forEach(letter => {
+    if (!eleves.length) { grid.innerHTML = '<p class="gr-aide">Aucun élève dans la classe « ' + grEsc(classe) + ' ».</p>'; }
+    else t.groupes.forEach((g, gi) => {
+      const f = g.filter(n => grSexe(nd, classe, n) === "F").length;
       const card = el("div", "groupe-card");
-      card.innerHTML = `<div class="groupe-head">GROUPE - ${letter}</div>`;
-      const ta = document.createElement("textarea");
-      ta.className = "groupe-lines";
-      ta.rows = 9;
-      ta.value = state.data.groupes[letter] || "";
-      ta.addEventListener("input", () => { state.data.groupes[letter] = ta.value; saveDebounced(); });
-      card.appendChild(ta);
+      card.innerHTML = `<div class="groupe-head">GROUPE - ${GR_LETTRES[gi]}<span class="gr-cpt">${g.length} · ${g.length - f} G / ${f} F</span></div>
+        <ol class="gr-liste">${g.map((n, i) => { const sx = grSexe(nd, classe, n); return `<li><span class="gr-nom">${grEsc(n)}</span><button type="button" class="gr-sx ${sx === "F" ? "f" : "g"}" data-sx="${gi}:${i}" title="Changer le sexe">${sx}</button><select class="gr-dep" data-dep="${gi}:${i}" title="Changer de groupe"><option value="">⇄</option>${t.groupes.map((_, k) => k === gi ? "" : `<option value="${k}">→ ${GR_LETTRES[k]}</option>`).join("")}</select></li>`; }).join("")}</ol>`;
       grid.appendChild(card);
     });
+    // événements
+    const q = id => document.getElementById(id);
+    q("gr-classe").onchange = e => switchClasse(e.target.value);
+    q("gr-aps").onchange = e => { grAps = e.target.value; renderGroupes(); };
+    const refaire = n => { grNouveau(nd, classe, grAps, n); saveDebounced(); renderGroupes(); toast("Nouveau tirage : " + aps.nom + " — " + classe, "success"); };
+    q("gr-nb").onchange = e => refaire(+e.target.value);
+    q("gr-tirer").onclick = () => askConfirm("Nouveau tirage — " + aps.nom, "Classe " + classe + " : les groupes actuels de cette APS seront remplacés par un nouveau tirage aléatoire (équilibré garçons / filles).", "↻ Tirer", () => refaire(nb));
+    q("gr-imp-aps").onclick = () => grImprimer([grAps]);
+    q("gr-imp-cl").onclick = () => grImprimer(liste.map(c => c.id));
+    grid.querySelectorAll("[data-sx]").forEach(b => b.onclick = () => {
+      const [gi, i] = b.dataset.sx.split(":").map(Number), n = t.groupes[gi][i];
+      grSexes(nd, classe)[grCle(n)] = grSexe(nd, classe, n) === "F" ? "G" : "F";
+      saveDebounced(); renderGroupes();
+    });
+    grid.querySelectorAll("[data-dep]").forEach(s => s.onchange = () => {
+      if (s.value === "") return;
+      const [gi, i] = s.dataset.dep.split(":").map(Number), n = t.groupes[gi].splice(i, 1)[0];
+      t.groupes[+s.value].push(n); t.groupes[+s.value].sort((a, b) => a.localeCompare(b, "fr"));
+      saveDebounced(); renderGroupes();
+    });
   }
+
+  /* ---------- fiche imprimable des groupes d'une classe ---------- */
+  function grImprimer(apsIds) {
+    const nd = curNiveauData() || {}, classe = nd.activeClasse;
+    if (!classe || !grEleves(nd, classe).length) { toast("Aucun élève dans la classe", "error"); return; }
+    apsIds.forEach(id => { const t = grTirage(nd, classe, id, 4); grActualiser(nd, classe, t); });
+    saveDebounced();
+    const idt = state.data.identite || {}, prof = ((idt.professeur || {}).nom || "").trim(), etab = ((idt.etablissement || {}).nom || "").trim();
+    const annee = (typeof SY_META !== "undefined" && SY_META.activeYear) || "";
+    const logoEl = document.getElementById("prepa-logo"); const logo = logoEl && logoEl.src ? logoEl.src : "";
+    const blocs = apsIds.map(id => {
+      const aps = CYCLES.find(c => c.id === id) || { nom: id }, t = grStore(nd, classe)[id], gr = t.groupes;
+      const max = Math.max.apply(null, gr.map(g => g.length).concat([1]));
+      let rows = "";
+      for (let i = 0; i < max; i++) rows += "<tr><td class='n'>" + (i + 1) + "</td>" + gr.map(g => { const n = g[i]; return n ? "<td>" + grEsc(n) + (grSexe(nd, classe, n) === "F" ? " <i>(F)</i>" : "") + "</td>" : "<td></td>"; }).join("") + "</tr>";
+      const pied = "<tr class='pied'><td></td>" + gr.map(g => { const f = g.filter(n => grSexe(nd, classe, n) === "F").length; return "<td>" + g.length + " élèves · " + (g.length - f) + " G / " + f + " F</td>"; }).join("") + "</tr>";
+      return `<div class="grf-bloc"><div class="grf-aps">${grEsc(aps.nom)}</div>
+        <table class="grf-t"><thead><tr><th class="n">N°</th>${gr.map((_, k) => "<th>Groupe " + GR_LETTRES[k] + "</th>").join("")}</tr></thead><tbody>${rows}${pied}</tbody></table></div>`;
+    }).join("");
+    let vue = document.getElementById("grf-vue");
+    if (vue) vue.remove();
+    vue = document.createElement("div"); vue.id = "grf-vue";
+    vue.innerHTML = `<div class="grf-barre"><button type="button" id="grf-print">🖨 Imprimer</button><button type="button" id="grf-close">Fermer ✕</button></div>
+      <div class="grf-page">
+        <div class="grf-tete">${logo ? `<img src="${logo}" alt="">` : ""}<div class="grf-titre"><b>RÉPARTITION DES GROUPES</b><span>${apsIds.length > 1 ? "Toutes les APS programmées" : grEsc((CYCLES.find(c => c.id === apsIds[0]) || {}).nom || "")}</span></div></div>
+        <table class="grf-info"><tr><td><b>Classe :</b> ${grEsc(classe)}</td><td><b>Niveau :</b> ${grEsc(niveauLabel(curNiveau()))}</td><td><b>Année scolaire :</b> ${grEsc(annee)}</td></tr>
+        <tr><td colspan="2"><b>Professeur :</b> ${grEsc(prof)}</td><td><b>Établissement :</b> ${grEsc(etab)}</td></tr></table>
+        ${blocs}
+        <div class="grf-dev">Prepa-1st · Classeur numérique EPS</div>
+      </div>`;
+    document.body.appendChild(vue);
+    document.getElementById("grf-close").onclick = () => vue.remove();
+    document.getElementById("grf-print").onclick = () => {
+      document.body.classList.add("grf-impression");
+      const fin = () => { document.body.classList.remove("grf-impression"); window.removeEventListener("afterprint", fin); };
+      window.addEventListener("afterprint", fin);
+      setTimeout(() => window.print(), 60);
+    };
+  }
+  (function grCss() {
+    const st = document.createElement("style");
+    st.textContent = `
+      #gr-barre{margin:0 0 14px;}
+      .gr-ctrl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:#F6F2FF;border:1px solid #DDD3F5;border-radius:12px;padding:10px 12px;}
+      .gr-ctrl label{display:flex;gap:6px;align-items:center;font-weight:700;font-size:.85rem;color:#3B1677;}
+      .gr-ctrl select{font:inherit;font-weight:600;padding:6px 8px;border:1px solid #C9B8F0;border-radius:8px;background:#fff;}
+      .gr-btn{font:inherit;font-weight:700;font-size:.85rem;padding:7px 12px;border-radius:9px;border:1px solid #5B2BB8;background:#fff;color:#4C1D95;cursor:pointer;}
+      .gr-btn:hover{background:#EFE8FF;}
+      .gr-tirer,.gr-imp{background:#5B2BB8;color:#fff;}
+      .gr-tirer:hover,.gr-imp:hover{background:#4C1D95;}
+      .gr-aide{margin:8px 2px 0;font-size:.82rem;color:#6B7280;}
+      .groupe-head{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+      .gr-cpt{font-size:.75rem;font-weight:700;opacity:.85;}
+      .gr-liste{margin:0;padding:6px 10px 10px 34px;}
+      .gr-liste li{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #EEE;font-size:.88rem;}
+      .gr-liste li::marker{color:#8B5CF6;font-weight:700;}
+      .gr-nom{flex:1;min-width:0;overflow-wrap:anywhere;}
+      .gr-sx{font:inherit;font-size:.72rem;font-weight:800;width:24px;height:22px;border-radius:6px;border:0;cursor:pointer;color:#fff;}
+      .gr-sx.g{background:#2563EB;} .gr-sx.f{background:#DB2777;}
+      .gr-dep{font:inherit;font-size:.75rem;padding:1px 2px;border:1px solid #DDD;border-radius:6px;background:#fff;max-width:52px;}
+      #grf-vue{position:fixed;inset:0;z-index:9999;background:#E9E5F2;overflow:auto;padding:14px;}
+      .grf-barre{display:flex;gap:8px;justify-content:center;margin-bottom:12px;}
+      .grf-barre button{font:inherit;font-weight:700;padding:8px 16px;border-radius:9px;border:0;background:#5B2BB8;color:#fff;cursor:pointer;}
+      .grf-barre button#grf-close{background:#6B7280;}
+      .grf-page{background:#fff;width:210mm;max-width:100%;min-height:290mm;margin:0 auto;padding:10mm;box-sizing:border-box;font-family:Arial,sans-serif;color:#111;box-shadow:0 4px 18px rgba(0,0,0,.15);}
+      .grf-tete{display:flex;align-items:center;gap:12px;border:2px solid #111;padding:6px 10px;margin-bottom:6px;}
+      .grf-tete img{height:44px;width:auto;}
+      .grf-titre{flex:1;text-align:center;display:flex;flex-direction:column;}
+      .grf-titre b{font-size:15pt;letter-spacing:.5px;} .grf-titre span{font-size:10pt;margin-top:2px;}
+      .grf-info{width:100%;border-collapse:collapse;margin-bottom:8px;font-size:9.5pt;}
+      .grf-info td{border:1px solid #111;padding:4px 6px;}
+      .grf-bloc{break-inside:avoid;page-break-inside:avoid;margin-bottom:8px;}
+      .grf-aps{background:#111;color:#fff;font-weight:700;font-size:10pt;padding:3px 8px;}
+      .grf-t{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8.5pt;}
+      .grf-t th,.grf-t td{border:1px solid #111;padding:2px 4px;text-align:left;overflow-wrap:anywhere;}
+      .grf-t th{background:#E5E5E5;text-align:center;}
+      .grf-t .n{width:22px;text-align:center;}
+      .grf-t i{font-style:normal;color:#555;font-size:7.5pt;}
+      .grf-t tr.pied td{background:#F3F3F3;font-weight:700;font-size:7.5pt;text-align:center;}
+      .grf-dev{text-align:center;font-size:8pt;color:#666;margin-top:6px;}
+      @media print{
+        body.grf-impression > *:not(#grf-vue){display:none !important;}
+        body.grf-impression #grf-vue{position:static;background:#fff;padding:0;overflow:visible;}
+        .grf-barre{display:none !important;}
+        .grf-page{box-shadow:none;width:auto;min-height:0;padding:0;}
+        @page{size:A4;margin:9mm;}
+      }`;
+    document.head.appendChild(st);
+  })();
 
   /* ------------------------------ Cycles ------------------------------ */
   /* APS programmées : planification de la classe active (Répartition cyclique),
@@ -95069,6 +95334,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 19h15</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 20h30</div>
 </body>
 </html>
