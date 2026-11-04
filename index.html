@@ -1077,6 +1077,29 @@ html body .lv-corps > .lv-part, html body #lv-zone .corps > .part-titre, html bo
   </div>
 </div>
 
+<style id="jc-teinte">
+/* effet 3D unifié, violet d'origine du cahier journalier (même teinte que la barre du classeur) */
+:root{ --jc-p:#5B2BB8; --jc-l:#8B5CF6; --jc-d:#2A1260; }
+.topbar{ background:linear-gradient(110deg,var(--jc-d) 0%,var(--jc-p) 22%,var(--jc-l) 44%,var(--jc-p) 66%,var(--jc-d) 88%,var(--jc-p) 100%) !important;
+  background-size:240% 100% !important; animation:jcFlow 16s ease-in-out infinite alternate;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28), inset 0 -3px 0 rgba(0,0,0,.18), 0 8px 20px -10px rgba(0,0,0,.55) !important;
+  border-bottom:3px solid var(--jc-l) !important; transition:background-color .4s ease; }
+@keyframes jcFlow{ 0%{background-position:0% 50%} 100%{background-position:100% 50%} }
+.topbar .btn, .topbar select, .topbar .icon-btn{ box-shadow:inset 0 1px 0 rgba(255,255,255,.25), 0 2px 0 rgba(0,0,0,.25) !important; }
+table.grid-table thead th, .cycle-table thead th{
+  background:linear-gradient(180deg,var(--jc-l) 0%,var(--jc-p) 55%,var(--jc-d) 100%) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.30), inset 0 -2px 0 rgba(0,0,0,.20) !important;
+  text-shadow:0 1px 1px rgba(0,0,0,.35); border-color:rgba(255,255,255,.18) !important; }
+table.grid-table .row-head, table.grid-table .row-num{ background:linear-gradient(180deg,#fff, var(--surface-2)) !important; color:var(--jc-d) !important; }
+.table-scroll{ border-top:4px solid var(--jc-p) !important; box-shadow:0 14px 30px -18px var(--jc-d), var(--shadow-sm) !important; }
+.cycle-tab{ box-shadow:0 3px 0 rgba(0,0,0,.12); transition:transform .15s ease, box-shadow .15s ease; }
+.cycle-tab:hover{ transform:translateY(-1px); }
+.cycle-tab.active{ background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 70%,#fff),var(--accent) 60%,color-mix(in srgb,var(--accent) 70%,#000)) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45), 0 4px 0 color-mix(in srgb,var(--accent) 60%,#000), 0 10px 18px -10px var(--accent) !important; text-shadow:0 1px 1px rgba(0,0,0,.35); }
+.nav-link.active{ background:linear-gradient(180deg,var(--jc-l),var(--jc-p) 60%,var(--jc-d)) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 6px 14px -8px var(--jc-d) !important; }
+
+</style>
 <header class="topbar">
   <button id="btn-sidebar-toggle" class="icon-btn" aria-label="Menu">
     <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
@@ -2126,8 +2149,8 @@ const JOURNAL_DEFAUT = {
     const old = nd.activeClasse;
     if (!old) { toast("Aucune classe active à supprimer", "error"); return; }
     askConfirm(
-      "Supprimer la classe « " + old + " » ?",
-      "Toutes les notes de cette classe (" + niveauLabel(curNiveau()) + ") seront perdues. Cette action est irréversible.",
+      "Êtes-vous sûr de supprimer la classe « " + old + " » ?",
+      "⚠ ÊTES-VOUS SÛR ? Cette classe sera supprimée dans TOUTES les applications du classeur (cahier journalier, sports collectifs, athlétisme, course de durée, tests…) avec ses élèves et toutes ses notes. Cette action est définitive.",
       "Supprimer",
       function () { applyDeleteClasse(old); }
     );
@@ -2693,6 +2716,7 @@ const JOURNAL_DEFAUT = {
     if (!target) return;
     target.classList.add("active");
     if (page === "repartition") renderPlanification();
+    if (page !== "cycles") appliquerTeinte(null);
     document.querySelectorAll(".nav-link").forEach(a => a.classList.toggle("active", a.dataset.page === page));
     state.data.lastPage = page;
     saveDebounced();
@@ -3110,9 +3134,26 @@ const JOURNAL_DEFAUT = {
     });
   }
 
+  /* couleur de l'APS du cycle affiché → barre, tableaux, menu du cahier et barre du classeur */
+  const JC_DEFAUT = { p: "#3d2c6d", l: "#5a4390", d: "#241a45", app: "#6D28D9" };
+  function jcMix(hex, cible, t) {
+    const h = String(hex || "").replace("#", ""); if (h.length !== 6) return hex;
+    const c = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)), k = cible === "noir" ? 0 : 255;
+    return "#" + c.map(v => Math.round(v + (k - v) * t).toString(16).padStart(2, "0")).join("");
+  }
+  function appliquerTeinte(hex) {
+    const r = document.documentElement.style;
+    const p = hex || JC_DEFAUT.p, l = hex ? jcMix(hex, "blanc", .28) : JC_DEFAUT.l, d = hex ? jcMix(hex, "noir", .45) : JC_DEFAUT.d;
+    r.setProperty("--primary", p); r.setProperty("--primary-light", l); r.setProperty("--primary-dark", d);
+    try {   // barre du classeur (fenêtre parente)
+      const pr = window.parent && window.parent !== window ? window.parent.document.documentElement.style : null;
+      if (pr) { const a = hex || JC_DEFAUT.app; pr.setProperty("--app-c", a); pr.setProperty("--app-cd", jcMix(a, "noir", .55)); pr.setProperty("--app-cl", jcMix(a, "blanc", .45)); }
+    } catch (e) {}
+  }
   function renderCycleDetail() {
     renderCyclesTabs();
     const cfg = CYCLES.find(c => c.id === state.currentCycle);
+    appliquerTeinte(null);   // le cahier garde son violet d'origine
     const niveau = curNiveau();
     const evalCfg = getEval(cfg.evalType, niveau);
     const nd = curNiveauData();
@@ -15854,7 +15895,7 @@ window.JSYNC = window.JSYNC || (function () {
     });
     c.querySelectorAll("[data-cl-del]").forEach(b => b.onclick = () => {
       const k = data.classes.find(x => x.id === b.dataset.clDel); if (!k) return;
-      confirmModal("Supprimer la classe ?", "Tous les élèves et diagnostics de « " + k.nom + " » seront perdus.", "Supprimer", () => {
+      confirmModal("Êtes-vous sûr de supprimer « " + k.nom + " » ?", "⚠ ÊTES-VOUS SÛR ? Cette classe sera supprimée dans TOUTES les applications du classeur (cahier journalier, sports collectifs, athlétisme, course de durée, tests…) avec ses élèves et toutes ses notes. Cette action est définitive.", "Oui, supprimer partout", () => {
         data.classes = data.classes.filter(x => x.id !== k.id);
         if (data.activeId === k.id) data.activeId = data.classes.length ? data.classes[0].id : null;
         save(); toast("Classe supprimée"); render();
@@ -26466,7 +26507,7 @@ window.JSYNC = window.JSYNC || (function () {
     });
     c.querySelectorAll("[data-cl-del]").forEach(b => b.onclick = () => {
       const k = data.classes.find(x => x.id === b.dataset.clDel); if (!k) return;
-      confirmModal("Supprimer la classe ?", "Tous les élèves et diagnostics de « " + k.nom + " » seront perdus.", "Supprimer", () => {
+      confirmModal("Êtes-vous sûr de supprimer « " + k.nom + " » ?", "⚠ ÊTES-VOUS SÛR ? Cette classe sera supprimée dans TOUTES les applications du classeur (cahier journalier, sports collectifs, athlétisme, course de durée, tests…) avec ses élèves et toutes ses notes. Cette action est définitive.", "Oui, supprimer partout", () => {
         data.classes = data.classes.filter(x => x.id !== k.id);
         if (data.activeId === k.id) data.activeId = data.classes.length ? data.classes[0].id : null;
         save(); toast("Classe supprimée"); render();
@@ -37075,7 +37116,7 @@ window.JSYNC = window.JSYNC || (function () {
     });
     c.querySelectorAll("[data-cl-del]").forEach(b => b.onclick = () => {
       const k = data.classes.find(x => x.id === b.dataset.clDel); if (!k) return;
-      confirmModal("Supprimer la classe ?", "Tous les élèves et diagnostics de « " + k.nom + " » seront perdus.", "Supprimer", () => {
+      confirmModal("Êtes-vous sûr de supprimer « " + k.nom + " » ?", "⚠ ÊTES-VOUS SÛR ? Cette classe sera supprimée dans TOUTES les applications du classeur (cahier journalier, sports collectifs, athlétisme, course de durée, tests…) avec ses élèves et toutes ses notes. Cette action est définitive.", "Oui, supprimer partout", () => {
         data.classes = data.classes.filter(x => x.id !== k.id);
         if (data.activeId === k.id) data.activeId = data.classes.length ? data.classes[0].id : null;
         save(); toast("Classe supprimée"); render();
@@ -47614,7 +47655,7 @@ window.JSYNC = window.JSYNC || (function () {
     });
     c.querySelectorAll("[data-cl-del]").forEach(b => b.onclick = () => {
       const k = data.classes.find(x => x.id === b.dataset.clDel); if (!k) return;
-      confirmModal("Supprimer la classe ?", "Tous les élèves et diagnostics de « " + k.nom + " » seront perdus.", "Supprimer", () => {
+      confirmModal("Êtes-vous sûr de supprimer « " + k.nom + " » ?", "⚠ ÊTES-VOUS SÛR ? Cette classe sera supprimée dans TOUTES les applications du classeur (cahier journalier, sports collectifs, athlétisme, course de durée, tests…) avec ses élèves et toutes ses notes. Cette action est définitive.", "Oui, supprimer partout", () => {
         data.classes = data.classes.filter(x => x.id !== k.id);
         if (data.activeId === k.id) data.activeId = data.classes.length ? data.classes[0].id : null;
         save(); toast("Classe supprimée"); render();
@@ -63679,7 +63720,7 @@ window.XlsxLite = (function () {
       document.getElementById("ddc-del").onclick = function () {
         var rr = lireReg(), k = active(rr);
         if (!k) return;
-        if (!confirm("Supprimer la classe « " + k.nom + " » et toutes ses données DI-DUR (diagnostic, grilles, sommative) ?")) return;
+        if (!confirm("Supprimer la classe « " + k.nom + " » ?\n\n⚠ ÊTES-VOUS SÛR ? Cette classe sera supprimée dans TOUTES les applications du classeur (cahier journalier, sports collectifs, athlétisme, course de durée, tests…) avec ses élèves et toutes ses notes. Cette action est définitive.")) return;
         rr.classes = rr.classes.filter(function (x) { return x.id !== k.id; });
         if (!rr.classes.length) { rr.classes.push({ id: uid(), nom: "Ma classe", niveau: "", eleves: [] }); }
         poserClasse(rr, rr.classes[0]); ecrireReg(rr);
@@ -65554,7 +65595,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     host.querySelectorAll("[data-ddk-del]").forEach(function (b) {
       b.onclick = function () {
         var rr = lireReg(), k = rr.classes.filter(function (x) { return x.id === b.dataset.ddkDel; })[0]; if (!k) return;
-        if (!confirm("Supprimer la classe « " + k.nom + " » et toutes ses données DI-DUR ?")) return;
+        if (!confirm("Supprimer la classe « " + k.nom + " » ?\n\n⚠ ÊTES-VOUS SÛR ? Cette classe sera supprimée dans TOUTES les applications du classeur (cahier journalier, sports collectifs, athlétisme, course de durée, tests…) avec ses élèves et toutes ses notes. Cette action est définitive.")) return;
         var etaitActive = rr.activeId === k.id;
         rr.classes = rr.classes.filter(function (x) { return x.id !== k.id; });
         if (!rr.classes.length) rr.classes.push({ id: uid(), nom: "Ma classe", niveau: "", eleves: [] });
@@ -68804,7 +68845,7 @@ EPS.ui.classes = {
     }));
 
     container.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async () => {
-      if (!confirm("Supprimer cette classe et toutes ses données (élèves, diagnostics, cycles) ?")) return;
+      if (!confirm("Supprimer cette classe ?\n\n⚠ ÊTES-VOUS SÛR ? Cette classe sera supprimée dans TOUTES les applications du classeur (cahier journalier, sports collectifs, athlétisme, course de durée, tests…) avec ses élèves et toutes ses notes. Cette action est définitive.")) return;
       const id = b.dataset.del;
       const st = await EPS.db.getByIndex("students", "classeId", id);
       await EPS.db.removeMany("students", st.map((s) => s.id));
@@ -76824,7 +76865,7 @@ td .essai:focus{background:#fff;border-color:var(--bleu);outline:none;}
     $("c-ren").onclick = () => demander("Renommer la classe", "Nouveau nom", cl.nom, "Renommer", (v) => { cl.nom = v; save(); render(); });
     $("c-del").onclick = () => {
       if (data.classes.length === 1) { toast("Impossible de supprimer la seule classe"); return; }
-      confirmer("Supprimer « " + cl.nom + " » ?", "Tous les élèves et relevés de cette classe seront perdus.", "Supprimer", () => {
+      confirmer("Êtes-vous sûr de supprimer « " + cl.nom + " » ?", "⚠ ÊTES-VOUS SÛR ? Cette classe sera supprimée dans TOUTES les applications du classeur (cahier journalier, sports collectifs, athlétisme, course de durée, tests…) avec ses élèves et toutes ses notes. Cette action est définitive.", "Oui, supprimer partout", () => {
         data.classes.splice(data.active, 1);
         data.active = Math.max(0, data.active - 1); save(); render();
       });
@@ -85472,7 +85513,7 @@ window.DISC = {
     v.querySelectorAll("[data-del]").forEach(function (b) {
       b.onclick = function () {
         var k = S.classes.filter(function (x) { return x.id === b.dataset.del; })[0];
-        if (!confirm("Supprimer la classe « " + k.nom + " » et toutes ses évaluations de " + D.nom.toLowerCase() + " ?")) return;
+        if (!confirm("Supprimer la classe « " + k.nom + " » ?\n\n⚠ ÊTES-VOUS SÛR ? Cette classe sera supprimée dans TOUTES les applications du classeur (cahier journalier, sports collectifs, athlétisme, course de durée, tests…) avec ses élèves et toutes ses notes. Cette action est définitive.")) return;
         S.classes = S.classes.filter(function (x) { return x.id !== k.id; }); del("classes", k.id);
         S.evals.filter(function (e) { return e.classeId === k.id; }).forEach(function (e) { del("evaluations", e.id); });
         S.evals = S.evals.filter(function (e) { return e.classeId !== k.id; }); rendre();
@@ -88934,7 +88975,7 @@ window.DISC = {
     v.querySelectorAll("[data-del]").forEach(function (b) {
       b.onclick = function () {
         var k = S.classes.filter(function (x) { return x.id === b.dataset.del; })[0];
-        if (!confirm("Supprimer la classe « " + k.nom + " » et toutes ses évaluations de " + D.nom.toLowerCase() + " ?")) return;
+        if (!confirm("Supprimer la classe « " + k.nom + " » ?\n\n⚠ ÊTES-VOUS SÛR ? Cette classe sera supprimée dans TOUTES les applications du classeur (cahier journalier, sports collectifs, athlétisme, course de durée, tests…) avec ses élèves et toutes ses notes. Cette action est définitive.")) return;
         S.classes = S.classes.filter(function (x) { return x.id !== k.id; }); del("classes", k.id);
         S.evals.filter(function (e) { return e.classeId === k.id; }).forEach(function (e) { del("evaluations", e.id); });
         S.evals = S.evals.filter(function (e) { return e.classeId !== k.id; }); rendre();
@@ -92356,7 +92397,7 @@ window.DISC = {
     v.querySelectorAll("[data-del]").forEach(function (b) {
       b.onclick = function () {
         var k = S.classes.filter(function (x) { return x.id === b.dataset.del; })[0];
-        if (!confirm("Supprimer la classe « " + k.nom + " » et toutes ses évaluations de " + D.nom.toLowerCase() + " ?")) return;
+        if (!confirm("Supprimer la classe « " + k.nom + " » ?\n\n⚠ ÊTES-VOUS SÛR ? Cette classe sera supprimée dans TOUTES les applications du classeur (cahier journalier, sports collectifs, athlétisme, course de durée, tests…) avec ses élèves et toutes ses notes. Cette action est définitive.")) return;
         S.classes = S.classes.filter(function (x) { return x.id !== k.id; }); del("classes", k.id);
         S.evals.filter(function (e) { return e.classeId === k.id; }).forEach(function (e) { del("evaluations", e.id); });
         S.evals = S.evals.filter(function (e) { return e.classeId !== k.id; }); rendre();
@@ -94495,258 +94536,7 @@ window.DISC = {
 })();
 
 </script>
-<script>
-/* ══════════════════════════════════════════════════════════════
-   SAUVEGARDES AUTOMATIQUES ET RÉCUPÉRATION
-   ----------------------------------------------------------------
-   · Une copie complète des données de toutes les applications
-     (stockage local + bases IndexedDB de l'athlétisme) est prise
-     automatiquement : à l'ouverture du classeur, avant l'ouverture
-     de chaque application (donc avant toute synchronisation) et
-     toutes les 30 minutes — seulement si quelque chose a changé.
-   · On garde les 20 dernières copies des dernières 24 h, puis une
-     copie par jour pendant 30 jours.
-   · Fenêtre « 🛟 Sauvegardes » : classes supprimées depuis chaque
-     copie, restauration en un clic (une copie « avant restauration »
-     est prise d'abord : on peut toujours revenir en arrière),
-     téléchargement et import d'une copie (.json).
-   ══════════════════════════════════════════════════════════════ */
-(function () {
-  "use strict";
-  if (window.SauvegardesEPS) return;
-  var ls = window.localStorage;
-  var BASE = "classeurEPS_sauvegardes";
-  var BASES_APPS = ["classeur_eps_db", "EPS_SautLongueur_v1", "EPS_CourseRelais_v1", "EPS_LancerPoids_v1"];
-  var NOMS = { journal: "Cahier journalier", basket: "Basket", hand: "Hand", volley: "Volley", foot: "Foot", didur: "Course de durée", vitesse: "Vitesse", relais: "Relais", longueur: "Longueur", poids: "Poids", qualites: "Qualités physiques", navette: "Navette" };
-  function jp(s, d) { try { var v = JSON.parse(s); return v == null ? d : v; } catch (e) { return d; } }
-  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
-  function hash(s) { var h = 5381; for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + "-" + s.length; }
-  function cleExclue(k) { return /^(cloud::|firebase|__|eps-install|nuage|fbase)/i.test(k) || k === "debug"; }
-
-  /* ---------- base des sauvegardes ---------- */
-  function ouvrir() {
-    return new Promise(function (ok, ko) {
-      var r; try { r = indexedDB.open(BASE, 1); } catch (e) { return ko(e); }
-      r.onupgradeneeded = function () { var d = r.result; if (!d.objectStoreNames.contains("snaps")) d.createObjectStore("snaps", { keyPath: "id" }); if (!d.objectStoreNames.contains("liste")) d.createObjectStore("liste", { keyPath: "id" }); };
-      r.onsuccess = function () { ok(r.result); }; r.onerror = function () { ko(r.error); };
-    });
-  }
-  function tx(db, stores, mode, fn) {
-    return new Promise(function (ok, ko) { var t = db.transaction(stores, mode), res; res = fn(t); t.oncomplete = function () { ok(res && res.result !== undefined ? res.result : res); }; t.onerror = function () { ko(t.error); }; t.onabort = function () { ko(t.error); }; });
-  }
-  function getAll(db, store) { return new Promise(function (ok) { try { var q = db.transaction(store).objectStore(store).getAll(); q.onsuccess = function () { ok(q.result || []); }; q.onerror = function () { ok([]); }; } catch (e) { ok([]); } }); }
-
-  /* ---------- lecture des bases des applications (sans jamais en créer une) ---------- */
-  function basesExistantes() {
-    if (indexedDB.databases) return indexedDB.databases().then(function (l) { var n = l.map(function (x) { return x.name; }); return BASES_APPS.filter(function (b) { return n.indexOf(b) >= 0; }); }).catch(function () { return []; });
-    return Promise.resolve([]);
-  }
-  function lireBase(nom) {
-    return new Promise(function (ok) {
-      var r; try { r = indexedDB.open(nom); } catch (e) { return ok(null); }
-      r.onupgradeneeded = function () { try { r.transaction.abort(); } catch (e) {} };
-      r.onerror = function () { ok(null); };
-      r.onsuccess = function () {
-        var db = r.result, st = Array.prototype.slice.call(db.objectStoreNames), out = { version: db.version, stores: {} };
-        Promise.all(st.map(function (s) { return getAll(db, s).then(function (l) { out.stores[s] = l; }); })).then(function () { db.close(); ok(out); });
-      };
-    });
-  }
-  function ecrireBase(nom, contenu) {
-    return new Promise(function (ok) {
-      var r; try { r = indexedDB.open(nom); } catch (e) { return ok(false); }
-      r.onupgradeneeded = function () { try { r.transaction.abort(); } catch (e) {} };   // la base n'existe plus : on ne la crée pas vide
-      r.onerror = function () { ok(false); };
-      r.onsuccess = function () {
-        var db = r.result, st = Object.keys(contenu.stores || {}).filter(function (s) { return db.objectStoreNames.contains(s); });
-        if (!st.length) { db.close(); return ok(false); }
-        var t = db.transaction(st, "readwrite");
-        st.forEach(function (s) { var o = t.objectStore(s); o.clear(); (contenu.stores[s] || []).forEach(function (v) { try { o.put(v); } catch (e) {} }); });
-        t.oncomplete = function () { db.close(); ok(true); }; t.onerror = t.onabort = function () { db.close(); ok(false); };
-      };
-    });
-  }
-
-  /* ---------- résumé : classes de chaque application ---------- */
-  function resume(d) {
-    var R = {}, L = d.ls || {}, an;
-    var add = function (app, noms) { noms = (noms || []).filter(Boolean); if (noms.length) R[app] = (R[app] || []).concat(noms); };
-    var meta = jp(L["cahierJournalierEPS_v2::meta"], {}); an = meta.activeYear;
-    Object.keys(L).forEach(function (k) {
-      if (/^cahierJournalierEPS_v2::\d{4}-\d{4}$/.test(k) && (!an || k.slice(-9) === an)) { var j = jp(L[k], {}); Object.keys(j.niveaux || {}).forEach(function (n) { add("journal", (j.niveaux[n].classes || []).map(String)); }); }
-      var m = k.match(/^(basket|hand|volley|foot)Didactic::v1$/); if (m) add(m[1], (jp(L[k], {}).classes || []).map(function (c) { return c.nom; }));
-      if (k === "qualitesPhysiques::v1") add("qualites", (jp(L[k], {}).classes || []).map(function (c) { return c.nom; }));
-      if (k === "navetteRapide::v1") add("navette", (jp(L[k], {}).classes || []).map(function (c) { return c.nom; }));
-      if (/^DIDUR_CLASSES::/.test(k)) add("didur", (jp(L[k], {}).classes || []).map(function (c) { return c.nom; }));
-    });
-    var I = d.idb || {}, a = { classeur_eps_db: "vitesse", EPS_SautLongueur_v1: "longueur", EPS_CourseRelais_v1: "relais", EPS_LancerPoids_v1: "poids" };
-    Object.keys(I).forEach(function (b) { var c = (I[b].stores || {}).classes || []; add(a[b] || b, c.map(function (x) { return x.nom; })); });
-    Object.keys(R).forEach(function (k) { var v = {}; R[k] = R[k].filter(function (x) { x = String(x).trim(); if (v[x]) return false; v[x] = 1; return true; }); });
-    return R;
-  }
-
-  /* ---------- copie de l'état actuel ---------- */
-  function etat() {
-    var L = {};
-    try { Object.keys(ls).forEach(function (k) { if (!cleExclue(k)) L[k] = ls.getItem(k); }); } catch (e) {}
-    return basesExistantes().then(function (bs) {
-      var I = {};
-      return Promise.all(bs.map(function (b) { return lireBase(b).then(function (c) { if (c) I[b] = c; }); })).then(function () { return { ls: L, idb: I }; });
-    });
-  }
-  var dernier = null, enCours = null;
-  function prendre(raison, force) {
-    if (enCours) return enCours;
-    enCours = etat().then(function (d) {
-      var txt = JSON.stringify(d), h = hash(txt);
-      return ouvrir().then(function (db) {
-        return (dernier ? Promise.resolve([{ h: dernier }]) : getAll(db, "liste").then(function (l) { l.sort(function (a, b) { return b.t - a.t; }); return l; })).then(function (l) {
-          if (!force && l[0] && l[0].h === h) { dernier = h; db.close(); return null; }   // rien n'a changé
-          var id = "s" + Date.now(), R = resume(d);
-          var item = { id: id, t: Date.now(), h: h, raison: raison || "automatique", taille: txt.length, resume: R };
-          return tx(db, ["snaps", "liste"], "readwrite", function (t) { t.objectStore("snaps").put({ id: id, data: d }); t.objectStore("liste").put(item); })
-            .then(function () { dernier = h; return elaguer(db); }).then(function () { db.close(); return item; });
-        });
-      });
-    }).catch(function () { return null; }).then(function (r) { enCours = null; return r; });
-    return enCours;
-  }
-  function elaguer(db) {
-    return getAll(db, "liste").then(function (l) {
-      l.sort(function (a, b) { return b.t - a.t; });
-      var now = Date.now(), garder = {}, jours = {}, recentes = 0;
-      l.forEach(function (x) {
-        var age = now - x.t, jour = new Date(x.t).toISOString().slice(0, 10);
-        if (x.raison === "avant restauration" && age < 7 * 864e5) garder[x.id] = 1;
-        if (age < 864e5 && recentes < 20) { garder[x.id] = 1; recentes++; }
-        if (age < 30 * 864e5 && !jours[jour]) { jours[jour] = 1; garder[x.id] = 1; }
-      });
-      var sup = l.filter(function (x) { return !garder[x.id]; });
-      if (!sup.length) return;
-      return tx(db, ["snaps", "liste"], "readwrite", function (t) { sup.forEach(function (x) { t.objectStore("snaps").delete(x.id); t.objectStore("liste").delete(x.id); }); });
-    });
-  }
-  function liste() { return ouvrir().then(function (db) { return getAll(db, "liste").then(function (l) { db.close(); return l.sort(function (a, b) { return b.t - a.t; }); }); }).catch(function () { return []; }); }
-  function lireSnap(id) { return ouvrir().then(function (db) { return new Promise(function (ok) { var q = db.transaction("snaps").objectStore("snaps").get(id); q.onsuccess = function () { db.close(); ok(q.result ? q.result.data : null); }; q.onerror = function () { db.close(); ok(null); }; }); }); }
-
-  /* ---------- restauration ---------- */
-  /* les classes restaurées ne doivent plus être considérées comme supprimées par la synchronisation :
-     elles reviennent dans toutes les applications */
-  function liberer(classes) {
-    var cle = window.SyncClassesEPS && SyncClassesEPS.cleClasse; if (!cle) return;
-    var cks = classes.map(function (c) { return cle(c); }).filter(Boolean);
-    try {
-      Object.keys(ls).filter(function (k) { return /^classeurEPS::syncClasses::/.test(k); }).forEach(function (k) {
-        var reg = jp(ls.getItem(k), null); if (!reg) return;
-        cks.forEach(function (ck) {
-          if (reg.supp) delete reg.supp[ck];
-          Object.keys(reg.ign || {}).forEach(function (a) { if (reg.ign[a]) delete reg.ign[a][ck]; });
-          Object.keys(reg.vus || {}).forEach(function (a) { if (reg.vus[a]) delete reg.vus[a][ck]; });
-        });
-        ls.setItem(k, JSON.stringify(reg));
-      });
-    } catch (e) {}
-  }
-  function restaurerDonnees(d) {
-    return prendre("avant restauration", true).then(function () {
-      var L = d.ls || {};
-      try {
-        Object.keys(ls).forEach(function (k) { if (!cleExclue(k) && !(k in L)) ls.removeItem(k); });
-        Object.keys(L).forEach(function (k) { if (L[k] != null) ls.setItem(k, L[k]); });
-      } catch (e) {}
-      var R0 = resume(d), tout = {}; Object.keys(R0).forEach(function (a) { R0[a].forEach(function (c) { tout[c] = 1; }); });
-      liberer(Object.keys(tout));
-      return Promise.all(Object.keys(d.idb || {}).map(function (b) { return ecrireBase(b, d.idb[b]); }));
-    }).then(function () { dernier = null; return true; });
-  }
-
-  /* ---------- fenêtre ---------- */
-  function fmt(t) { var d = new Date(t); return d.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit" }) + " à " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }); }
-  function nbClasses(R) { var u = {}; Object.keys(R || {}).forEach(function (a) { R[a].forEach(function (c) { u[c] = 1; }); }); return Object.keys(u).length; }
-  function differences(ancien, actuel) {
-    var out = [];
-    Object.keys(ancien || {}).forEach(function (a) { var now = (actuel[a] || []).map(String); var p = ancien[a].filter(function (c) { return now.indexOf(String(c)) < 0; }); if (p.length) out.push({ app: a, classes: p }); });
-    return out;
-  }
-  function fenetre() {
-    var f = document.getElementById("svg-fen"); if (f) f.remove();
-    f = document.createElement("div"); f.id = "svg-fen";
-    f.setAttribute("style", "position:fixed;inset:0;z-index:2147483600;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px;direction:ltr;font-family:system-ui,-apple-system,'Segoe UI',sans-serif");
-    f.innerHTML = '<div style="background:#fff;border-radius:16px;max-width:880px;width:100%;padding:18px 20px;color:#0F172A;box-shadow:0 24px 60px -24px rgba(0,0,0,.5)"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3 style="margin:0;font-size:1.15rem">🛟 Sauvegardes automatiques et récupération</h3><button type="button" data-x style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:6px 12px;cursor:pointer">Fermer ✕</button></div><div id="svg-corps" style="margin-top:10px">Chargement…</div></div>';
-    f.addEventListener("click", function (e) { if (e.target === f || e.target.hasAttribute("data-x")) f.remove(); });
-    document.body.appendChild(f);
-    etat().then(function (now) {
-      var Rnow = resume(now);
-      return liste().then(function (l) {
-        var z = f.querySelector("#svg-corps");
-        var supprimees = {};
-        l.forEach(function (x) { differences(x.resume, Rnow).forEach(function (d) { d.classes.forEach(function (c) { (supprimees[c] = supprimees[c] || { apps: {}, derniere: x }).apps[d.app] = 1; }); }); });
-        var nbApps = function (x, c) { return Object.keys(x.resume || {}).filter(function (a) { return x.resume[a].map(String).indexOf(String(c)) >= 0; }).length; };
-        Object.keys(supprimees).forEach(function (c) { l.forEach(function (x) { if (nbApps(x, c) > nbApps(supprimees[c].derniere, c)) supprimees[c].derniere = x; }); });
-        var sn = Object.keys(supprimees);
-        z.innerHTML =
-          '<p style="font-size:.88rem;color:#475569;margin:0 0 10px">Une copie complète de vos données est prise automatiquement (à l\'ouverture du classeur, avant chaque application et toutes les 30 minutes). On garde 20 copies des dernières 24 h et une copie par jour pendant 30 jours. <b>Restaurer</b> remet toutes les applications dans l\'état de la copie ; une copie de l\'état actuel est prise avant, pour pouvoir revenir en arrière.</p>' +
-          (sn.length ? '<div style="border:1px solid #FCA5A5;background:#FEF2F2;border-radius:10px;padding:10px 12px;margin-bottom:12px"><b>🗑 Classes supprimées, encore récupérables :</b><div style="margin-top:6px;display:flex;flex-direction:column;gap:6px">' +
-            sn.map(function (c) { var s = supprimees[c]; return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span><b>' + esc(c) + '</b> <span style="color:#64748b;font-size:.85rem">(' + Object.keys(s.apps).map(function (a) { return NOMS[a] || a; }).join(", ") + ') — dernière copie : ' + fmt(s.derniere.t) + '</span></span><button type="button" data-r="' + s.derniere.id + '" style="background:#B91C1C;color:#fff;border:0;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700">Récupérer</button></div>'; }).join("") + '</div></div>' : '<p style="font-size:.9rem;color:#15803D;margin:0 0 12px">✔ Aucune classe supprimée dans les copies disponibles.</p>') +
-          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button type="button" id="svg-maint" style="background:#1E3A8A;color:#fff;border:0;border-radius:8px;padding:7px 12px;cursor:pointer;font-weight:700">📸 Faire une copie maintenant</button><label style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 12px;cursor:pointer;font-weight:600">📂 Importer une copie (.json)<input type="file" id="svg-imp" accept=".json" hidden></label></div>' +
-          (l.length ? '<table style="width:100%;border-collapse:collapse;font-size:.86rem"><thead><tr style="background:#F1F5F9"><th style="text-align:left;padding:6px">Copie</th><th style="text-align:left;padding:6px">Contenu</th><th style="text-align:left;padding:6px">Différence avec aujourd\'hui</th><th></th></tr></thead><tbody>' +
-            l.map(function (x) {
-              var d = differences(x.resume, Rnow), plus = differences(Rnow, x.resume);
-              return '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:6px;white-space:nowrap"><b>' + fmt(x.t) + '</b><br><span style="color:#64748b;font-size:.78rem">' + esc(x.raison) + '</span></td><td style="padding:6px">' + nbClasses(x.resume) + ' classe(s)</td><td style="padding:6px;font-size:.8rem">' +
-                (d.length ? '<span style="color:#B91C1C">supprimées depuis : ' + d.map(function (y) { return esc((NOMS[y.app] || y.app) + " " + y.classes.join(", ")); }).join(" · ") + '</span>' : '') +
-                (plus.length ? (d.length ? '<br>' : '') + '<span style="color:#475569">ajoutées depuis : ' + plus.map(function (y) { return esc((NOMS[y.app] || y.app) + " " + y.classes.join(", ")); }).join(" · ") + '</span>' : '') +
-                (!d.length && !plus.length ? '<span style="color:#64748b">mêmes classes (notes peut-être différentes)</span>' : '') +
-                '</td><td style="padding:6px;white-space:nowrap"><button type="button" data-r="' + x.id + '" style="background:#fff;border:1px solid #1E3A8A;color:#1E3A8A;border-radius:8px;padding:5px 10px;cursor:pointer;font-weight:700">Restaurer</button> <button type="button" data-t="' + x.id + '" title="Télécharger cette copie" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:5px 8px;cursor:pointer">⬇</button></td></tr>';
-            }).join("") + '</tbody></table>' : '<p style="color:#64748b">Aucune copie pour le moment : la première sera prise dans quelques secondes.</p>');
-        z.querySelectorAll("[data-r]").forEach(function (b) {
-          b.onclick = function () {
-            var x = l.filter(function (y) { return y.id === b.dataset.r; })[0];
-            if (!confirm("Restaurer la copie du " + fmt(x.t) + " ?\n\nToutes les applications reviennent à cet état (les modifications faites après seront remplacées). Une copie de l'état actuel est prise avant : vous pourrez revenir en arrière.")) return;
-            b.disabled = true; b.textContent = "Restauration…";
-            lireSnap(x.id).then(function (d) { if (!d) throw new Error("copie illisible"); return restaurerDonnees(d); }).then(function () { location.reload(); }, function (e) { alert("Restauration impossible : " + (e && e.message || e)); b.disabled = false; b.textContent = "Restaurer"; });
-          };
-        });
-        z.querySelectorAll("[data-t]").forEach(function (b) {
-          b.onclick = function () {
-            var x = l.filter(function (y) { return y.id === b.dataset.t; })[0];
-            lireSnap(x.id).then(function (d) {
-              var u = URL.createObjectURL(new Blob([JSON.stringify({ classeurEPS: "sauvegarde", t: x.t, data: d })], { type: "application/json" }));
-              var a = document.createElement("a"); a.href = u; a.download = "Classeur-EPS-sauvegarde-" + new Date(x.t).toISOString().slice(0, 16).replace(/[:T]/g, "-") + ".json"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 2000);
-            });
-          };
-        });
-        z.querySelector("#svg-maint").onclick = function () { prendre("manuelle", true).then(fenetre); };
-        z.querySelector("#svg-imp").onchange = function () {
-          var fi = this.files && this.files[0]; if (!fi) return;
-          fi.text().then(function (t) {
-            var o = jp(t, null); if (!o || o.classeurEPS !== "sauvegarde" || !o.data) { alert("Ce fichier n'est pas une copie du classeur."); return; }
-            if (!confirm("Restaurer la copie importée (" + fmt(o.t) + ") ? Une copie de l'état actuel est prise avant.")) return;
-            restaurerDonnees(o.data).then(function () { location.reload(); });
-          });
-        };
-      });
-    });
-  }
-
-  /* ---------- automatisme ---------- */
-  function demarrer() {
-    setTimeout(function () { prendre("ouverture du classeur"); }, 4000);
-    setInterval(function () { if (!document.hidden) prendre("automatique (30 min)"); }, 30 * 60000);
-    var h = document.getElementById("nb-inter");
-    if (h && !document.getElementById("svg-btn")) {
-      var b = document.createElement("button"); b.id = "svg-btn"; b.type = "button";
-      b.textContent = "🛟 Sauvegardes / corbeille";
-      b.setAttribute("style", "margin-inline-start:10px;background:#fff;border:1px solid #cbd5e1;border-radius:999px;padding:5px 12px;font:600 12.5px system-ui,sans-serif;color:#1E3A8A;cursor:pointer;direction:ltr");
-      b.onclick = fenetre;
-      h.parentNode.insertBefore(b, h.nextSibling);
-    }
-  }
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", demarrer); else demarrer();
-
-  window.SauvegardesEPS = { prendre: prendre, liste: liste, ouvrir: fenetre, restaurer: function (id) { return lireSnap(id).then(restaurerDonnees); } };
-})();
-
-</script>
+<script>try { indexedDB.deleteDatabase('classeurEPS_sauvegardes'); } catch (e) {}</script>
 <script>
 (function(){
   "use strict";
@@ -94974,9 +94764,7 @@ var QICONS = {
       var fini = false;
       var suite = function(){ if (fini) return; fini = true; syncOcc = false; ouvrirApp(id); };
       setTimeout(suite, 6000);
-      // copie de sécurité avant la synchronisation (qui peut supprimer des classes)
-      var avant = window.SauvegardesEPS ? Promise.race([SauvegardesEPS.prendre("avant d'ouvrir " + (appById(id) || {}).fr), new Promise(function(ok){ setTimeout(ok, 2500); })]) : Promise.resolve();
-      avant.then(function(){ return SyncClassesEPS.synchroniser(quitte); }).then(function(r){
+      SyncClassesEPS.synchroniser(quitte).then(function(r){
         (r.modifiees || []).forEach(function(a){
           if (a !== quitte && frames[a]) { try { frames[a].remove(); } catch(e){} delete frames[a]; }
         });
@@ -95052,6 +94840,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 10h45</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 12h15</div>
 </body>
 </html>
