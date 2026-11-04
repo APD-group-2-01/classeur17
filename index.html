@@ -3243,13 +3243,14 @@ const JOURNAL_DEFAUT = {
       if (JSON.stringify(t) !== avant) saveDebounced();
     }
     const nb = t ? t.groupes.length : 4;
-    const optsNb = [2, 3, 4, 5, 6, 7, 8].map(n => `<option${n === nb ? " selected" : ""}>${n}</option>`).join("");
+    const optsNb = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `<option${n === nb ? " selected" : ""}>${n}</option>`).join("");
     const nF = eleves.filter(n => grSexe(nd, classe, n) === "F").length;
     bar.innerHTML = `
       <div class="gr-ctrl">
         <label>Classe <select id="gr-classe">${optsCl}</select></label>
         <label>APS <select id="gr-aps">${optsAps}</select></label>
         <label>Groupes <select id="gr-nb">${optsNb}</select></label>
+        <label>ou joueurs / groupe <select id="gr-par"><option value="">—</option>${[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => `<option value="${n}"${t && t.parGr === n ? " selected" : ""}>${n}</option>`).join("")}</select></label>
         <button class="gr-btn gr-tirer" id="gr-tirer" type="button">↻ Nouveau tirage</button>
         <button class="gr-btn" id="gr-imp-aps" type="button">🖨 Fiche (cette APS)</button>
         <button class="gr-btn gr-imp" id="gr-imp-cl" type="button">🖨 Fiche de la classe (toutes les APS)</button>
@@ -3270,6 +3271,12 @@ const JOURNAL_DEFAUT = {
     q("gr-aps").onchange = e => { grAps = e.target.value; renderGroupes(); };
     const refaire = n => { grNouveau(nd, classe, grAps, n); saveDebounced(); renderGroupes(); toast("Nouveau tirage : " + aps.nom + " — " + classe, "success"); };
     q("gr-nb").onchange = e => refaire(+e.target.value);
+    q("gr-par").onchange = e => {
+      const p = +e.target.value; if (!p) return;
+      const n = Math.max(1, Math.min(8, Math.ceil(eleves.length / p)));
+      grNouveau(nd, classe, grAps, n); grStore(nd, classe)[grAps].parGr = p; saveDebounced(); renderGroupes();
+      toast(n + " groupes de " + p + " joueurs au plus" + (Math.ceil(eleves.length / p) > 8 ? " (8 groupes au maximum)" : ""), "success");
+    };
     q("gr-tirer").onclick = () => askConfirm("Nouveau tirage — " + aps.nom, "Classe " + classe + " : les groupes actuels de cette APS seront remplacés par un nouveau tirage aléatoire (équilibré garçons / filles).", "↻ Tirer", () => refaire(nb));
     q("gr-imp-aps").onclick = () => grImprimer([grAps]);
     q("gr-imp-cl").onclick = () => grImprimer(liste.map(c => c.id));
@@ -14638,12 +14645,31 @@ window.JSYNC = window.JSYNC || (function () {
           <label style="display:flex;align-items:center;gap:8px;justify-content:space-between;border:1px dashed #c9d1dc;border-radius:9px;padding:6px 10px;font-size:.88rem;">
             <span>Intégration / projet d'élèves</span><input class="input" type="number" min="0" max="2" data-pl="__integ" value="${Number(p.integ) || 0}" style="width:64px;flex:0 0 64px;text-align:center;"></label>
         </div>
+        ${niv ? plClassesHTML(cl, niv) : ""}
         <p style="margin:10px 0 8px;font-weight:700;" id="pl-total">S1 diagnostic + ${total - 2} séances + sommative = ${total} séances</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button class="btn btn-primary" id="pl-niveau" ${niv ? "" : "disabled"}>✔ Appliquer à toutes les classes de ${esc(niv || "ce niveau")}</button>
           <button class="btn" id="pl-classe">Appliquer à cette classe seulement</button>
           ${propre || commun ? `<button class="btn" id="pl-suppr">Revenir au calcul automatique</button>` : ""}
         </div></div>`;
+  }
+  /* classe déjà diagnostiquée : au moins un élève évalué ou un diagnostic collectif saisi */
+  function plDiagnostiquee(k) {
+    const act = data.activeId; data.activeId = k.id;
+    try {
+      try { if (statsIndividuel(k).evalues > 0) return true; } catch (e) {}
+      try { const sc = statsCollectif(k); if (sc && (sc.niveau || sc.saisi)) return true; } catch (e) {}
+      return false;
+    } finally { data.activeId = act; }
+  }
+  function plClassesHTML(cl, niv) {
+    const L = (data.classes || []).filter(k => pvNiveau(k) === niv);
+    return `<div style="margin:12px 0 4px;padding:10px 12px;border:1px solid #e3e8ef;border-radius:10px;background:#fafbfd;">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:6px;">Classes de ${esc(niv)} auxquelles appliquer le plan (le projet de cycle de chaque classe cochée est généré / mis à jour) :</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 14px;">${L.map(k => { const d = plDiagnostiquee(k); return `<label style="display:flex;align-items:center;gap:6px;font-size:.86rem;padding:3px 8px;border-radius:8px;background:#fff;border:1px solid #e3e8ef;">
+        <input type="checkbox" data-pl-cl="${esc(k.id)}" ${d || k.projet || k === cl ? "checked" : ""}> <b>${esc(k.nom)}</b>
+        <small style="color:${d ? "#15803d" : "#9ca3af"}">${d ? "✓ diagnostiquée" : "non diagnostiquée"}${k.projet ? " · projet" : ""}</small></label>`; }).join("")}</div>
+      <div style="margin-top:6px;display:flex;gap:8px;"><button type="button" class="btn" style="padding:3px 10px;font-size:.78rem" data-pl-tout="diag">Cocher les classes diagnostiquées</button><button type="button" class="btn" style="padding:3px 10px;font-size:.78rem" data-pl-tout="tout">Tout cocher</button></div></div>`;
   }
   function brancherPlan(cl) {
     const lire = () => {
@@ -14657,14 +14683,26 @@ window.JSYNC = window.JSYNC || (function () {
     const total = () => { const p = lire(), s = Object.keys(p.axes).reduce((t, k) => t + p.axes[k], 0) + p.integ; const z = $("pl-total"); if (z) z.textContent = "S1 diagnostic + " + s + " séances + sommative = " + (s + 2) + " séances"; };
     document.querySelectorAll("[data-pl]").forEach(i => { i.oninput = total; });
     const ok = (p) => { if (!planValide(p)) { toast("Gardez au moins une séquence avec une séance ou plus"); return false; } return true; };
-    const regen = (k) => { if (!k.projet && k !== cl) return; try { const np = genererCycle(k); if (np) k.projet = np; } catch (e) {} };
+    // génère le projet de la classe k (la classe active est basculée le temps du calcul : référentiel du bon niveau)
+    const regen = (k, force) => {
+      if (!force && !k.projet && k !== cl) return false;
+      const act = data.activeId; data.activeId = k.id;
+      try { const np = genererCycle(k); if (np) { k.projet = np; return true; } } catch (e) { console.warn(e); }
+      finally { data.activeId = act; }
+      return false;
+    };
+    document.querySelectorAll("[data-pl-tout]").forEach(b => b.onclick = () => {
+      document.querySelectorAll("[data-pl-cl]").forEach(c => { const k = (data.classes || []).find(x => x.id === c.dataset.plCl); c.checked = b.dataset.plTout === "tout" || !!(k && plDiagnostiquee(k)); });
+    });
     const niv = pvNiveau(cl);
     if ($("pl-niveau")) $("pl-niveau").onclick = () => {
       const p = lire(); if (!ok(p)) return;
       data.plansNiveau = data.plansNiveau || {}; data.plansNiveau[niv] = p;
       const toutes = (data.classes || []).filter(k => pvNiveau(k) === niv);
-      toutes.forEach(k => { delete k.planSeances; regen(k); });
-      save(); toast("Plan appliqué à " + toutes.length + " classe(s) de " + niv); render();
+      const coches = [...document.querySelectorAll("[data-pl-cl]")].filter(c => c.checked).map(c => c.dataset.plCl);
+      let n = 0;
+      toutes.forEach(k => { delete k.planSeances; if (coches.indexOf(k.id) >= 0 ? regen(k, true) : regen(k)) n++; });
+      save(); toast("Plan appliqué à " + toutes.length + " classe(s) de " + niv + " — projet de cycle généré pour " + n + " classe(s)"); render();
     };
     if ($("pl-classe")) $("pl-classe").onclick = () => {
       const p = lire(); if (!ok(p)) return;
@@ -15124,7 +15162,14 @@ window.JSYNC = window.JSYNC || (function () {
      % = critère ÷ balles jouées (BJ) ; efficacité = tirs réussis ÷ tirs tentés (TR ÷ TT) → points selon le barème
      du niveau → note collective de l'équipe, donnée à chacun de ses élèves.
      ══════════════════════════════════════════════════════════════ */
-  const EQ_NOMS = ["A", "B", "C", "D", "E", "F"];
+  const EQ_NOMS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
+  /* nombre d'équipes ou nombre de joueurs par équipe (le nombre d'équipes en découle) */
+  function eqNbEquipes(cl, q) { const p = Number(q.parEq) || 0; return p ? Math.max(1, Math.min(EQ_NOMS.length, Math.ceil(((cl.eleves || []).length || 1) / p))) : (q.nb || 4); }
+  function eqChoixHTML(cl, q) {
+    const nb = eqNbEquipes(cl, q), p = Number(q.parEq) || 0;
+    return `<select id="eq-nb" class="input" style="width:auto;padding:5px 8px" title="Nombre d'équipes">${[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => `<option value="${n}" ${!p && n === nb ? "selected" : ""}>${n} équipes</option>`).join("")}${p ? `<option selected disabled>${nb} équipes</option>` : ""}</select>
+          <select id="eq-par" class="input" style="width:auto;padding:5px 8px" title="Nombre de joueurs par équipe"><option value="">Joueurs / équipe : libre</option>${[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => `<option value="${n}" ${n === p ? "selected" : ""}>${n} joueurs / équipe</option>`).join("")}</select>`;
+  }
   const EQ_LIB = { bq: "Balle conquise", tt: "Tir tenté", tr: "Tir réussi", bp: "Balle perdue", ba: "Balle amenée en zone avant", br: "Balle récupérée", as: "Attaque adverse stoppée", aa: "Attaque adverse", bj: "Balle jouée" };
   const EQ_PLU = { bq: "balles conquises", tt: "tirs tentés", tr: "tirs réussis", bp: "balles perdues", ba: "balles amenées en zone avant", br: "balles récupérées", as: "attaques adverses stoppées", aa: "attaques adverses", bj: "balles jouées" };
   const EQ_CPT = ["ba", "bq", "bp", "aa", "br", "as", "tt", "tr"]; // ordre d'affichage des compteurs
@@ -15197,7 +15242,7 @@ window.JSYNC = window.JSYNC || (function () {
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding:6px 8px;background:#EEF5FD;border-radius:8px;font-size:.85rem">
           <b>Sélection :</b> <button class="btn btn-sm" type="button" data-eq-sel="tout">Tout</button><button class="btn btn-sm" type="button" data-eq-sel="rien">Aucun</button><button class="btn btn-sm" type="button" data-eq-sel="sans">Sans équipe</button>
           <span style="margin-left:8px">→ mettre les élèves cochés dans l'équipe :</span>
-          ${EQ_NOMS.filter((n, i) => i < Math.max(q.nb || 4, ...eqs.map(x => EQ_NOMS.indexOf(x) + 1))).map(n => `<button class="btn btn-sm btn-primary" type="button" data-eq-mettre="${n}" style="min-width:34px">${n}</button>`).join("")}
+          ${EQ_NOMS.filter((n, i) => i < Math.max(eqNbEquipes(cl, q), ...eqs.map(x => EQ_NOMS.indexOf(x) + 1))).map(n => `<button class="btn btn-sm btn-primary" type="button" data-eq-mettre="${n}" style="min-width:34px">${n}</button>`).join("")}
           <button class="btn btn-sm" type="button" data-eq-mettre="" title="Retirer les élèves cochés de leur équipe">Retirer</button>
           <span id="eq-nsel" class="muted"></span></div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${cl.eleves.map(e => `<label style="display:inline-flex;align-items:center;gap:5px;border:1px solid #DDE3EA;border-radius:8px;padding:3px 6px;font-size:.85rem;cursor:pointer;background:${q.membres[e.id] ? "#fff" : "#FFF8E6"}"><input type="checkbox" data-eq-coche="${e.id}">${esc(e.nom)}
@@ -15210,7 +15255,7 @@ window.JSYNC = window.JSYNC || (function () {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <label style="font-weight:700;display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="eq-on" ${actif ? "checked" : ""}> Note collective /${G.c} par équipe — statistiques de match</label>
         ${actif ? `<span style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="eq-nb" class="input" style="width:auto;padding:5px 8px">${[2, 3, 4, 5, 6].map(n => `<option value="${n}" ${n === (q.nb || 4) ? "selected" : ""}>${n} équipes</option>`).join("")}</select>
+          ${eqChoixHTML(cl, q)}
           <button class="btn btn-sm" id="eq-auto">⚡ Répartir la classe</button>
           <button class="btn btn-sm" id="eq-bar">⚙ Barème</button>
           <button class="btn btn-sm" id="eq-print">🖨 Grille à imprimer</button></span>` : ""}
@@ -15239,15 +15284,16 @@ window.JSYNC = window.JSYNC || (function () {
     if (!eqPossible()) return;
     const q = eqInfo(cl), on = c.querySelector("#eq-on");
     if (on) on.onchange = () => { q.actif = on.checked; save(); rafraichir(); };
-    const nb = c.querySelector("#eq-nb"); if (nb) nb.onchange = () => { q.nb = Number(nb.value); save(); rafraichir(); };
+    const nb = c.querySelector("#eq-nb"); if (nb) nb.onchange = () => { q.nb = Number(nb.value); delete q.parEq; save(); rafraichir(); };
+    const par = c.querySelector("#eq-par"); if (par) par.onchange = () => { if (par.value) { q.parEq = Number(par.value); q.nb = eqNbEquipes(cl, q); } else delete q.parEq; save(); rafraichir(); };
     const auto = c.querySelector("#eq-auto");
     if (auto) auto.onclick = () => {
-      const n = q.nb || 4, a = Object.keys(q.membres).some(k => q.membres[k]);
+      const n = eqNbEquipes(cl, q), a = Object.keys(q.membres).some(k => q.membres[k]);
       const faire = () => {
         // garçons et filles répartis à tour de rôle pour des équipes équilibrées
         const g = cl.eleves.filter(e => e.genre !== "F"), fi = cl.eleves.filter(e => e.genre === "F");
         g.concat(fi).forEach((e, i) => { q.membres[e.id] = EQ_NOMS[i % n]; });
-        save(); rafraichir(); toast("Classe répartie en " + n + " équipes");
+        q.nb = n; save(); rafraichir(); toast("Classe répartie en " + n + " équipes" + (q.parEq ? " de " + q.parEq + " joueurs au plus" : ""));
       };
       if (a) confirmModal("Répartir la classe", "La composition actuelle des équipes sera remplacée. Les totaux déjà saisis restent attachés aux lettres d'équipe. Continuer ?", "Répartir", faire); else faire();
     };
@@ -15383,7 +15429,7 @@ window.JSYNC = window.JSYNC || (function () {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div class="card-title" style="margin:0">Diagnostic collectif par équipe — critères ${esc(n)}</div>
         <span style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="eq-nb" class="input" style="width:auto;padding:5px 8px">${[2, 3, 4, 5, 6].map(x => `<option value="${x}" ${x === (q.nb || 4) ? "selected" : ""}>${x} équipes</option>`).join("")}</select>
+          ${eqChoixHTML(cl, q)}
           <button class="btn btn-sm" id="eq-auto">⚡ Répartir la classe</button>
           <button class="btn btn-sm btn-primary" id="eqd-print">🖨 Grille à imprimer</button></span></div>
       <p class="hint" style="margin:6px 0 8px">Mêmes critères que l'évaluation sommative du niveau, <b>sans note</b> : saisissez les totaux du match, le pourcentage de chaque critère se calcule tout seul.<br>${B.map(c => "<b>" + esc(c.lib) + "</b> = " + esc(EQ_PLU[c.num]) + " ÷ " + esc(EQ_PLU[c.den || "bj"])).join(" · ")}. Les équipes sont les mêmes qu'en sommative. Le niveau collectif (analyse didactique, axes prioritaires) est calculé à partir de ces totaux.</p>
@@ -15560,6 +15606,7 @@ window.JSYNC = window.JSYNC || (function () {
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
           <div class="field"><label for="sm-date">Date de l'évaluation</label><input class="input" type="date" id="sm-date" value="${esc(cl.sommativeInfo.date || "")}"></div>
           <span style="flex:1"></span>
+          <button class="btn btn-primary" id="sm-print-notes">🖨 Imprimer les notes</button>
           <button class="btn" id="sm-print-grille">🖨 Grille de classe à remplir</button>
           <button class="btn" id="sm-omr-print">🖨 Feuille à scanner</button>
           <button class="btn btn-primary" id="sm-omr-btn">📷 Importer la grille remplie</button>
@@ -15661,8 +15708,78 @@ window.JSYNC = window.JSYNC || (function () {
         cl.eleves.forEach(e => { delete e.sommative; }); save(); toast("Évaluation sommative effacée"); render();
       });
     $("sm-print-grille").onclick = () => (eqActif(cl) ? eqImprimer(cl) : imprimerSommative(cl, "grille"));
+    if ($("sm-print-notes")) $("sm-print-notes").onclick = () => smImprimerNotes(cl);
   }
 
+  /* relevé des notes de la sommative : détail des critères, notes partielles, total /20, moyennes de la classe */
+  function smImprimerNotes(cl) {
+    smStyle();
+    const en = (typeof entete === "function") ? entete(cl) : {};
+    const date = (cl.sommativeInfo && cl.sommativeInfo.date) || "";
+    const fmt = (d) => { const p = String(d || "").split("-"); return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : "…………"; };
+    const LJ = smJournal(cl), G = smGrille(cl), crits = smCrits(cl), KI = crits.filter(k => k.role === "I"), KC = crits.filter(k => k.role === "C");
+    const EQ = eqActif(cl);
+    const f = (x) => x == null || x === "" || isNaN(x) ? "" : String(Math.round(Number(x) * 100) / 100).replace(".", ",");
+    const R = cl.eleves.map(e => ({ e, r: smCalc(e, cl, LJ), sc: smScores(e), ok: smEvalue(e) }));
+    const moy = (arr) => { arr = arr.filter(x => x != null && x !== "" && !isNaN(x)).map(Number); return arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null; };
+    const ev = R.filter(x => x.ok || x.r.total != null);
+    const appr = (t) => t == null ? "" : t >= 16 ? "Très bien" : t >= 14 ? "Bien" : t >= 12 ? "Assez bien" : t >= 10 ? "Passable" : "Insuffisant";
+    const logoEl = document.querySelector(".credit-mb img"), logo = logoEl && logoEl.src ? logoEl.src : "";
+    const nbCols = KI.length + KC.length + (EQ ? 1 : 0);
+    const court = (n) => String(n || "").replace(/\s*\(.*?\)\s*/g, " ").trim();
+    const html = `<div class="smp smn">
+        <div class="smn-tete">${logo ? `<img src="${logo}" alt="">` : ""}<div><h2>Relevé des notes — Évaluation sommative</h2>
+        <p class="sub">${esc(PV_CFG.aps)} · Classe : <b>${esc(cl.nom)}</b> · ${esc(smNiveauScolaire(cl))} · Date : ${fmt(date)} · Enseignant(e) : ${esc(en.enseignant || "……………………")}${en.etablissement ? " · " + esc(en.etablissement) : ""}</p></div></div>
+        <table><thead>
+          <tr><th rowspan="2">N°</th><th rowspan="2" class="nm">Élève</th>
+            ${KI.length ? `<th colspan="${KI.length + 1}">Individuelle</th>` : `<th rowspan="2">Indiv. /${G.i}</th>`}
+            ${EQ ? `<th colspan="2">Collective</th>` : KC.length ? `<th colspan="${KC.length + 1}">Collective</th>` : `<th rowspan="2">Coll. /${G.c}</th>`}
+            <th rowspan="2">Conc.<br>/${G.conc}</th><th rowspan="2">Comp.<br>/${G.comp}</th><th rowspan="2" class="smn-t">Total<br>/20</th><th rowspan="2">Appréciation</th></tr>
+          <tr>${KI.length ? KI.map(k => `<th class="smn-c">${esc(court(k.nom))}<br><small>/2</small></th>`).join("") + `<th>/${G.i}</th>` : ""}
+            ${EQ ? `<th>Équipe</th><th>/${G.c}</th>` : KC.length ? KC.map(k => `<th class="smn-c">${esc(court(k.nom))}<br><small>/2</small></th>`).join("") + `<th>/${G.c}</th>` : ""}</tr></thead>
+        <tbody>${R.map(({ e, r, sc }, i) => `<tr><td>${i + 1}</td><td class="nm">${esc(e.nom)}</td>
+            ${KI.length ? KI.map(k => `<td>${f(sc[k.id])}</td>`).join("") : ""}<td class="smn-p">${f(r.I.note)}</td>
+            ${EQ ? `<td>${esc(r.C.equipe || "")}</td>` : KC.map(k => `<td>${f(sc[k.id])}</td>`).join("")}<td class="smn-p">${f(r.C.note)}</td>
+            <td>${f(r.conc)}</td><td>${f(r.comp)}</td><td class="smn-t">${f(r.total)}</td><td>${appr(r.total)}</td></tr>`).join("")}</tbody>
+        <tfoot><tr><td colspan="2" class="nm"><b>Moyenne de la classe</b> (${ev.length} élève(s))</td>
+            ${KI.length ? KI.map(k => `<td>${f(moy(ev.map(x => x.sc[k.id])))}</td>`).join("") : ""}<td class="smn-p">${f(moy(ev.map(x => x.r.I.note)))}</td>
+            ${EQ ? `<td></td>` : KC.map(k => `<td>${f(moy(ev.map(x => x.sc[k.id])))}</td>`).join("")}<td class="smn-p">${f(moy(ev.map(x => x.r.C.note)))}</td>
+            <td>${f(moy(ev.map(x => x.r.conc)))}</td><td>${f(moy(ev.map(x => x.r.comp)))}</td><td class="smn-t">${f(moy(ev.map(x => x.r.total)))}</td><td></td></tr></tfoot></table>
+        <table class="smn-sig"><tr><td>Note la plus haute : <b>${f(Math.max.apply(null, ev.map(x => x.r.total).filter(x => x != null).concat([-Infinity])) === -Infinity ? null : Math.max.apply(null, ev.map(x => x.r.total).filter(x => x != null)))}</b> · Note la plus basse : <b>${f(ev.some(x => x.r.total != null) ? Math.min.apply(null, ev.map(x => x.r.total).filter(x => x != null)) : null)}</b> · Élèves ≥ 10 : <b>${ev.filter(x => x.r.total != null && x.r.total >= 10).length}</b> / ${ev.length}</td>
+          <td>Signature de l'enseignant(e) :</td></tr></table>
+        <p class="smn-pied">Critères notés 0 (à renforcer) · 1 (en cours) · 2 (acquis) ; Individuelle /${G.i} + Collective /${G.c} + Conceptuel /${G.conc} + Comportemental /${G.comp} = /20 — Prepa-1st · Classeur numérique EPS</p>
+      </div>`;
+    let z = document.getElementById("sm-print");
+    if (!z) { z = document.createElement("div"); z.id = "sm-print"; document.body.appendChild(z); }
+    z.innerHTML = html + `<style>
+      #sm-print .smn-tete{display:flex;align-items:center;gap:4mm;border:.5mm solid #111;padding:2mm 4mm;margin-bottom:3mm;}
+      #sm-print .smn-tete img{height:13mm;width:auto;}
+      #sm-print .smn-tete > div{flex:1;}
+      #sm-print .smn-tete .sub{margin:1mm 0 0;}
+      #sm-print .smn table{font-size:${cl.eleves.length > 38 ? 7.5 : 8.5}pt;}
+      #sm-print .smn th,#sm-print .smn td{padding:${cl.eleves.length > 38 ? ".5mm 1mm" : "1mm 1.5mm"};}
+      #sm-print .smn th,#sm-print .smn td{text-transform:none;letter-spacing:0;}
+      #sm-print .smn td.nm{white-space:nowrap;text-align:right;}
+      #sm-print .smn tbody td:first-child,#sm-print .smn thead tr:first-child th:first-child{width:7mm;}
+      #sm-print .smn th.smn-c{font-size:7pt;font-weight:600;writing-mode:vertical-rl;transform:rotate(180deg);height:30mm;max-width:7mm;white-space:normal;vertical-align:middle;text-align:left;padding:1mm .5mm;}
+      #sm-print .smn tfoot td.nm{white-space:normal;text-align:left;}
+      #sm-print .smn td.smn-p{background:#F2F2F2;font-weight:700;}
+      #sm-print .smn .smn-t{background:#E0E0E0;font-weight:800;}
+      #sm-print .smn tfoot td{background:#E8E8E8;font-weight:700;}
+      #sm-print .smn tbody tr{break-inside:avoid;}
+      #sm-print .smn-sig{margin-top:3mm;}
+      #sm-print .smn-sig td{border:0;text-align:left;font-size:9pt;height:12mm;vertical-align:top;}
+      #sm-print .smn-pied{font-size:7pt;color:#555;text-align:center;margin:2mm 0 0;}
+    </style>`;
+    let pg = document.getElementById("sm-page");
+    if (!pg) { pg = document.createElement("style"); pg.id = "sm-page"; document.head.appendChild(pg); }
+    pg.textContent = "@page{size:A4 " + (nbCols > 4 ? "landscape" : "portrait") + ";margin:0;}";
+    window.__smNotesPaysage = nbCols > 4;
+    document.body.classList.add("sm-printing");
+    const fin = () => { document.body.classList.remove("sm-printing"); z.innerHTML = ""; pg.textContent = ""; window.removeEventListener("afterprint", fin); };
+    window.addEventListener("afterprint", fin);
+    setTimeout(() => window.print(), 60);
+  }
   function imprimerSommative(cl, mode) {
     smStyle();
     const en = (typeof entete === "function") ? entete(cl) : {};
@@ -25305,12 +25422,31 @@ window.JSYNC = window.JSYNC || (function () {
           <label style="display:flex;align-items:center;gap:8px;justify-content:space-between;border:1px dashed #c9d1dc;border-radius:9px;padding:6px 10px;font-size:.88rem;">
             <span>Intégration / projet d'élèves</span><input class="input" type="number" min="0" max="2" data-pl="__integ" value="${Number(p.integ) || 0}" style="width:64px;flex:0 0 64px;text-align:center;"></label>
         </div>
+        ${niv ? plClassesHTML(cl, niv) : ""}
         <p style="margin:10px 0 8px;font-weight:700;" id="pl-total">S1 diagnostic + ${total - 2} séances + sommative = ${total} séances</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button class="btn btn-primary" id="pl-niveau" ${niv ? "" : "disabled"}>✔ Appliquer à toutes les classes de ${esc(niv || "ce niveau")}</button>
           <button class="btn" id="pl-classe">Appliquer à cette classe seulement</button>
           ${propre || commun ? `<button class="btn" id="pl-suppr">Revenir au calcul automatique</button>` : ""}
         </div></div>`;
+  }
+  /* classe déjà diagnostiquée : au moins un élève évalué ou un diagnostic collectif saisi */
+  function plDiagnostiquee(k) {
+    const act = data.activeId; data.activeId = k.id;
+    try {
+      try { if (statsIndividuel(k).evalues > 0) return true; } catch (e) {}
+      try { const sc = statsCollectif(k); if (sc && (sc.niveau || sc.saisi)) return true; } catch (e) {}
+      return false;
+    } finally { data.activeId = act; }
+  }
+  function plClassesHTML(cl, niv) {
+    const L = (data.classes || []).filter(k => pvNiveau(k) === niv);
+    return `<div style="margin:12px 0 4px;padding:10px 12px;border:1px solid #e3e8ef;border-radius:10px;background:#fafbfd;">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:6px;">Classes de ${esc(niv)} auxquelles appliquer le plan (le projet de cycle de chaque classe cochée est généré / mis à jour) :</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 14px;">${L.map(k => { const d = plDiagnostiquee(k); return `<label style="display:flex;align-items:center;gap:6px;font-size:.86rem;padding:3px 8px;border-radius:8px;background:#fff;border:1px solid #e3e8ef;">
+        <input type="checkbox" data-pl-cl="${esc(k.id)}" ${d || k.projet || k === cl ? "checked" : ""}> <b>${esc(k.nom)}</b>
+        <small style="color:${d ? "#15803d" : "#9ca3af"}">${d ? "✓ diagnostiquée" : "non diagnostiquée"}${k.projet ? " · projet" : ""}</small></label>`; }).join("")}</div>
+      <div style="margin-top:6px;display:flex;gap:8px;"><button type="button" class="btn" style="padding:3px 10px;font-size:.78rem" data-pl-tout="diag">Cocher les classes diagnostiquées</button><button type="button" class="btn" style="padding:3px 10px;font-size:.78rem" data-pl-tout="tout">Tout cocher</button></div></div>`;
   }
   function brancherPlan(cl) {
     const lire = () => {
@@ -25324,14 +25460,26 @@ window.JSYNC = window.JSYNC || (function () {
     const total = () => { const p = lire(), s = Object.keys(p.axes).reduce((t, k) => t + p.axes[k], 0) + p.integ; const z = $("pl-total"); if (z) z.textContent = "S1 diagnostic + " + s + " séances + sommative = " + (s + 2) + " séances"; };
     document.querySelectorAll("[data-pl]").forEach(i => { i.oninput = total; });
     const ok = (p) => { if (!planValide(p)) { toast("Gardez au moins une séquence avec une séance ou plus"); return false; } return true; };
-    const regen = (k) => { if (!k.projet && k !== cl) return; try { const np = genererCycle(k); if (np) k.projet = np; } catch (e) {} };
+    // génère le projet de la classe k (la classe active est basculée le temps du calcul : référentiel du bon niveau)
+    const regen = (k, force) => {
+      if (!force && !k.projet && k !== cl) return false;
+      const act = data.activeId; data.activeId = k.id;
+      try { const np = genererCycle(k); if (np) { k.projet = np; return true; } } catch (e) { console.warn(e); }
+      finally { data.activeId = act; }
+      return false;
+    };
+    document.querySelectorAll("[data-pl-tout]").forEach(b => b.onclick = () => {
+      document.querySelectorAll("[data-pl-cl]").forEach(c => { const k = (data.classes || []).find(x => x.id === c.dataset.plCl); c.checked = b.dataset.plTout === "tout" || !!(k && plDiagnostiquee(k)); });
+    });
     const niv = pvNiveau(cl);
     if ($("pl-niveau")) $("pl-niveau").onclick = () => {
       const p = lire(); if (!ok(p)) return;
       data.plansNiveau = data.plansNiveau || {}; data.plansNiveau[niv] = p;
       const toutes = (data.classes || []).filter(k => pvNiveau(k) === niv);
-      toutes.forEach(k => { delete k.planSeances; regen(k); });
-      save(); toast("Plan appliqué à " + toutes.length + " classe(s) de " + niv); render();
+      const coches = [...document.querySelectorAll("[data-pl-cl]")].filter(c => c.checked).map(c => c.dataset.plCl);
+      let n = 0;
+      toutes.forEach(k => { delete k.planSeances; if (coches.indexOf(k.id) >= 0 ? regen(k, true) : regen(k)) n++; });
+      save(); toast("Plan appliqué à " + toutes.length + " classe(s) de " + niv + " — projet de cycle généré pour " + n + " classe(s)"); render();
     };
     if ($("pl-classe")) $("pl-classe").onclick = () => {
       const p = lire(); if (!ok(p)) return;
@@ -25791,7 +25939,14 @@ window.JSYNC = window.JSYNC || (function () {
      % = critère ÷ balles jouées (BJ) ; efficacité = tirs réussis ÷ tirs tentés (TR ÷ TT) → points selon le barème
      du niveau → note collective de l'équipe, donnée à chacun de ses élèves.
      ══════════════════════════════════════════════════════════════ */
-  const EQ_NOMS = ["A", "B", "C", "D", "E", "F"];
+  const EQ_NOMS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
+  /* nombre d'équipes ou nombre de joueurs par équipe (le nombre d'équipes en découle) */
+  function eqNbEquipes(cl, q) { const p = Number(q.parEq) || 0; return p ? Math.max(1, Math.min(EQ_NOMS.length, Math.ceil(((cl.eleves || []).length || 1) / p))) : (q.nb || 4); }
+  function eqChoixHTML(cl, q) {
+    const nb = eqNbEquipes(cl, q), p = Number(q.parEq) || 0;
+    return `<select id="eq-nb" class="input" style="width:auto;padding:5px 8px" title="Nombre d'équipes">${[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => `<option value="${n}" ${!p && n === nb ? "selected" : ""}>${n} équipes</option>`).join("")}${p ? `<option selected disabled>${nb} équipes</option>` : ""}</select>
+          <select id="eq-par" class="input" style="width:auto;padding:5px 8px" title="Nombre de joueurs par équipe"><option value="">Joueurs / équipe : libre</option>${[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => `<option value="${n}" ${n === p ? "selected" : ""}>${n} joueurs / équipe</option>`).join("")}</select>`;
+  }
   const EQ_LIB = { bq: "Balle conquise", tt: "Tir tenté", tr: "Tir réussi", bp: "Balle perdue", ba: "Balle amenée en zone avant", br: "Balle récupérée", as: "Attaque adverse stoppée", aa: "Attaque adverse", bj: "Balle jouée" };
   const EQ_PLU = { bq: "balles conquises", tt: "tirs tentés", tr: "tirs réussis", bp: "balles perdues", ba: "balles amenées en zone avant", br: "balles récupérées", as: "attaques adverses stoppées", aa: "attaques adverses", bj: "balles jouées" };
   const EQ_CPT = ["ba", "bq", "bp", "aa", "br", "as", "tt", "tr"]; // ordre d'affichage des compteurs
@@ -25864,7 +26019,7 @@ window.JSYNC = window.JSYNC || (function () {
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding:6px 8px;background:#EEF5FD;border-radius:8px;font-size:.85rem">
           <b>Sélection :</b> <button class="btn btn-sm" type="button" data-eq-sel="tout">Tout</button><button class="btn btn-sm" type="button" data-eq-sel="rien">Aucun</button><button class="btn btn-sm" type="button" data-eq-sel="sans">Sans équipe</button>
           <span style="margin-left:8px">→ mettre les élèves cochés dans l'équipe :</span>
-          ${EQ_NOMS.filter((n, i) => i < Math.max(q.nb || 4, ...eqs.map(x => EQ_NOMS.indexOf(x) + 1))).map(n => `<button class="btn btn-sm btn-primary" type="button" data-eq-mettre="${n}" style="min-width:34px">${n}</button>`).join("")}
+          ${EQ_NOMS.filter((n, i) => i < Math.max(eqNbEquipes(cl, q), ...eqs.map(x => EQ_NOMS.indexOf(x) + 1))).map(n => `<button class="btn btn-sm btn-primary" type="button" data-eq-mettre="${n}" style="min-width:34px">${n}</button>`).join("")}
           <button class="btn btn-sm" type="button" data-eq-mettre="" title="Retirer les élèves cochés de leur équipe">Retirer</button>
           <span id="eq-nsel" class="muted"></span></div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${cl.eleves.map(e => `<label style="display:inline-flex;align-items:center;gap:5px;border:1px solid #DDE3EA;border-radius:8px;padding:3px 6px;font-size:.85rem;cursor:pointer;background:${q.membres[e.id] ? "#fff" : "#FFF8E6"}"><input type="checkbox" data-eq-coche="${e.id}">${esc(e.nom)}
@@ -25877,7 +26032,7 @@ window.JSYNC = window.JSYNC || (function () {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <label style="font-weight:700;display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="eq-on" ${actif ? "checked" : ""}> Note collective /${G.c} par équipe — statistiques de match</label>
         ${actif ? `<span style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="eq-nb" class="input" style="width:auto;padding:5px 8px">${[2, 3, 4, 5, 6].map(n => `<option value="${n}" ${n === (q.nb || 4) ? "selected" : ""}>${n} équipes</option>`).join("")}</select>
+          ${eqChoixHTML(cl, q)}
           <button class="btn btn-sm" id="eq-auto">⚡ Répartir la classe</button>
           <button class="btn btn-sm" id="eq-bar">⚙ Barème</button>
           <button class="btn btn-sm" id="eq-print">🖨 Grille à imprimer</button></span>` : ""}
@@ -25906,15 +26061,16 @@ window.JSYNC = window.JSYNC || (function () {
     if (!eqPossible()) return;
     const q = eqInfo(cl), on = c.querySelector("#eq-on");
     if (on) on.onchange = () => { q.actif = on.checked; save(); rafraichir(); };
-    const nb = c.querySelector("#eq-nb"); if (nb) nb.onchange = () => { q.nb = Number(nb.value); save(); rafraichir(); };
+    const nb = c.querySelector("#eq-nb"); if (nb) nb.onchange = () => { q.nb = Number(nb.value); delete q.parEq; save(); rafraichir(); };
+    const par = c.querySelector("#eq-par"); if (par) par.onchange = () => { if (par.value) { q.parEq = Number(par.value); q.nb = eqNbEquipes(cl, q); } else delete q.parEq; save(); rafraichir(); };
     const auto = c.querySelector("#eq-auto");
     if (auto) auto.onclick = () => {
-      const n = q.nb || 4, a = Object.keys(q.membres).some(k => q.membres[k]);
+      const n = eqNbEquipes(cl, q), a = Object.keys(q.membres).some(k => q.membres[k]);
       const faire = () => {
         // garçons et filles répartis à tour de rôle pour des équipes équilibrées
         const g = cl.eleves.filter(e => e.genre !== "F"), fi = cl.eleves.filter(e => e.genre === "F");
         g.concat(fi).forEach((e, i) => { q.membres[e.id] = EQ_NOMS[i % n]; });
-        save(); rafraichir(); toast("Classe répartie en " + n + " équipes");
+        q.nb = n; save(); rafraichir(); toast("Classe répartie en " + n + " équipes" + (q.parEq ? " de " + q.parEq + " joueurs au plus" : ""));
       };
       if (a) confirmModal("Répartir la classe", "La composition actuelle des équipes sera remplacée. Les totaux déjà saisis restent attachés aux lettres d'équipe. Continuer ?", "Répartir", faire); else faire();
     };
@@ -26050,7 +26206,7 @@ window.JSYNC = window.JSYNC || (function () {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div class="card-title" style="margin:0">Diagnostic collectif par équipe — critères ${esc(n)}</div>
         <span style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="eq-nb" class="input" style="width:auto;padding:5px 8px">${[2, 3, 4, 5, 6].map(x => `<option value="${x}" ${x === (q.nb || 4) ? "selected" : ""}>${x} équipes</option>`).join("")}</select>
+          ${eqChoixHTML(cl, q)}
           <button class="btn btn-sm" id="eq-auto">⚡ Répartir la classe</button>
           <button class="btn btn-sm btn-primary" id="eqd-print">🖨 Grille à imprimer</button></span></div>
       <p class="hint" style="margin:6px 0 8px">Mêmes critères que l'évaluation sommative du niveau, <b>sans note</b> : saisissez les totaux du match, le pourcentage de chaque critère se calcule tout seul.<br>${B.map(c => "<b>" + esc(c.lib) + "</b> = " + esc(EQ_PLU[c.num]) + " ÷ " + esc(EQ_PLU[c.den || "bj"])).join(" · ")}. Les équipes sont les mêmes qu'en sommative. Le niveau collectif (analyse didactique, axes prioritaires) est calculé à partir de ces totaux.</p>
@@ -26227,6 +26383,7 @@ window.JSYNC = window.JSYNC || (function () {
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
           <div class="field"><label for="sm-date">Date de l'évaluation</label><input class="input" type="date" id="sm-date" value="${esc(cl.sommativeInfo.date || "")}"></div>
           <span style="flex:1"></span>
+          <button class="btn btn-primary" id="sm-print-notes">🖨 Imprimer les notes</button>
           <button class="btn" id="sm-print-grille">🖨 Grille de classe à remplir</button>
           <button class="btn" id="sm-omr-print">🖨 Feuille à scanner</button>
           <button class="btn btn-primary" id="sm-omr-btn">📷 Importer la grille remplie</button>
@@ -26328,8 +26485,78 @@ window.JSYNC = window.JSYNC || (function () {
         cl.eleves.forEach(e => { delete e.sommative; }); save(); toast("Évaluation sommative effacée"); render();
       });
     $("sm-print-grille").onclick = () => (eqActif(cl) ? eqImprimer(cl) : imprimerSommative(cl, "grille"));
+    if ($("sm-print-notes")) $("sm-print-notes").onclick = () => smImprimerNotes(cl);
   }
 
+  /* relevé des notes de la sommative : détail des critères, notes partielles, total /20, moyennes de la classe */
+  function smImprimerNotes(cl) {
+    smStyle();
+    const en = (typeof entete === "function") ? entete(cl) : {};
+    const date = (cl.sommativeInfo && cl.sommativeInfo.date) || "";
+    const fmt = (d) => { const p = String(d || "").split("-"); return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : "…………"; };
+    const LJ = smJournal(cl), G = smGrille(cl), crits = smCrits(cl), KI = crits.filter(k => k.role === "I"), KC = crits.filter(k => k.role === "C");
+    const EQ = eqActif(cl);
+    const f = (x) => x == null || x === "" || isNaN(x) ? "" : String(Math.round(Number(x) * 100) / 100).replace(".", ",");
+    const R = cl.eleves.map(e => ({ e, r: smCalc(e, cl, LJ), sc: smScores(e), ok: smEvalue(e) }));
+    const moy = (arr) => { arr = arr.filter(x => x != null && x !== "" && !isNaN(x)).map(Number); return arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null; };
+    const ev = R.filter(x => x.ok || x.r.total != null);
+    const appr = (t) => t == null ? "" : t >= 16 ? "Très bien" : t >= 14 ? "Bien" : t >= 12 ? "Assez bien" : t >= 10 ? "Passable" : "Insuffisant";
+    const logoEl = document.querySelector(".credit-mb img"), logo = logoEl && logoEl.src ? logoEl.src : "";
+    const nbCols = KI.length + KC.length + (EQ ? 1 : 0);
+    const court = (n) => String(n || "").replace(/\s*\(.*?\)\s*/g, " ").trim();
+    const html = `<div class="smp smn">
+        <div class="smn-tete">${logo ? `<img src="${logo}" alt="">` : ""}<div><h2>Relevé des notes — Évaluation sommative</h2>
+        <p class="sub">${esc(PV_CFG.aps)} · Classe : <b>${esc(cl.nom)}</b> · ${esc(smNiveauScolaire(cl))} · Date : ${fmt(date)} · Enseignant(e) : ${esc(en.enseignant || "……………………")}${en.etablissement ? " · " + esc(en.etablissement) : ""}</p></div></div>
+        <table><thead>
+          <tr><th rowspan="2">N°</th><th rowspan="2" class="nm">Élève</th>
+            ${KI.length ? `<th colspan="${KI.length + 1}">Individuelle</th>` : `<th rowspan="2">Indiv. /${G.i}</th>`}
+            ${EQ ? `<th colspan="2">Collective</th>` : KC.length ? `<th colspan="${KC.length + 1}">Collective</th>` : `<th rowspan="2">Coll. /${G.c}</th>`}
+            <th rowspan="2">Conc.<br>/${G.conc}</th><th rowspan="2">Comp.<br>/${G.comp}</th><th rowspan="2" class="smn-t">Total<br>/20</th><th rowspan="2">Appréciation</th></tr>
+          <tr>${KI.length ? KI.map(k => `<th class="smn-c">${esc(court(k.nom))}<br><small>/2</small></th>`).join("") + `<th>/${G.i}</th>` : ""}
+            ${EQ ? `<th>Équipe</th><th>/${G.c}</th>` : KC.length ? KC.map(k => `<th class="smn-c">${esc(court(k.nom))}<br><small>/2</small></th>`).join("") + `<th>/${G.c}</th>` : ""}</tr></thead>
+        <tbody>${R.map(({ e, r, sc }, i) => `<tr><td>${i + 1}</td><td class="nm">${esc(e.nom)}</td>
+            ${KI.length ? KI.map(k => `<td>${f(sc[k.id])}</td>`).join("") : ""}<td class="smn-p">${f(r.I.note)}</td>
+            ${EQ ? `<td>${esc(r.C.equipe || "")}</td>` : KC.map(k => `<td>${f(sc[k.id])}</td>`).join("")}<td class="smn-p">${f(r.C.note)}</td>
+            <td>${f(r.conc)}</td><td>${f(r.comp)}</td><td class="smn-t">${f(r.total)}</td><td>${appr(r.total)}</td></tr>`).join("")}</tbody>
+        <tfoot><tr><td colspan="2" class="nm"><b>Moyenne de la classe</b> (${ev.length} élève(s))</td>
+            ${KI.length ? KI.map(k => `<td>${f(moy(ev.map(x => x.sc[k.id])))}</td>`).join("") : ""}<td class="smn-p">${f(moy(ev.map(x => x.r.I.note)))}</td>
+            ${EQ ? `<td></td>` : KC.map(k => `<td>${f(moy(ev.map(x => x.sc[k.id])))}</td>`).join("")}<td class="smn-p">${f(moy(ev.map(x => x.r.C.note)))}</td>
+            <td>${f(moy(ev.map(x => x.r.conc)))}</td><td>${f(moy(ev.map(x => x.r.comp)))}</td><td class="smn-t">${f(moy(ev.map(x => x.r.total)))}</td><td></td></tr></tfoot></table>
+        <table class="smn-sig"><tr><td>Note la plus haute : <b>${f(Math.max.apply(null, ev.map(x => x.r.total).filter(x => x != null).concat([-Infinity])) === -Infinity ? null : Math.max.apply(null, ev.map(x => x.r.total).filter(x => x != null)))}</b> · Note la plus basse : <b>${f(ev.some(x => x.r.total != null) ? Math.min.apply(null, ev.map(x => x.r.total).filter(x => x != null)) : null)}</b> · Élèves ≥ 10 : <b>${ev.filter(x => x.r.total != null && x.r.total >= 10).length}</b> / ${ev.length}</td>
+          <td>Signature de l'enseignant(e) :</td></tr></table>
+        <p class="smn-pied">Critères notés 0 (à renforcer) · 1 (en cours) · 2 (acquis) ; Individuelle /${G.i} + Collective /${G.c} + Conceptuel /${G.conc} + Comportemental /${G.comp} = /20 — Prepa-1st · Classeur numérique EPS</p>
+      </div>`;
+    let z = document.getElementById("sm-print");
+    if (!z) { z = document.createElement("div"); z.id = "sm-print"; document.body.appendChild(z); }
+    z.innerHTML = html + `<style>
+      #sm-print .smn-tete{display:flex;align-items:center;gap:4mm;border:.5mm solid #111;padding:2mm 4mm;margin-bottom:3mm;}
+      #sm-print .smn-tete img{height:13mm;width:auto;}
+      #sm-print .smn-tete > div{flex:1;}
+      #sm-print .smn-tete .sub{margin:1mm 0 0;}
+      #sm-print .smn table{font-size:${cl.eleves.length > 38 ? 7.5 : 8.5}pt;}
+      #sm-print .smn th,#sm-print .smn td{padding:${cl.eleves.length > 38 ? ".5mm 1mm" : "1mm 1.5mm"};}
+      #sm-print .smn th,#sm-print .smn td{text-transform:none;letter-spacing:0;}
+      #sm-print .smn td.nm{white-space:nowrap;text-align:right;}
+      #sm-print .smn tbody td:first-child,#sm-print .smn thead tr:first-child th:first-child{width:7mm;}
+      #sm-print .smn th.smn-c{font-size:7pt;font-weight:600;writing-mode:vertical-rl;transform:rotate(180deg);height:30mm;max-width:7mm;white-space:normal;vertical-align:middle;text-align:left;padding:1mm .5mm;}
+      #sm-print .smn tfoot td.nm{white-space:normal;text-align:left;}
+      #sm-print .smn td.smn-p{background:#F2F2F2;font-weight:700;}
+      #sm-print .smn .smn-t{background:#E0E0E0;font-weight:800;}
+      #sm-print .smn tfoot td{background:#E8E8E8;font-weight:700;}
+      #sm-print .smn tbody tr{break-inside:avoid;}
+      #sm-print .smn-sig{margin-top:3mm;}
+      #sm-print .smn-sig td{border:0;text-align:left;font-size:9pt;height:12mm;vertical-align:top;}
+      #sm-print .smn-pied{font-size:7pt;color:#555;text-align:center;margin:2mm 0 0;}
+    </style>`;
+    let pg = document.getElementById("sm-page");
+    if (!pg) { pg = document.createElement("style"); pg.id = "sm-page"; document.head.appendChild(pg); }
+    pg.textContent = "@page{size:A4 " + (nbCols > 4 ? "landscape" : "portrait") + ";margin:0;}";
+    window.__smNotesPaysage = nbCols > 4;
+    document.body.classList.add("sm-printing");
+    const fin = () => { document.body.classList.remove("sm-printing"); z.innerHTML = ""; pg.textContent = ""; window.removeEventListener("afterprint", fin); };
+    window.addEventListener("afterprint", fin);
+    setTimeout(() => window.print(), 60);
+  }
   function imprimerSommative(cl, mode) {
     smStyle();
     const en = (typeof entete === "function") ? entete(cl) : {};
@@ -35969,12 +36196,31 @@ window.JSYNC = window.JSYNC || (function () {
           <label style="display:flex;align-items:center;gap:8px;justify-content:space-between;border:1px dashed #c9d1dc;border-radius:9px;padding:6px 10px;font-size:.88rem;">
             <span>Intégration / projet d'élèves</span><input class="input" type="number" min="0" max="2" data-pl="__integ" value="${Number(p.integ) || 0}" style="width:64px;flex:0 0 64px;text-align:center;"></label>
         </div>
+        ${niv ? plClassesHTML(cl, niv) : ""}
         <p style="margin:10px 0 8px;font-weight:700;" id="pl-total">S1 diagnostic + ${total - 2} séances + sommative = ${total} séances</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button class="btn btn-primary" id="pl-niveau" ${niv ? "" : "disabled"}>✔ Appliquer à toutes les classes de ${esc(niv || "ce niveau")}</button>
           <button class="btn" id="pl-classe">Appliquer à cette classe seulement</button>
           ${propre || commun ? `<button class="btn" id="pl-suppr">Revenir au calcul automatique</button>` : ""}
         </div></div>`;
+  }
+  /* classe déjà diagnostiquée : au moins un élève évalué ou un diagnostic collectif saisi */
+  function plDiagnostiquee(k) {
+    const act = data.activeId; data.activeId = k.id;
+    try {
+      try { if (statsIndividuel(k).evalues > 0) return true; } catch (e) {}
+      try { const sc = statsCollectif(k); if (sc && (sc.niveau || sc.saisi)) return true; } catch (e) {}
+      return false;
+    } finally { data.activeId = act; }
+  }
+  function plClassesHTML(cl, niv) {
+    const L = (data.classes || []).filter(k => pvNiveau(k) === niv);
+    return `<div style="margin:12px 0 4px;padding:10px 12px;border:1px solid #e3e8ef;border-radius:10px;background:#fafbfd;">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:6px;">Classes de ${esc(niv)} auxquelles appliquer le plan (le projet de cycle de chaque classe cochée est généré / mis à jour) :</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 14px;">${L.map(k => { const d = plDiagnostiquee(k); return `<label style="display:flex;align-items:center;gap:6px;font-size:.86rem;padding:3px 8px;border-radius:8px;background:#fff;border:1px solid #e3e8ef;">
+        <input type="checkbox" data-pl-cl="${esc(k.id)}" ${d || k.projet || k === cl ? "checked" : ""}> <b>${esc(k.nom)}</b>
+        <small style="color:${d ? "#15803d" : "#9ca3af"}">${d ? "✓ diagnostiquée" : "non diagnostiquée"}${k.projet ? " · projet" : ""}</small></label>`; }).join("")}</div>
+      <div style="margin-top:6px;display:flex;gap:8px;"><button type="button" class="btn" style="padding:3px 10px;font-size:.78rem" data-pl-tout="diag">Cocher les classes diagnostiquées</button><button type="button" class="btn" style="padding:3px 10px;font-size:.78rem" data-pl-tout="tout">Tout cocher</button></div></div>`;
   }
   function brancherPlan(cl) {
     const lire = () => {
@@ -35988,14 +36234,26 @@ window.JSYNC = window.JSYNC || (function () {
     const total = () => { const p = lire(), s = Object.keys(p.axes).reduce((t, k) => t + p.axes[k], 0) + p.integ; const z = $("pl-total"); if (z) z.textContent = "S1 diagnostic + " + s + " séances + sommative = " + (s + 2) + " séances"; };
     document.querySelectorAll("[data-pl]").forEach(i => { i.oninput = total; });
     const ok = (p) => { if (!planValide(p)) { toast("Gardez au moins une séquence avec une séance ou plus"); return false; } return true; };
-    const regen = (k) => { if (!k.projet && k !== cl) return; try { const np = genererCycle(k); if (np) k.projet = np; } catch (e) {} };
+    // génère le projet de la classe k (la classe active est basculée le temps du calcul : référentiel du bon niveau)
+    const regen = (k, force) => {
+      if (!force && !k.projet && k !== cl) return false;
+      const act = data.activeId; data.activeId = k.id;
+      try { const np = genererCycle(k); if (np) { k.projet = np; return true; } } catch (e) { console.warn(e); }
+      finally { data.activeId = act; }
+      return false;
+    };
+    document.querySelectorAll("[data-pl-tout]").forEach(b => b.onclick = () => {
+      document.querySelectorAll("[data-pl-cl]").forEach(c => { const k = (data.classes || []).find(x => x.id === c.dataset.plCl); c.checked = b.dataset.plTout === "tout" || !!(k && plDiagnostiquee(k)); });
+    });
     const niv = pvNiveau(cl);
     if ($("pl-niveau")) $("pl-niveau").onclick = () => {
       const p = lire(); if (!ok(p)) return;
       data.plansNiveau = data.plansNiveau || {}; data.plansNiveau[niv] = p;
       const toutes = (data.classes || []).filter(k => pvNiveau(k) === niv);
-      toutes.forEach(k => { delete k.planSeances; regen(k); });
-      save(); toast("Plan appliqué à " + toutes.length + " classe(s) de " + niv); render();
+      const coches = [...document.querySelectorAll("[data-pl-cl]")].filter(c => c.checked).map(c => c.dataset.plCl);
+      let n = 0;
+      toutes.forEach(k => { delete k.planSeances; if (coches.indexOf(k.id) >= 0 ? regen(k, true) : regen(k)) n++; });
+      save(); toast("Plan appliqué à " + toutes.length + " classe(s) de " + niv + " — projet de cycle généré pour " + n + " classe(s)"); render();
     };
     if ($("pl-classe")) $("pl-classe").onclick = () => {
       const p = lire(); if (!ok(p)) return;
@@ -36455,7 +36713,14 @@ window.JSYNC = window.JSYNC || (function () {
      % = critère ÷ balles jouées (BJ) ; efficacité = tirs réussis ÷ tirs tentés (TR ÷ TT) → points selon le barème
      du niveau → note collective de l'équipe, donnée à chacun de ses élèves.
      ══════════════════════════════════════════════════════════════ */
-  const EQ_NOMS = ["A", "B", "C", "D", "E", "F"];
+  const EQ_NOMS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
+  /* nombre d'équipes ou nombre de joueurs par équipe (le nombre d'équipes en découle) */
+  function eqNbEquipes(cl, q) { const p = Number(q.parEq) || 0; return p ? Math.max(1, Math.min(EQ_NOMS.length, Math.ceil(((cl.eleves || []).length || 1) / p))) : (q.nb || 4); }
+  function eqChoixHTML(cl, q) {
+    const nb = eqNbEquipes(cl, q), p = Number(q.parEq) || 0;
+    return `<select id="eq-nb" class="input" style="width:auto;padding:5px 8px" title="Nombre d'équipes">${[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => `<option value="${n}" ${!p && n === nb ? "selected" : ""}>${n} équipes</option>`).join("")}${p ? `<option selected disabled>${nb} équipes</option>` : ""}</select>
+          <select id="eq-par" class="input" style="width:auto;padding:5px 8px" title="Nombre de joueurs par équipe"><option value="">Joueurs / équipe : libre</option>${[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => `<option value="${n}" ${n === p ? "selected" : ""}>${n} joueurs / équipe</option>`).join("")}</select>`;
+  }
   const EQ_LIB = { bq: "Balle conquise", tt: "Tir tenté", tr: "Tir réussi", bp: "Balle perdue", ba: "Balle amenée en zone avant", br: "Balle récupérée", as: "Attaque adverse stoppée", aa: "Attaque adverse", bj: "Balle jouée" };
   const EQ_PLU = { bq: "balles conquises", tt: "tirs tentés", tr: "tirs réussis", bp: "balles perdues", ba: "balles amenées en zone avant", br: "balles récupérées", as: "attaques adverses stoppées", aa: "attaques adverses", bj: "balles jouées" };
   const EQ_CPT = ["ba", "bq", "bp", "aa", "br", "as", "tt", "tr"]; // ordre d'affichage des compteurs
@@ -36528,7 +36793,7 @@ window.JSYNC = window.JSYNC || (function () {
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding:6px 8px;background:#EEF5FD;border-radius:8px;font-size:.85rem">
           <b>Sélection :</b> <button class="btn btn-sm" type="button" data-eq-sel="tout">Tout</button><button class="btn btn-sm" type="button" data-eq-sel="rien">Aucun</button><button class="btn btn-sm" type="button" data-eq-sel="sans">Sans équipe</button>
           <span style="margin-left:8px">→ mettre les élèves cochés dans l'équipe :</span>
-          ${EQ_NOMS.filter((n, i) => i < Math.max(q.nb || 4, ...eqs.map(x => EQ_NOMS.indexOf(x) + 1))).map(n => `<button class="btn btn-sm btn-primary" type="button" data-eq-mettre="${n}" style="min-width:34px">${n}</button>`).join("")}
+          ${EQ_NOMS.filter((n, i) => i < Math.max(eqNbEquipes(cl, q), ...eqs.map(x => EQ_NOMS.indexOf(x) + 1))).map(n => `<button class="btn btn-sm btn-primary" type="button" data-eq-mettre="${n}" style="min-width:34px">${n}</button>`).join("")}
           <button class="btn btn-sm" type="button" data-eq-mettre="" title="Retirer les élèves cochés de leur équipe">Retirer</button>
           <span id="eq-nsel" class="muted"></span></div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${cl.eleves.map(e => `<label style="display:inline-flex;align-items:center;gap:5px;border:1px solid #DDE3EA;border-radius:8px;padding:3px 6px;font-size:.85rem;cursor:pointer;background:${q.membres[e.id] ? "#fff" : "#FFF8E6"}"><input type="checkbox" data-eq-coche="${e.id}">${esc(e.nom)}
@@ -36541,7 +36806,7 @@ window.JSYNC = window.JSYNC || (function () {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <label style="font-weight:700;display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="eq-on" ${actif ? "checked" : ""}> Note collective /${G.c} par équipe — statistiques de match</label>
         ${actif ? `<span style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="eq-nb" class="input" style="width:auto;padding:5px 8px">${[2, 3, 4, 5, 6].map(n => `<option value="${n}" ${n === (q.nb || 4) ? "selected" : ""}>${n} équipes</option>`).join("")}</select>
+          ${eqChoixHTML(cl, q)}
           <button class="btn btn-sm" id="eq-auto">⚡ Répartir la classe</button>
           <button class="btn btn-sm" id="eq-bar">⚙ Barème</button>
           <button class="btn btn-sm" id="eq-print">🖨 Grille à imprimer</button></span>` : ""}
@@ -36570,15 +36835,16 @@ window.JSYNC = window.JSYNC || (function () {
     if (!eqPossible()) return;
     const q = eqInfo(cl), on = c.querySelector("#eq-on");
     if (on) on.onchange = () => { q.actif = on.checked; save(); rafraichir(); };
-    const nb = c.querySelector("#eq-nb"); if (nb) nb.onchange = () => { q.nb = Number(nb.value); save(); rafraichir(); };
+    const nb = c.querySelector("#eq-nb"); if (nb) nb.onchange = () => { q.nb = Number(nb.value); delete q.parEq; save(); rafraichir(); };
+    const par = c.querySelector("#eq-par"); if (par) par.onchange = () => { if (par.value) { q.parEq = Number(par.value); q.nb = eqNbEquipes(cl, q); } else delete q.parEq; save(); rafraichir(); };
     const auto = c.querySelector("#eq-auto");
     if (auto) auto.onclick = () => {
-      const n = q.nb || 4, a = Object.keys(q.membres).some(k => q.membres[k]);
+      const n = eqNbEquipes(cl, q), a = Object.keys(q.membres).some(k => q.membres[k]);
       const faire = () => {
         // garçons et filles répartis à tour de rôle pour des équipes équilibrées
         const g = cl.eleves.filter(e => e.genre !== "F"), fi = cl.eleves.filter(e => e.genre === "F");
         g.concat(fi).forEach((e, i) => { q.membres[e.id] = EQ_NOMS[i % n]; });
-        save(); rafraichir(); toast("Classe répartie en " + n + " équipes");
+        q.nb = n; save(); rafraichir(); toast("Classe répartie en " + n + " équipes" + (q.parEq ? " de " + q.parEq + " joueurs au plus" : ""));
       };
       if (a) confirmModal("Répartir la classe", "La composition actuelle des équipes sera remplacée. Les totaux déjà saisis restent attachés aux lettres d'équipe. Continuer ?", "Répartir", faire); else faire();
     };
@@ -36714,7 +36980,7 @@ window.JSYNC = window.JSYNC || (function () {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div class="card-title" style="margin:0">Diagnostic collectif par équipe — critères ${esc(n)}</div>
         <span style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="eq-nb" class="input" style="width:auto;padding:5px 8px">${[2, 3, 4, 5, 6].map(x => `<option value="${x}" ${x === (q.nb || 4) ? "selected" : ""}>${x} équipes</option>`).join("")}</select>
+          ${eqChoixHTML(cl, q)}
           <button class="btn btn-sm" id="eq-auto">⚡ Répartir la classe</button>
           <button class="btn btn-sm btn-primary" id="eqd-print">🖨 Grille à imprimer</button></span></div>
       <p class="hint" style="margin:6px 0 8px">Mêmes critères que l'évaluation sommative du niveau, <b>sans note</b> : saisissez les totaux du match, le pourcentage de chaque critère se calcule tout seul.<br>${B.map(c => "<b>" + esc(c.lib) + "</b> = " + esc(EQ_PLU[c.num]) + " ÷ " + esc(EQ_PLU[c.den || "bj"])).join(" · ")}. Les équipes sont les mêmes qu'en sommative. Le niveau collectif (analyse didactique, axes prioritaires) est calculé à partir de ces totaux.</p>
@@ -36891,6 +37157,7 @@ window.JSYNC = window.JSYNC || (function () {
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
           <div class="field"><label for="sm-date">Date de l'évaluation</label><input class="input" type="date" id="sm-date" value="${esc(cl.sommativeInfo.date || "")}"></div>
           <span style="flex:1"></span>
+          <button class="btn btn-primary" id="sm-print-notes">🖨 Imprimer les notes</button>
           <button class="btn" id="sm-print-grille">🖨 Grille de classe à remplir</button>
           <button class="btn" id="sm-omr-print">🖨 Feuille à scanner</button>
           <button class="btn btn-primary" id="sm-omr-btn">📷 Importer la grille remplie</button>
@@ -36992,8 +37259,78 @@ window.JSYNC = window.JSYNC || (function () {
         cl.eleves.forEach(e => { delete e.sommative; }); save(); toast("Évaluation sommative effacée"); render();
       });
     $("sm-print-grille").onclick = () => (eqActif(cl) ? eqImprimer(cl) : imprimerSommative(cl, "grille"));
+    if ($("sm-print-notes")) $("sm-print-notes").onclick = () => smImprimerNotes(cl);
   }
 
+  /* relevé des notes de la sommative : détail des critères, notes partielles, total /20, moyennes de la classe */
+  function smImprimerNotes(cl) {
+    smStyle();
+    const en = (typeof entete === "function") ? entete(cl) : {};
+    const date = (cl.sommativeInfo && cl.sommativeInfo.date) || "";
+    const fmt = (d) => { const p = String(d || "").split("-"); return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : "…………"; };
+    const LJ = smJournal(cl), G = smGrille(cl), crits = smCrits(cl), KI = crits.filter(k => k.role === "I"), KC = crits.filter(k => k.role === "C");
+    const EQ = eqActif(cl);
+    const f = (x) => x == null || x === "" || isNaN(x) ? "" : String(Math.round(Number(x) * 100) / 100).replace(".", ",");
+    const R = cl.eleves.map(e => ({ e, r: smCalc(e, cl, LJ), sc: smScores(e), ok: smEvalue(e) }));
+    const moy = (arr) => { arr = arr.filter(x => x != null && x !== "" && !isNaN(x)).map(Number); return arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null; };
+    const ev = R.filter(x => x.ok || x.r.total != null);
+    const appr = (t) => t == null ? "" : t >= 16 ? "Très bien" : t >= 14 ? "Bien" : t >= 12 ? "Assez bien" : t >= 10 ? "Passable" : "Insuffisant";
+    const logoEl = document.querySelector(".credit-mb img"), logo = logoEl && logoEl.src ? logoEl.src : "";
+    const nbCols = KI.length + KC.length + (EQ ? 1 : 0);
+    const court = (n) => String(n || "").replace(/\s*\(.*?\)\s*/g, " ").trim();
+    const html = `<div class="smp smn">
+        <div class="smn-tete">${logo ? `<img src="${logo}" alt="">` : ""}<div><h2>Relevé des notes — Évaluation sommative</h2>
+        <p class="sub">${esc(PV_CFG.aps)} · Classe : <b>${esc(cl.nom)}</b> · ${esc(smNiveauScolaire(cl))} · Date : ${fmt(date)} · Enseignant(e) : ${esc(en.enseignant || "……………………")}${en.etablissement ? " · " + esc(en.etablissement) : ""}</p></div></div>
+        <table><thead>
+          <tr><th rowspan="2">N°</th><th rowspan="2" class="nm">Élève</th>
+            ${KI.length ? `<th colspan="${KI.length + 1}">Individuelle</th>` : `<th rowspan="2">Indiv. /${G.i}</th>`}
+            ${EQ ? `<th colspan="2">Collective</th>` : KC.length ? `<th colspan="${KC.length + 1}">Collective</th>` : `<th rowspan="2">Coll. /${G.c}</th>`}
+            <th rowspan="2">Conc.<br>/${G.conc}</th><th rowspan="2">Comp.<br>/${G.comp}</th><th rowspan="2" class="smn-t">Total<br>/20</th><th rowspan="2">Appréciation</th></tr>
+          <tr>${KI.length ? KI.map(k => `<th class="smn-c">${esc(court(k.nom))}<br><small>/2</small></th>`).join("") + `<th>/${G.i}</th>` : ""}
+            ${EQ ? `<th>Équipe</th><th>/${G.c}</th>` : KC.length ? KC.map(k => `<th class="smn-c">${esc(court(k.nom))}<br><small>/2</small></th>`).join("") + `<th>/${G.c}</th>` : ""}</tr></thead>
+        <tbody>${R.map(({ e, r, sc }, i) => `<tr><td>${i + 1}</td><td class="nm">${esc(e.nom)}</td>
+            ${KI.length ? KI.map(k => `<td>${f(sc[k.id])}</td>`).join("") : ""}<td class="smn-p">${f(r.I.note)}</td>
+            ${EQ ? `<td>${esc(r.C.equipe || "")}</td>` : KC.map(k => `<td>${f(sc[k.id])}</td>`).join("")}<td class="smn-p">${f(r.C.note)}</td>
+            <td>${f(r.conc)}</td><td>${f(r.comp)}</td><td class="smn-t">${f(r.total)}</td><td>${appr(r.total)}</td></tr>`).join("")}</tbody>
+        <tfoot><tr><td colspan="2" class="nm"><b>Moyenne de la classe</b> (${ev.length} élève(s))</td>
+            ${KI.length ? KI.map(k => `<td>${f(moy(ev.map(x => x.sc[k.id])))}</td>`).join("") : ""}<td class="smn-p">${f(moy(ev.map(x => x.r.I.note)))}</td>
+            ${EQ ? `<td></td>` : KC.map(k => `<td>${f(moy(ev.map(x => x.sc[k.id])))}</td>`).join("")}<td class="smn-p">${f(moy(ev.map(x => x.r.C.note)))}</td>
+            <td>${f(moy(ev.map(x => x.r.conc)))}</td><td>${f(moy(ev.map(x => x.r.comp)))}</td><td class="smn-t">${f(moy(ev.map(x => x.r.total)))}</td><td></td></tr></tfoot></table>
+        <table class="smn-sig"><tr><td>Note la plus haute : <b>${f(Math.max.apply(null, ev.map(x => x.r.total).filter(x => x != null).concat([-Infinity])) === -Infinity ? null : Math.max.apply(null, ev.map(x => x.r.total).filter(x => x != null)))}</b> · Note la plus basse : <b>${f(ev.some(x => x.r.total != null) ? Math.min.apply(null, ev.map(x => x.r.total).filter(x => x != null)) : null)}</b> · Élèves ≥ 10 : <b>${ev.filter(x => x.r.total != null && x.r.total >= 10).length}</b> / ${ev.length}</td>
+          <td>Signature de l'enseignant(e) :</td></tr></table>
+        <p class="smn-pied">Critères notés 0 (à renforcer) · 1 (en cours) · 2 (acquis) ; Individuelle /${G.i} + Collective /${G.c} + Conceptuel /${G.conc} + Comportemental /${G.comp} = /20 — Prepa-1st · Classeur numérique EPS</p>
+      </div>`;
+    let z = document.getElementById("sm-print");
+    if (!z) { z = document.createElement("div"); z.id = "sm-print"; document.body.appendChild(z); }
+    z.innerHTML = html + `<style>
+      #sm-print .smn-tete{display:flex;align-items:center;gap:4mm;border:.5mm solid #111;padding:2mm 4mm;margin-bottom:3mm;}
+      #sm-print .smn-tete img{height:13mm;width:auto;}
+      #sm-print .smn-tete > div{flex:1;}
+      #sm-print .smn-tete .sub{margin:1mm 0 0;}
+      #sm-print .smn table{font-size:${cl.eleves.length > 38 ? 7.5 : 8.5}pt;}
+      #sm-print .smn th,#sm-print .smn td{padding:${cl.eleves.length > 38 ? ".5mm 1mm" : "1mm 1.5mm"};}
+      #sm-print .smn th,#sm-print .smn td{text-transform:none;letter-spacing:0;}
+      #sm-print .smn td.nm{white-space:nowrap;text-align:right;}
+      #sm-print .smn tbody td:first-child,#sm-print .smn thead tr:first-child th:first-child{width:7mm;}
+      #sm-print .smn th.smn-c{font-size:7pt;font-weight:600;writing-mode:vertical-rl;transform:rotate(180deg);height:30mm;max-width:7mm;white-space:normal;vertical-align:middle;text-align:left;padding:1mm .5mm;}
+      #sm-print .smn tfoot td.nm{white-space:normal;text-align:left;}
+      #sm-print .smn td.smn-p{background:#F2F2F2;font-weight:700;}
+      #sm-print .smn .smn-t{background:#E0E0E0;font-weight:800;}
+      #sm-print .smn tfoot td{background:#E8E8E8;font-weight:700;}
+      #sm-print .smn tbody tr{break-inside:avoid;}
+      #sm-print .smn-sig{margin-top:3mm;}
+      #sm-print .smn-sig td{border:0;text-align:left;font-size:9pt;height:12mm;vertical-align:top;}
+      #sm-print .smn-pied{font-size:7pt;color:#555;text-align:center;margin:2mm 0 0;}
+    </style>`;
+    let pg = document.getElementById("sm-page");
+    if (!pg) { pg = document.createElement("style"); pg.id = "sm-page"; document.head.appendChild(pg); }
+    pg.textContent = "@page{size:A4 " + (nbCols > 4 ? "landscape" : "portrait") + ";margin:0;}";
+    window.__smNotesPaysage = nbCols > 4;
+    document.body.classList.add("sm-printing");
+    const fin = () => { document.body.classList.remove("sm-printing"); z.innerHTML = ""; pg.textContent = ""; window.removeEventListener("afterprint", fin); };
+    window.addEventListener("afterprint", fin);
+    setTimeout(() => window.print(), 60);
+  }
   function imprimerSommative(cl, mode) {
     smStyle();
     const en = (typeof entete === "function") ? entete(cl) : {};
@@ -46563,12 +46900,31 @@ window.JSYNC = window.JSYNC || (function () {
           <label style="display:flex;align-items:center;gap:8px;justify-content:space-between;border:1px dashed #c9d1dc;border-radius:9px;padding:6px 10px;font-size:.88rem;">
             <span>Intégration / projet d'élèves</span><input class="input" type="number" min="0" max="2" data-pl="__integ" value="${Number(p.integ) || 0}" style="width:64px;flex:0 0 64px;text-align:center;"></label>
         </div>
+        ${niv ? plClassesHTML(cl, niv) : ""}
         <p style="margin:10px 0 8px;font-weight:700;" id="pl-total">S1 diagnostic + ${total - 2} séances + sommative = ${total} séances</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button class="btn btn-primary" id="pl-niveau" ${niv ? "" : "disabled"}>✔ Appliquer à toutes les classes de ${esc(niv || "ce niveau")}</button>
           <button class="btn" id="pl-classe">Appliquer à cette classe seulement</button>
           ${propre || commun ? `<button class="btn" id="pl-suppr">Revenir au calcul automatique</button>` : ""}
         </div></div>`;
+  }
+  /* classe déjà diagnostiquée : au moins un élève évalué ou un diagnostic collectif saisi */
+  function plDiagnostiquee(k) {
+    const act = data.activeId; data.activeId = k.id;
+    try {
+      try { if (statsIndividuel(k).evalues > 0) return true; } catch (e) {}
+      try { const sc = statsCollectif(k); if (sc && (sc.niveau || sc.saisi)) return true; } catch (e) {}
+      return false;
+    } finally { data.activeId = act; }
+  }
+  function plClassesHTML(cl, niv) {
+    const L = (data.classes || []).filter(k => pvNiveau(k) === niv);
+    return `<div style="margin:12px 0 4px;padding:10px 12px;border:1px solid #e3e8ef;border-radius:10px;background:#fafbfd;">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:6px;">Classes de ${esc(niv)} auxquelles appliquer le plan (le projet de cycle de chaque classe cochée est généré / mis à jour) :</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 14px;">${L.map(k => { const d = plDiagnostiquee(k); return `<label style="display:flex;align-items:center;gap:6px;font-size:.86rem;padding:3px 8px;border-radius:8px;background:#fff;border:1px solid #e3e8ef;">
+        <input type="checkbox" data-pl-cl="${esc(k.id)}" ${d || k.projet || k === cl ? "checked" : ""}> <b>${esc(k.nom)}</b>
+        <small style="color:${d ? "#15803d" : "#9ca3af"}">${d ? "✓ diagnostiquée" : "non diagnostiquée"}${k.projet ? " · projet" : ""}</small></label>`; }).join("")}</div>
+      <div style="margin-top:6px;display:flex;gap:8px;"><button type="button" class="btn" style="padding:3px 10px;font-size:.78rem" data-pl-tout="diag">Cocher les classes diagnostiquées</button><button type="button" class="btn" style="padding:3px 10px;font-size:.78rem" data-pl-tout="tout">Tout cocher</button></div></div>`;
   }
   function brancherPlan(cl) {
     const lire = () => {
@@ -46582,14 +46938,26 @@ window.JSYNC = window.JSYNC || (function () {
     const total = () => { const p = lire(), s = Object.keys(p.axes).reduce((t, k) => t + p.axes[k], 0) + p.integ; const z = $("pl-total"); if (z) z.textContent = "S1 diagnostic + " + s + " séances + sommative = " + (s + 2) + " séances"; };
     document.querySelectorAll("[data-pl]").forEach(i => { i.oninput = total; });
     const ok = (p) => { if (!planValide(p)) { toast("Gardez au moins une séquence avec une séance ou plus"); return false; } return true; };
-    const regen = (k) => { if (!k.projet && k !== cl) return; try { const np = genererCycle(k); if (np) k.projet = np; } catch (e) {} };
+    // génère le projet de la classe k (la classe active est basculée le temps du calcul : référentiel du bon niveau)
+    const regen = (k, force) => {
+      if (!force && !k.projet && k !== cl) return false;
+      const act = data.activeId; data.activeId = k.id;
+      try { const np = genererCycle(k); if (np) { k.projet = np; return true; } } catch (e) { console.warn(e); }
+      finally { data.activeId = act; }
+      return false;
+    };
+    document.querySelectorAll("[data-pl-tout]").forEach(b => b.onclick = () => {
+      document.querySelectorAll("[data-pl-cl]").forEach(c => { const k = (data.classes || []).find(x => x.id === c.dataset.plCl); c.checked = b.dataset.plTout === "tout" || !!(k && plDiagnostiquee(k)); });
+    });
     const niv = pvNiveau(cl);
     if ($("pl-niveau")) $("pl-niveau").onclick = () => {
       const p = lire(); if (!ok(p)) return;
       data.plansNiveau = data.plansNiveau || {}; data.plansNiveau[niv] = p;
       const toutes = (data.classes || []).filter(k => pvNiveau(k) === niv);
-      toutes.forEach(k => { delete k.planSeances; regen(k); });
-      save(); toast("Plan appliqué à " + toutes.length + " classe(s) de " + niv); render();
+      const coches = [...document.querySelectorAll("[data-pl-cl]")].filter(c => c.checked).map(c => c.dataset.plCl);
+      let n = 0;
+      toutes.forEach(k => { delete k.planSeances; if (coches.indexOf(k.id) >= 0 ? regen(k, true) : regen(k)) n++; });
+      save(); toast("Plan appliqué à " + toutes.length + " classe(s) de " + niv + " — projet de cycle généré pour " + n + " classe(s)"); render();
     };
     if ($("pl-classe")) $("pl-classe").onclick = () => {
       const p = lire(); if (!ok(p)) return;
@@ -47049,7 +47417,14 @@ window.JSYNC = window.JSYNC || (function () {
      % = critère ÷ balles jouées (BJ) ; efficacité = tirs réussis ÷ tirs tentés (TR ÷ TT) → points selon le barème
      du niveau → note collective de l'équipe, donnée à chacun de ses élèves.
      ══════════════════════════════════════════════════════════════ */
-  const EQ_NOMS = ["A", "B", "C", "D", "E", "F"];
+  const EQ_NOMS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
+  /* nombre d'équipes ou nombre de joueurs par équipe (le nombre d'équipes en découle) */
+  function eqNbEquipes(cl, q) { const p = Number(q.parEq) || 0; return p ? Math.max(1, Math.min(EQ_NOMS.length, Math.ceil(((cl.eleves || []).length || 1) / p))) : (q.nb || 4); }
+  function eqChoixHTML(cl, q) {
+    const nb = eqNbEquipes(cl, q), p = Number(q.parEq) || 0;
+    return `<select id="eq-nb" class="input" style="width:auto;padding:5px 8px" title="Nombre d'équipes">${[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => `<option value="${n}" ${!p && n === nb ? "selected" : ""}>${n} équipes</option>`).join("")}${p ? `<option selected disabled>${nb} équipes</option>` : ""}</select>
+          <select id="eq-par" class="input" style="width:auto;padding:5px 8px" title="Nombre de joueurs par équipe"><option value="">Joueurs / équipe : libre</option>${[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => `<option value="${n}" ${n === p ? "selected" : ""}>${n} joueurs / équipe</option>`).join("")}</select>`;
+  }
   const EQ_LIB = { bq: "Balle conquise", tt: "Tir tenté", tr: "Tir réussi", bp: "Balle perdue", ba: "Balle amenée en zone avant", br: "Balle récupérée", as: "Attaque adverse stoppée", aa: "Attaque adverse", bj: "Balle jouée" };
   const EQ_PLU = { bq: "balles conquises", tt: "tirs tentés", tr: "tirs réussis", bp: "balles perdues", ba: "balles amenées en zone avant", br: "balles récupérées", as: "attaques adverses stoppées", aa: "attaques adverses", bj: "balles jouées" };
   const EQ_CPT = ["ba", "bq", "bp", "aa", "br", "as", "tt", "tr"]; // ordre d'affichage des compteurs
@@ -47122,7 +47497,7 @@ window.JSYNC = window.JSYNC || (function () {
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding:6px 8px;background:#EEF5FD;border-radius:8px;font-size:.85rem">
           <b>Sélection :</b> <button class="btn btn-sm" type="button" data-eq-sel="tout">Tout</button><button class="btn btn-sm" type="button" data-eq-sel="rien">Aucun</button><button class="btn btn-sm" type="button" data-eq-sel="sans">Sans équipe</button>
           <span style="margin-left:8px">→ mettre les élèves cochés dans l'équipe :</span>
-          ${EQ_NOMS.filter((n, i) => i < Math.max(q.nb || 4, ...eqs.map(x => EQ_NOMS.indexOf(x) + 1))).map(n => `<button class="btn btn-sm btn-primary" type="button" data-eq-mettre="${n}" style="min-width:34px">${n}</button>`).join("")}
+          ${EQ_NOMS.filter((n, i) => i < Math.max(eqNbEquipes(cl, q), ...eqs.map(x => EQ_NOMS.indexOf(x) + 1))).map(n => `<button class="btn btn-sm btn-primary" type="button" data-eq-mettre="${n}" style="min-width:34px">${n}</button>`).join("")}
           <button class="btn btn-sm" type="button" data-eq-mettre="" title="Retirer les élèves cochés de leur équipe">Retirer</button>
           <span id="eq-nsel" class="muted"></span></div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${cl.eleves.map(e => `<label style="display:inline-flex;align-items:center;gap:5px;border:1px solid #DDE3EA;border-radius:8px;padding:3px 6px;font-size:.85rem;cursor:pointer;background:${q.membres[e.id] ? "#fff" : "#FFF8E6"}"><input type="checkbox" data-eq-coche="${e.id}">${esc(e.nom)}
@@ -47135,7 +47510,7 @@ window.JSYNC = window.JSYNC || (function () {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <label style="font-weight:700;display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="eq-on" ${actif ? "checked" : ""}> Note collective /${G.c} par équipe — statistiques de match</label>
         ${actif ? `<span style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="eq-nb" class="input" style="width:auto;padding:5px 8px">${[2, 3, 4, 5, 6].map(n => `<option value="${n}" ${n === (q.nb || 4) ? "selected" : ""}>${n} équipes</option>`).join("")}</select>
+          ${eqChoixHTML(cl, q)}
           <button class="btn btn-sm" id="eq-auto">⚡ Répartir la classe</button>
           <button class="btn btn-sm" id="eq-bar">⚙ Barème</button>
           <button class="btn btn-sm" id="eq-print">🖨 Grille à imprimer</button></span>` : ""}
@@ -47164,15 +47539,16 @@ window.JSYNC = window.JSYNC || (function () {
     if (!eqPossible()) return;
     const q = eqInfo(cl), on = c.querySelector("#eq-on");
     if (on) on.onchange = () => { q.actif = on.checked; save(); rafraichir(); };
-    const nb = c.querySelector("#eq-nb"); if (nb) nb.onchange = () => { q.nb = Number(nb.value); save(); rafraichir(); };
+    const nb = c.querySelector("#eq-nb"); if (nb) nb.onchange = () => { q.nb = Number(nb.value); delete q.parEq; save(); rafraichir(); };
+    const par = c.querySelector("#eq-par"); if (par) par.onchange = () => { if (par.value) { q.parEq = Number(par.value); q.nb = eqNbEquipes(cl, q); } else delete q.parEq; save(); rafraichir(); };
     const auto = c.querySelector("#eq-auto");
     if (auto) auto.onclick = () => {
-      const n = q.nb || 4, a = Object.keys(q.membres).some(k => q.membres[k]);
+      const n = eqNbEquipes(cl, q), a = Object.keys(q.membres).some(k => q.membres[k]);
       const faire = () => {
         // garçons et filles répartis à tour de rôle pour des équipes équilibrées
         const g = cl.eleves.filter(e => e.genre !== "F"), fi = cl.eleves.filter(e => e.genre === "F");
         g.concat(fi).forEach((e, i) => { q.membres[e.id] = EQ_NOMS[i % n]; });
-        save(); rafraichir(); toast("Classe répartie en " + n + " équipes");
+        q.nb = n; save(); rafraichir(); toast("Classe répartie en " + n + " équipes" + (q.parEq ? " de " + q.parEq + " joueurs au plus" : ""));
       };
       if (a) confirmModal("Répartir la classe", "La composition actuelle des équipes sera remplacée. Les totaux déjà saisis restent attachés aux lettres d'équipe. Continuer ?", "Répartir", faire); else faire();
     };
@@ -47308,7 +47684,7 @@ window.JSYNC = window.JSYNC || (function () {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div class="card-title" style="margin:0">Diagnostic collectif par équipe — critères ${esc(n)}</div>
         <span style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="eq-nb" class="input" style="width:auto;padding:5px 8px">${[2, 3, 4, 5, 6].map(x => `<option value="${x}" ${x === (q.nb || 4) ? "selected" : ""}>${x} équipes</option>`).join("")}</select>
+          ${eqChoixHTML(cl, q)}
           <button class="btn btn-sm" id="eq-auto">⚡ Répartir la classe</button>
           <button class="btn btn-sm btn-primary" id="eqd-print">🖨 Grille à imprimer</button></span></div>
       <p class="hint" style="margin:6px 0 8px">Mêmes critères que l'évaluation sommative du niveau, <b>sans note</b> : saisissez les totaux du match, le pourcentage de chaque critère se calcule tout seul.<br>${B.map(c => "<b>" + esc(c.lib) + "</b> = " + esc(EQ_PLU[c.num]) + " ÷ " + esc(EQ_PLU[c.den || "bj"])).join(" · ")}. Les équipes sont les mêmes qu'en sommative. Le niveau collectif (analyse didactique, axes prioritaires) est calculé à partir de ces totaux.</p>
@@ -47485,6 +47861,7 @@ window.JSYNC = window.JSYNC || (function () {
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
           <div class="field"><label for="sm-date">Date de l'évaluation</label><input class="input" type="date" id="sm-date" value="${esc(cl.sommativeInfo.date || "")}"></div>
           <span style="flex:1"></span>
+          <button class="btn btn-primary" id="sm-print-notes">🖨 Imprimer les notes</button>
           <button class="btn" id="sm-print-grille">🖨 Grille de classe à remplir</button>
           <button class="btn" id="sm-omr-print">🖨 Feuille à scanner</button>
           <button class="btn btn-primary" id="sm-omr-btn">📷 Importer la grille remplie</button>
@@ -47586,8 +47963,78 @@ window.JSYNC = window.JSYNC || (function () {
         cl.eleves.forEach(e => { delete e.sommative; }); save(); toast("Évaluation sommative effacée"); render();
       });
     $("sm-print-grille").onclick = () => (eqActif(cl) ? eqImprimer(cl) : imprimerSommative(cl, "grille"));
+    if ($("sm-print-notes")) $("sm-print-notes").onclick = () => smImprimerNotes(cl);
   }
 
+  /* relevé des notes de la sommative : détail des critères, notes partielles, total /20, moyennes de la classe */
+  function smImprimerNotes(cl) {
+    smStyle();
+    const en = (typeof entete === "function") ? entete(cl) : {};
+    const date = (cl.sommativeInfo && cl.sommativeInfo.date) || "";
+    const fmt = (d) => { const p = String(d || "").split("-"); return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : "…………"; };
+    const LJ = smJournal(cl), G = smGrille(cl), crits = smCrits(cl), KI = crits.filter(k => k.role === "I"), KC = crits.filter(k => k.role === "C");
+    const EQ = eqActif(cl);
+    const f = (x) => x == null || x === "" || isNaN(x) ? "" : String(Math.round(Number(x) * 100) / 100).replace(".", ",");
+    const R = cl.eleves.map(e => ({ e, r: smCalc(e, cl, LJ), sc: smScores(e), ok: smEvalue(e) }));
+    const moy = (arr) => { arr = arr.filter(x => x != null && x !== "" && !isNaN(x)).map(Number); return arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null; };
+    const ev = R.filter(x => x.ok || x.r.total != null);
+    const appr = (t) => t == null ? "" : t >= 16 ? "Très bien" : t >= 14 ? "Bien" : t >= 12 ? "Assez bien" : t >= 10 ? "Passable" : "Insuffisant";
+    const logoEl = document.querySelector(".credit-mb img"), logo = logoEl && logoEl.src ? logoEl.src : "";
+    const nbCols = KI.length + KC.length + (EQ ? 1 : 0);
+    const court = (n) => String(n || "").replace(/\s*\(.*?\)\s*/g, " ").trim();
+    const html = `<div class="smp smn">
+        <div class="smn-tete">${logo ? `<img src="${logo}" alt="">` : ""}<div><h2>Relevé des notes — Évaluation sommative</h2>
+        <p class="sub">${esc(PV_CFG.aps)} · Classe : <b>${esc(cl.nom)}</b> · ${esc(smNiveauScolaire(cl))} · Date : ${fmt(date)} · Enseignant(e) : ${esc(en.enseignant || "……………………")}${en.etablissement ? " · " + esc(en.etablissement) : ""}</p></div></div>
+        <table><thead>
+          <tr><th rowspan="2">N°</th><th rowspan="2" class="nm">Élève</th>
+            ${KI.length ? `<th colspan="${KI.length + 1}">Individuelle</th>` : `<th rowspan="2">Indiv. /${G.i}</th>`}
+            ${EQ ? `<th colspan="2">Collective</th>` : KC.length ? `<th colspan="${KC.length + 1}">Collective</th>` : `<th rowspan="2">Coll. /${G.c}</th>`}
+            <th rowspan="2">Conc.<br>/${G.conc}</th><th rowspan="2">Comp.<br>/${G.comp}</th><th rowspan="2" class="smn-t">Total<br>/20</th><th rowspan="2">Appréciation</th></tr>
+          <tr>${KI.length ? KI.map(k => `<th class="smn-c">${esc(court(k.nom))}<br><small>/2</small></th>`).join("") + `<th>/${G.i}</th>` : ""}
+            ${EQ ? `<th>Équipe</th><th>/${G.c}</th>` : KC.length ? KC.map(k => `<th class="smn-c">${esc(court(k.nom))}<br><small>/2</small></th>`).join("") + `<th>/${G.c}</th>` : ""}</tr></thead>
+        <tbody>${R.map(({ e, r, sc }, i) => `<tr><td>${i + 1}</td><td class="nm">${esc(e.nom)}</td>
+            ${KI.length ? KI.map(k => `<td>${f(sc[k.id])}</td>`).join("") : ""}<td class="smn-p">${f(r.I.note)}</td>
+            ${EQ ? `<td>${esc(r.C.equipe || "")}</td>` : KC.map(k => `<td>${f(sc[k.id])}</td>`).join("")}<td class="smn-p">${f(r.C.note)}</td>
+            <td>${f(r.conc)}</td><td>${f(r.comp)}</td><td class="smn-t">${f(r.total)}</td><td>${appr(r.total)}</td></tr>`).join("")}</tbody>
+        <tfoot><tr><td colspan="2" class="nm"><b>Moyenne de la classe</b> (${ev.length} élève(s))</td>
+            ${KI.length ? KI.map(k => `<td>${f(moy(ev.map(x => x.sc[k.id])))}</td>`).join("") : ""}<td class="smn-p">${f(moy(ev.map(x => x.r.I.note)))}</td>
+            ${EQ ? `<td></td>` : KC.map(k => `<td>${f(moy(ev.map(x => x.sc[k.id])))}</td>`).join("")}<td class="smn-p">${f(moy(ev.map(x => x.r.C.note)))}</td>
+            <td>${f(moy(ev.map(x => x.r.conc)))}</td><td>${f(moy(ev.map(x => x.r.comp)))}</td><td class="smn-t">${f(moy(ev.map(x => x.r.total)))}</td><td></td></tr></tfoot></table>
+        <table class="smn-sig"><tr><td>Note la plus haute : <b>${f(Math.max.apply(null, ev.map(x => x.r.total).filter(x => x != null).concat([-Infinity])) === -Infinity ? null : Math.max.apply(null, ev.map(x => x.r.total).filter(x => x != null)))}</b> · Note la plus basse : <b>${f(ev.some(x => x.r.total != null) ? Math.min.apply(null, ev.map(x => x.r.total).filter(x => x != null)) : null)}</b> · Élèves ≥ 10 : <b>${ev.filter(x => x.r.total != null && x.r.total >= 10).length}</b> / ${ev.length}</td>
+          <td>Signature de l'enseignant(e) :</td></tr></table>
+        <p class="smn-pied">Critères notés 0 (à renforcer) · 1 (en cours) · 2 (acquis) ; Individuelle /${G.i} + Collective /${G.c} + Conceptuel /${G.conc} + Comportemental /${G.comp} = /20 — Prepa-1st · Classeur numérique EPS</p>
+      </div>`;
+    let z = document.getElementById("sm-print");
+    if (!z) { z = document.createElement("div"); z.id = "sm-print"; document.body.appendChild(z); }
+    z.innerHTML = html + `<style>
+      #sm-print .smn-tete{display:flex;align-items:center;gap:4mm;border:.5mm solid #111;padding:2mm 4mm;margin-bottom:3mm;}
+      #sm-print .smn-tete img{height:13mm;width:auto;}
+      #sm-print .smn-tete > div{flex:1;}
+      #sm-print .smn-tete .sub{margin:1mm 0 0;}
+      #sm-print .smn table{font-size:${cl.eleves.length > 38 ? 7.5 : 8.5}pt;}
+      #sm-print .smn th,#sm-print .smn td{padding:${cl.eleves.length > 38 ? ".5mm 1mm" : "1mm 1.5mm"};}
+      #sm-print .smn th,#sm-print .smn td{text-transform:none;letter-spacing:0;}
+      #sm-print .smn td.nm{white-space:nowrap;text-align:right;}
+      #sm-print .smn tbody td:first-child,#sm-print .smn thead tr:first-child th:first-child{width:7mm;}
+      #sm-print .smn th.smn-c{font-size:7pt;font-weight:600;writing-mode:vertical-rl;transform:rotate(180deg);height:30mm;max-width:7mm;white-space:normal;vertical-align:middle;text-align:left;padding:1mm .5mm;}
+      #sm-print .smn tfoot td.nm{white-space:normal;text-align:left;}
+      #sm-print .smn td.smn-p{background:#F2F2F2;font-weight:700;}
+      #sm-print .smn .smn-t{background:#E0E0E0;font-weight:800;}
+      #sm-print .smn tfoot td{background:#E8E8E8;font-weight:700;}
+      #sm-print .smn tbody tr{break-inside:avoid;}
+      #sm-print .smn-sig{margin-top:3mm;}
+      #sm-print .smn-sig td{border:0;text-align:left;font-size:9pt;height:12mm;vertical-align:top;}
+      #sm-print .smn-pied{font-size:7pt;color:#555;text-align:center;margin:2mm 0 0;}
+    </style>`;
+    let pg = document.getElementById("sm-page");
+    if (!pg) { pg = document.createElement("style"); pg.id = "sm-page"; document.head.appendChild(pg); }
+    pg.textContent = "@page{size:A4 " + (nbCols > 4 ? "landscape" : "portrait") + ";margin:0;}";
+    window.__smNotesPaysage = nbCols > 4;
+    document.body.classList.add("sm-printing");
+    const fin = () => { document.body.classList.remove("sm-printing"); z.innerHTML = ""; pg.textContent = ""; window.removeEventListener("afterprint", fin); };
+    window.addEventListener("afterprint", fin);
+    setTimeout(() => window.print(), 60);
+  }
   function imprimerSommative(cl, mode) {
     smStyle();
     const en = (typeof entete === "function") ? entete(cl) : {};
@@ -95334,6 +95781,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 20h30</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 23h00</div>
 </body>
 </html>
