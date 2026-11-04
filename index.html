@@ -1087,11 +1087,16 @@ html body .lv-corps > .lv-part, html body #lv-zone .corps > .part-titre, html bo
 @keyframes jcFlow{ 0%{background-position:0% 50%} 100%{background-position:100% 50%} }
 .topbar .btn, .topbar select, .topbar .icon-btn{ box-shadow:inset 0 1px 0 rgba(255,255,255,.25), 0 2px 0 rgba(0,0,0,.25) !important; }
 table.grid-table thead th, .cycle-table thead th{
-  background:linear-gradient(180deg,var(--jc-l) 0%,var(--jc-p) 55%,var(--jc-d) 100%) !important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.30), inset 0 -2px 0 rgba(0,0,0,.20) !important;
-  text-shadow:0 1px 1px rgba(0,0,0,.35); border-color:rgba(255,255,255,.18) !important; }
-table.grid-table .row-head, table.grid-table .row-num{ background:linear-gradient(180deg,#fff, var(--surface-2)) !important; color:var(--jc-d) !important; }
-.table-scroll{ border-top:4px solid var(--jc-p) !important; box-shadow:0 14px 30px -18px var(--jc-d), var(--shadow-sm) !important; }
+  background:#4C1D95 !important; color:#fff !important; text-shadow:none !important; box-shadow:none !important;
+  border-color:rgba(255,255,255,.16) !important; font-weight:700; letter-spacing:.02em; }
+table.grid-table thead tr:first-child th{ background:#3B1677 !important; }
+table.grid-table tbody tr:nth-child(even) td{ background:#FAF8FF; }
+table.grid-table tbody tr{ transition:background-color .12s ease; }
+table.grid-table tbody tr:hover td{ background:#EFE8FF !important; }
+table.grid-table tbody tr:hover td.row-head, table.grid-table tbody tr:hover td.row-num{ background:#E4D9FF !important; }
+table.grid-table td{ border-color:#E7E1F3 !important; }
+table.grid-table .row-head, table.grid-table .row-num{ background:#F4F0FB !important; color:#3B1677 !important; }
+.table-scroll{ border:1px solid #DDD3F0 !important; border-radius:12px !important; box-shadow:0 6px 18px -12px rgba(59,22,119,.45) !important; overflow:auto; }
 .cycle-tab{ box-shadow:0 3px 0 rgba(0,0,0,.12); transition:transform .15s ease, box-shadow .15s ease; }
 .cycle-tab:hover{ transform:translateY(-1px); }
 .cycle-tab.active{ background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 70%,#fff),var(--accent) 60%,color-mix(in srgb,var(--accent) 70%,#000)) !important;
@@ -1104,7 +1109,14 @@ table.grid-table .row-head, table.grid-table .row-num{ background:linear-gradien
   <button id="btn-sidebar-toggle" class="icon-btn" aria-label="Menu">
     <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
   </button>
-  <div class="brand"><span class="brand-badge">EPS</span><div class="brand-text"><strong>Cahier Journalier</strong><small id="sidebar-annee-sy">Année scolaire —</small></div></div>
+  <div class="brand"><span class="brand-badge brand-logo"><img id="prepa-logo" alt="Prepa-1st"></span><style>
+.brand-badge.brand-logo{width:42px;height:42px;padding:0;border-radius:50%;background:#0B1A2C;overflow:hidden;box-shadow:0 0 0 2px rgba(255,255,255,.35),0 4px 10px -4px rgba(0,0,0,.6)}
+.brand-badge.brand-logo img{width:100%;height:100%;object-fit:cover;display:block}
+</style><script>(function () {
+  var i = document.getElementById("prepa-logo"), src = null;
+  try { var l = window.parent && window.parent !== window ? window.parent.document.querySelector(".cover-logo") : null; src = l && l.src; } catch (e) {}
+  if (src) i.src = src; else { var b = i.parentNode; b.classList.remove("brand-logo"); b.textContent = "EPS"; }
+})();@@SCRIPTCLOSE7f3a@@><div class="brand-text"><strong>Cahier Journalier</strong><small id="sidebar-annee-sy">Année scolaire —</small></div></div>
   <div class="topbar-actions">
     <select id="niveau-select" aria-label="Niveau" class="btn btn-ghost" style="padding:8px 10px;">
       <option value="1AC">1AC</option>
@@ -16052,7 +16064,7 @@ window.JSYNC = window.JSYNC || (function () {
         <span style="flex:1"></span>
         <button class="btn" id="fiche-raz" ${eleveEvalue(el) ? "" : "disabled"}>🧹 Effacer le diagnostic de cet élève</button>
         <button class="btn" id="fiche-grille">🖨 Grille de la classe</button>
-        <button class="btn btn-primary" id="fiche-print" title="Fiche vierge (sans nom ni cases cochées) à utiliser pour tous les élèves de la classe">🖨 Imprimer la fiche (vierge)</button>
+        <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
       </div>
 
 <style>
@@ -16191,15 +16203,11 @@ window.JSYNC = window.JSYNC || (function () {
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
     $("fiche-print").onclick = () => {
-      // fiche vierge : ni nom d'élève, ni cases cochées, ni notes → une fiche pour toute la classe
+      // fiche imprimée sans la ligne « Élève » (le reste est inchangé)
       const f = box.querySelector(".fiche"); if (f) f.classList.add("fx-vierge");
       if (!document.getElementById("fx-vierge-css")) {
         const st = document.createElement("style"); st.id = "fx-vierge-css";
-        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}.fiche.fx-vierge .fx-nom,.fiche.fx-vierge #fiche-appr,.fiche.fx-vierge .fiche-sugg{visibility:hidden}" +
-          ".fiche.fx-vierge .case.on{color:inherit !important}.fiche.fx-vierge .case.on .box{background:transparent !important;border-color:#6E7A8A !important}" +
-          ".fiche.fx-vierge .bar-note{color:transparent !important}.fiche.fx-vierge .bar-note::after{content:'…… /2';color:#111}" +
-          ".fiche.fx-vierge #fiche-total{color:transparent;position:relative}.fiche.fx-vierge #fiche-total::after{content:'……';color:#111;position:absolute;left:0}" +
-          ".fiche.fx-vierge #fi-obs,.fiche.fx-vierge #fi-obj{color:transparent !important}.fiche.fx-vierge #fi-obj::placeholder{color:transparent !important}";
+        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}";   // seule la ligne « Élève » est retirée
         document.head.appendChild(st);
       }
       const fin = () => { if (f) f.classList.remove("fx-vierge"); window.removeEventListener("afterprint", fin); };
@@ -26708,7 +26716,7 @@ window.JSYNC = window.JSYNC || (function () {
         <span style="flex:1"></span>
         <button class="btn" id="fiche-raz" ${eleveEvalue(el) ? "" : "disabled"}>🧹 Effacer le diagnostic de cet élève</button>
         <button class="btn" id="fiche-grille">🖨 Grille de la classe</button>
-        <button class="btn btn-primary" id="fiche-print" title="Fiche vierge (sans nom ni cases cochées) à utiliser pour tous les élèves de la classe">🖨 Imprimer la fiche (vierge)</button>
+        <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
       </div>
 
 <style>
@@ -26847,15 +26855,11 @@ window.JSYNC = window.JSYNC || (function () {
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
     $("fiche-print").onclick = () => {
-      // fiche vierge : ni nom d'élève, ni cases cochées, ni notes → une fiche pour toute la classe
+      // fiche imprimée sans la ligne « Élève » (le reste est inchangé)
       const f = box.querySelector(".fiche"); if (f) f.classList.add("fx-vierge");
       if (!document.getElementById("fx-vierge-css")) {
         const st = document.createElement("style"); st.id = "fx-vierge-css";
-        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}.fiche.fx-vierge .fx-nom,.fiche.fx-vierge #fiche-appr,.fiche.fx-vierge .fiche-sugg{visibility:hidden}" +
-          ".fiche.fx-vierge .case.on{color:inherit !important}.fiche.fx-vierge .case.on .box{background:transparent !important;border-color:#6E7A8A !important}" +
-          ".fiche.fx-vierge .bar-note{color:transparent !important}.fiche.fx-vierge .bar-note::after{content:'…… /2';color:#111}" +
-          ".fiche.fx-vierge #fiche-total{color:transparent;position:relative}.fiche.fx-vierge #fiche-total::after{content:'……';color:#111;position:absolute;left:0}" +
-          ".fiche.fx-vierge #fi-obs,.fiche.fx-vierge #fi-obj{color:transparent !important}.fiche.fx-vierge #fi-obj::placeholder{color:transparent !important}";
+        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}";   // seule la ligne « Élève » est retirée
         document.head.appendChild(st);
       }
       const fin = () => { if (f) f.classList.remove("fx-vierge"); window.removeEventListener("afterprint", fin); };
@@ -37361,7 +37365,7 @@ window.JSYNC = window.JSYNC || (function () {
         <span style="flex:1"></span>
         <button class="btn" id="fiche-raz" ${eleveEvalue(el) ? "" : "disabled"}>🧹 Effacer le diagnostic de cet élève</button>
         <button class="btn" id="fiche-grille">🖨 Grille de la classe</button>
-        <button class="btn btn-primary" id="fiche-print" title="Fiche vierge (sans nom ni cases cochées) à utiliser pour tous les élèves de la classe">🖨 Imprimer la fiche (vierge)</button>
+        <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
       </div>
 
 <style>
@@ -37500,15 +37504,11 @@ window.JSYNC = window.JSYNC || (function () {
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
     $("fiche-print").onclick = () => {
-      // fiche vierge : ni nom d'élève, ni cases cochées, ni notes → une fiche pour toute la classe
+      // fiche imprimée sans la ligne « Élève » (le reste est inchangé)
       const f = box.querySelector(".fiche"); if (f) f.classList.add("fx-vierge");
       if (!document.getElementById("fx-vierge-css")) {
         const st = document.createElement("style"); st.id = "fx-vierge-css";
-        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}.fiche.fx-vierge .fx-nom,.fiche.fx-vierge #fiche-appr,.fiche.fx-vierge .fiche-sugg{visibility:hidden}" +
-          ".fiche.fx-vierge .case.on{color:inherit !important}.fiche.fx-vierge .case.on .box{background:transparent !important;border-color:#6E7A8A !important}" +
-          ".fiche.fx-vierge .bar-note{color:transparent !important}.fiche.fx-vierge .bar-note::after{content:'…… /2';color:#111}" +
-          ".fiche.fx-vierge #fiche-total{color:transparent;position:relative}.fiche.fx-vierge #fiche-total::after{content:'……';color:#111;position:absolute;left:0}" +
-          ".fiche.fx-vierge #fi-obs,.fiche.fx-vierge #fi-obj{color:transparent !important}.fiche.fx-vierge #fi-obj::placeholder{color:transparent !important}";
+        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}";   // seule la ligne « Élève » est retirée
         document.head.appendChild(st);
       }
       const fin = () => { if (f) f.classList.remove("fx-vierge"); window.removeEventListener("afterprint", fin); };
@@ -47944,7 +47944,7 @@ window.JSYNC = window.JSYNC || (function () {
         <span style="flex:1"></span>
         <button class="btn" id="fiche-raz" ${eleveEvalue(el) ? "" : "disabled"}>🧹 Effacer le diagnostic de cet élève</button>
         <button class="btn" id="fiche-grille">🖨 Grille de la classe</button>
-        <button class="btn btn-primary" id="fiche-print" title="Fiche vierge (sans nom ni cases cochées) à utiliser pour tous les élèves de la classe">🖨 Imprimer la fiche (vierge)</button>
+        <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
       </div>
 
 <style>
@@ -48083,15 +48083,11 @@ window.JSYNC = window.JSYNC || (function () {
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
     $("fiche-print").onclick = () => {
-      // fiche vierge : ni nom d'élève, ni cases cochées, ni notes → une fiche pour toute la classe
+      // fiche imprimée sans la ligne « Élève » (le reste est inchangé)
       const f = box.querySelector(".fiche"); if (f) f.classList.add("fx-vierge");
       if (!document.getElementById("fx-vierge-css")) {
         const st = document.createElement("style"); st.id = "fx-vierge-css";
-        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}.fiche.fx-vierge .fx-nom,.fiche.fx-vierge #fiche-appr,.fiche.fx-vierge .fiche-sugg{visibility:hidden}" +
-          ".fiche.fx-vierge .case.on{color:inherit !important}.fiche.fx-vierge .case.on .box{background:transparent !important;border-color:#6E7A8A !important}" +
-          ".fiche.fx-vierge .bar-note{color:transparent !important}.fiche.fx-vierge .bar-note::after{content:'…… /2';color:#111}" +
-          ".fiche.fx-vierge #fiche-total{color:transparent;position:relative}.fiche.fx-vierge #fiche-total::after{content:'……';color:#111;position:absolute;left:0}" +
-          ".fiche.fx-vierge #fi-obs,.fiche.fx-vierge #fi-obj{color:transparent !important}.fiche.fx-vierge #fi-obj::placeholder{color:transparent !important}";
+        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}";   // seule la ligne « Élève » est retirée
         document.head.appendChild(st);
       }
       const fin = () => { if (f) f.classList.remove("fx-vierge"); window.removeEventListener("afterprint", fin); };
@@ -95013,6 +95009,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 18h00</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 18h30</div>
 </body>
 </html>
