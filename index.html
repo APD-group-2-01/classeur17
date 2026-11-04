@@ -14743,7 +14743,10 @@ window.JSYNC = window.JSYNC || (function () {
     const info = (cl && cl.sommativeInfo) || {}, role = info.role || {}, ex = info.exclus || [];
     const coll = SM_COLL_DEF[smApsId()] || [];
     const eqX = (r) => (r === "C" && eqActif(cl)) ? "X" : r;
-    return COMPETENCES.map(k => ({ id: k.id, nom: k.nom, diag: true, role: eqX(role[k.id] || (ex.indexOf(k.id) >= 0 ? "X" : (SM_ROLE_DEF[k.id] || "I"))) }))
+    // critères cochés au diagnostic individuel → note individuelle de la sommative ; les autres ne sont pas évalués
+    // (un critère coché peut être passé en « Collective » ci-dessous)
+    const actifs = compActives(cl).map(k => k.id);
+    return compDiagTous(cl).map(k => { const auto = actifs.indexOf(k.id) >= 0 ? "I" : "X"; return { id: k.id, nom: k.nom, diag: true, role: eqX(auto === "I" && role[k.id] === "C" ? "C" : auto) }; })
       .concat(coll.map(k => ({ id: k.id, nom: k.nom, diag: false, role: eqX(role[k.id] || "C") })));
   }
   /* note d'une partie (I ou C) : somme des critères (0-2) ramenée au maximum officiel du niveau */
@@ -15308,7 +15311,7 @@ window.JSYNC = window.JSYNC || (function () {
           : "⚠ " + esc((LJ && LJ.raison) || "Cahier journalier indisponible") + " La note comportementale se note uniquement dans le cahier journalier."}</p>
         <p class="hint" style="margin:6px 0 0;">📷 Imprimez la « Feuille à scanner » (noms de la classe pré-remplis), noircissez les bulles au terrain, puis photographiez chaque page à plat (4 carrés noirs visibles) et importez les photos : l'application lit les bulles, vous vérifiez, puis les notes sont appliquées et transférées au cahier journalier. Ne changez pas les critères évalués entre l'impression et l'import.</p>
         <div id="sm-omr-etat" class="hint" style="margin:6px 0 0;font-weight:600;"></div>
-        <details class="sm-crit" ${cl.sommativeInfo.critOuvert ? "open" : ""}><summary><b>Critères évalués</b> — choisissez pour chaque critère : Individuelle, Collective ou Non évalué</summary>
+        <details class="sm-crit" ${cl.sommativeInfo.critOuvert ? "open" : ""}><summary><b>Critères évalués</b> — les critères individuels sont ceux cochés au <b>diagnostic individuel</b> (🎯) ; ici, vous pouvez seulement passer un critère en « Collective »</summary>
           <table class="sm-ct"><tbody>${crits.map(k => `<tr><td>${esc(k.nom)}${k.diag ? "" : ' <span class="muted">(match)</span>'}</td><td>
             ${[["I", "Individuelle"], ["C", "Collective"], ["X", "Non évalué"]].map(o => `<label><input type="radio" name="smr-${k.id}" data-sm-r="${k.id}" value="${o[0]}" ${k.role === o[0] ? "checked" : ""}> ${o[1]}</label>`).join(" ")}
           </td></tr>`).join("")}</tbody></table>
@@ -16207,10 +16210,22 @@ window.JSYNC = window.JSYNC || (function () {
       const f = box.querySelector(".fiche"); if (f) f.classList.add("fx-vierge");
       if (!document.getElementById("fx-vierge-css")) {
         const st = document.createElement("style"); st.id = "fx-vierge-css";
-        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}";   // seule la ligne « Élève » est retirée
+        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}" +            // ligne « Élève » retirée
+          ".fiche.fx-vierge .fiche-grille tbody td:first-child span{display:none}" +                  // pas de badge « critère 2AC »
+          ".fiche .fx-dev{display:none}.fiche.fx-vierge .fx-dev{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;font-size:8pt;color:#475569;font-family:Arial,sans-serif}" +
+          ".fiche.fx-vierge .fx-dev img{width:30px;height:30px;border-radius:50%}.fiche.fx-vierge .fx-dev b{color:#1F2D3D}" +
+          "body.fx-imp .credit-mb,body.fx-imp .page-title,body.fx-imp .page-sub,body.fx-imp footer{display:none !important}";
         document.head.appendChild(st);
       }
-      const fin = () => { if (f) f.classList.remove("fx-vierge"); window.removeEventListener("afterprint", fin); };
+      // logo et nom du développeur sur la même feuille (le pied de page de l'application n'est pas imprimé)
+      if (f && !f.querySelector(".fx-dev")) {
+        const cr = document.querySelector(".credit-mb"), lg = cr && cr.querySelector("img");
+        const d = document.createElement("div"); d.className = "fx-dev";
+        d.innerHTML = (lg ? '<img src="' + lg.src + '" alt="">' : "") + '<span><b>تطوير: المهدي بوخميرة — مهندس وأستاذ التربية البدنية والرياضية</b><br>Développé par Mehdi Boukhmira — ingénieur et professeur d&#39;EPS · Prepa-1st</span>';
+        f.appendChild(d);
+      }
+      document.body.classList.add("fx-imp");
+      const fin = () => { if (f) f.classList.remove("fx-vierge"); document.body.classList.remove("fx-imp"); window.removeEventListener("afterprint", fin); };
       window.addEventListener("afterprint", fin);
       finPrintFeuilles(); window.print();
       setTimeout(() => { if (!window.matchMedia || !matchMedia("print").matches) fin(); }, 1500);
@@ -25395,7 +25410,10 @@ window.JSYNC = window.JSYNC || (function () {
     const info = (cl && cl.sommativeInfo) || {}, role = info.role || {}, ex = info.exclus || [];
     const coll = SM_COLL_DEF[smApsId()] || [];
     const eqX = (r) => (r === "C" && eqActif(cl)) ? "X" : r;
-    return COMPETENCES.map(k => ({ id: k.id, nom: k.nom, diag: true, role: eqX(role[k.id] || (ex.indexOf(k.id) >= 0 ? "X" : (SM_ROLE_DEF[k.id] || "I"))) }))
+    // critères cochés au diagnostic individuel → note individuelle de la sommative ; les autres ne sont pas évalués
+    // (un critère coché peut être passé en « Collective » ci-dessous)
+    const actifs = compActives(cl).map(k => k.id);
+    return compDiagTous(cl).map(k => { const auto = actifs.indexOf(k.id) >= 0 ? "I" : "X"; return { id: k.id, nom: k.nom, diag: true, role: eqX(auto === "I" && role[k.id] === "C" ? "C" : auto) }; })
       .concat(coll.map(k => ({ id: k.id, nom: k.nom, diag: false, role: eqX(role[k.id] || "C") })));
   }
   /* note d'une partie (I ou C) : somme des critères (0-2) ramenée au maximum officiel du niveau */
@@ -25960,7 +25978,7 @@ window.JSYNC = window.JSYNC || (function () {
           : "⚠ " + esc((LJ && LJ.raison) || "Cahier journalier indisponible") + " La note comportementale se note uniquement dans le cahier journalier."}</p>
         <p class="hint" style="margin:6px 0 0;">📷 Imprimez la « Feuille à scanner » (noms de la classe pré-remplis), noircissez les bulles au terrain, puis photographiez chaque page à plat (4 carrés noirs visibles) et importez les photos : l'application lit les bulles, vous vérifiez, puis les notes sont appliquées et transférées au cahier journalier. Ne changez pas les critères évalués entre l'impression et l'import.</p>
         <div id="sm-omr-etat" class="hint" style="margin:6px 0 0;font-weight:600;"></div>
-        <details class="sm-crit" ${cl.sommativeInfo.critOuvert ? "open" : ""}><summary><b>Critères évalués</b> — choisissez pour chaque critère : Individuelle, Collective ou Non évalué</summary>
+        <details class="sm-crit" ${cl.sommativeInfo.critOuvert ? "open" : ""}><summary><b>Critères évalués</b> — les critères individuels sont ceux cochés au <b>diagnostic individuel</b> (🎯) ; ici, vous pouvez seulement passer un critère en « Collective »</summary>
           <table class="sm-ct"><tbody>${crits.map(k => `<tr><td>${esc(k.nom)}${k.diag ? "" : ' <span class="muted">(match)</span>'}</td><td>
             ${[["I", "Individuelle"], ["C", "Collective"], ["X", "Non évalué"]].map(o => `<label><input type="radio" name="smr-${k.id}" data-sm-r="${k.id}" value="${o[0]}" ${k.role === o[0] ? "checked" : ""}> ${o[1]}</label>`).join(" ")}
           </td></tr>`).join("")}</tbody></table>
@@ -26859,10 +26877,22 @@ window.JSYNC = window.JSYNC || (function () {
       const f = box.querySelector(".fiche"); if (f) f.classList.add("fx-vierge");
       if (!document.getElementById("fx-vierge-css")) {
         const st = document.createElement("style"); st.id = "fx-vierge-css";
-        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}";   // seule la ligne « Élève » est retirée
+        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}" +            // ligne « Élève » retirée
+          ".fiche.fx-vierge .fiche-grille tbody td:first-child span{display:none}" +                  // pas de badge « critère 2AC »
+          ".fiche .fx-dev{display:none}.fiche.fx-vierge .fx-dev{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;font-size:8pt;color:#475569;font-family:Arial,sans-serif}" +
+          ".fiche.fx-vierge .fx-dev img{width:30px;height:30px;border-radius:50%}.fiche.fx-vierge .fx-dev b{color:#1F2D3D}" +
+          "body.fx-imp .credit-mb,body.fx-imp .page-title,body.fx-imp .page-sub,body.fx-imp footer{display:none !important}";
         document.head.appendChild(st);
       }
-      const fin = () => { if (f) f.classList.remove("fx-vierge"); window.removeEventListener("afterprint", fin); };
+      // logo et nom du développeur sur la même feuille (le pied de page de l'application n'est pas imprimé)
+      if (f && !f.querySelector(".fx-dev")) {
+        const cr = document.querySelector(".credit-mb"), lg = cr && cr.querySelector("img");
+        const d = document.createElement("div"); d.className = "fx-dev";
+        d.innerHTML = (lg ? '<img src="' + lg.src + '" alt="">' : "") + '<span><b>تطوير: المهدي بوخميرة — مهندس وأستاذ التربية البدنية والرياضية</b><br>Développé par Mehdi Boukhmira — ingénieur et professeur d&#39;EPS · Prepa-1st</span>';
+        f.appendChild(d);
+      }
+      document.body.classList.add("fx-imp");
+      const fin = () => { if (f) f.classList.remove("fx-vierge"); document.body.classList.remove("fx-imp"); window.removeEventListener("afterprint", fin); };
       window.addEventListener("afterprint", fin);
       finPrintFeuilles(); window.print();
       setTimeout(() => { if (!window.matchMedia || !matchMedia("print").matches) fin(); }, 1500);
@@ -36044,7 +36074,10 @@ window.JSYNC = window.JSYNC || (function () {
     const info = (cl && cl.sommativeInfo) || {}, role = info.role || {}, ex = info.exclus || [];
     const coll = SM_COLL_DEF[smApsId()] || [];
     const eqX = (r) => (r === "C" && eqActif(cl)) ? "X" : r;
-    return COMPETENCES.map(k => ({ id: k.id, nom: k.nom, diag: true, role: eqX(role[k.id] || (ex.indexOf(k.id) >= 0 ? "X" : (SM_ROLE_DEF[k.id] || "I"))) }))
+    // critères cochés au diagnostic individuel → note individuelle de la sommative ; les autres ne sont pas évalués
+    // (un critère coché peut être passé en « Collective » ci-dessous)
+    const actifs = compActives(cl).map(k => k.id);
+    return compDiagTous(cl).map(k => { const auto = actifs.indexOf(k.id) >= 0 ? "I" : "X"; return { id: k.id, nom: k.nom, diag: true, role: eqX(auto === "I" && role[k.id] === "C" ? "C" : auto) }; })
       .concat(coll.map(k => ({ id: k.id, nom: k.nom, diag: false, role: eqX(role[k.id] || "C") })));
   }
   /* note d'une partie (I ou C) : somme des critères (0-2) ramenée au maximum officiel du niveau */
@@ -36609,7 +36642,7 @@ window.JSYNC = window.JSYNC || (function () {
           : "⚠ " + esc((LJ && LJ.raison) || "Cahier journalier indisponible") + " La note comportementale se note uniquement dans le cahier journalier."}</p>
         <p class="hint" style="margin:6px 0 0;">📷 Imprimez la « Feuille à scanner » (noms de la classe pré-remplis), noircissez les bulles au terrain, puis photographiez chaque page à plat (4 carrés noirs visibles) et importez les photos : l'application lit les bulles, vous vérifiez, puis les notes sont appliquées et transférées au cahier journalier. Ne changez pas les critères évalués entre l'impression et l'import.</p>
         <div id="sm-omr-etat" class="hint" style="margin:6px 0 0;font-weight:600;"></div>
-        <details class="sm-crit" ${cl.sommativeInfo.critOuvert ? "open" : ""}><summary><b>Critères évalués</b> — choisissez pour chaque critère : Individuelle, Collective ou Non évalué</summary>
+        <details class="sm-crit" ${cl.sommativeInfo.critOuvert ? "open" : ""}><summary><b>Critères évalués</b> — les critères individuels sont ceux cochés au <b>diagnostic individuel</b> (🎯) ; ici, vous pouvez seulement passer un critère en « Collective »</summary>
           <table class="sm-ct"><tbody>${crits.map(k => `<tr><td>${esc(k.nom)}${k.diag ? "" : ' <span class="muted">(match)</span>'}</td><td>
             ${[["I", "Individuelle"], ["C", "Collective"], ["X", "Non évalué"]].map(o => `<label><input type="radio" name="smr-${k.id}" data-sm-r="${k.id}" value="${o[0]}" ${k.role === o[0] ? "checked" : ""}> ${o[1]}</label>`).join(" ")}
           </td></tr>`).join("")}</tbody></table>
@@ -37508,10 +37541,22 @@ window.JSYNC = window.JSYNC || (function () {
       const f = box.querySelector(".fiche"); if (f) f.classList.add("fx-vierge");
       if (!document.getElementById("fx-vierge-css")) {
         const st = document.createElement("style"); st.id = "fx-vierge-css";
-        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}";   // seule la ligne « Élève » est retirée
+        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}" +            // ligne « Élève » retirée
+          ".fiche.fx-vierge .fiche-grille tbody td:first-child span{display:none}" +                  // pas de badge « critère 2AC »
+          ".fiche .fx-dev{display:none}.fiche.fx-vierge .fx-dev{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;font-size:8pt;color:#475569;font-family:Arial,sans-serif}" +
+          ".fiche.fx-vierge .fx-dev img{width:30px;height:30px;border-radius:50%}.fiche.fx-vierge .fx-dev b{color:#1F2D3D}" +
+          "body.fx-imp .credit-mb,body.fx-imp .page-title,body.fx-imp .page-sub,body.fx-imp footer{display:none !important}";
         document.head.appendChild(st);
       }
-      const fin = () => { if (f) f.classList.remove("fx-vierge"); window.removeEventListener("afterprint", fin); };
+      // logo et nom du développeur sur la même feuille (le pied de page de l'application n'est pas imprimé)
+      if (f && !f.querySelector(".fx-dev")) {
+        const cr = document.querySelector(".credit-mb"), lg = cr && cr.querySelector("img");
+        const d = document.createElement("div"); d.className = "fx-dev";
+        d.innerHTML = (lg ? '<img src="' + lg.src + '" alt="">' : "") + '<span><b>تطوير: المهدي بوخميرة — مهندس وأستاذ التربية البدنية والرياضية</b><br>Développé par Mehdi Boukhmira — ingénieur et professeur d&#39;EPS · Prepa-1st</span>';
+        f.appendChild(d);
+      }
+      document.body.classList.add("fx-imp");
+      const fin = () => { if (f) f.classList.remove("fx-vierge"); document.body.classList.remove("fx-imp"); window.removeEventListener("afterprint", fin); };
       window.addEventListener("afterprint", fin);
       finPrintFeuilles(); window.print();
       setTimeout(() => { if (!window.matchMedia || !matchMedia("print").matches) fin(); }, 1500);
@@ -46623,7 +46668,10 @@ window.JSYNC = window.JSYNC || (function () {
     const info = (cl && cl.sommativeInfo) || {}, role = info.role || {}, ex = info.exclus || [];
     const coll = SM_COLL_DEF[smApsId()] || [];
     const eqX = (r) => (r === "C" && eqActif(cl)) ? "X" : r;
-    return COMPETENCES.map(k => ({ id: k.id, nom: k.nom, diag: true, role: eqX(role[k.id] || (ex.indexOf(k.id) >= 0 ? "X" : (SM_ROLE_DEF[k.id] || "I"))) }))
+    // critères cochés au diagnostic individuel → note individuelle de la sommative ; les autres ne sont pas évalués
+    // (un critère coché peut être passé en « Collective » ci-dessous)
+    const actifs = compActives(cl).map(k => k.id);
+    return compDiagTous(cl).map(k => { const auto = actifs.indexOf(k.id) >= 0 ? "I" : "X"; return { id: k.id, nom: k.nom, diag: true, role: eqX(auto === "I" && role[k.id] === "C" ? "C" : auto) }; })
       .concat(coll.map(k => ({ id: k.id, nom: k.nom, diag: false, role: eqX(role[k.id] || "C") })));
   }
   /* note d'une partie (I ou C) : somme des critères (0-2) ramenée au maximum officiel du niveau */
@@ -47188,7 +47236,7 @@ window.JSYNC = window.JSYNC || (function () {
           : "⚠ " + esc((LJ && LJ.raison) || "Cahier journalier indisponible") + " La note comportementale se note uniquement dans le cahier journalier."}</p>
         <p class="hint" style="margin:6px 0 0;">📷 Imprimez la « Feuille à scanner » (noms de la classe pré-remplis), noircissez les bulles au terrain, puis photographiez chaque page à plat (4 carrés noirs visibles) et importez les photos : l'application lit les bulles, vous vérifiez, puis les notes sont appliquées et transférées au cahier journalier. Ne changez pas les critères évalués entre l'impression et l'import.</p>
         <div id="sm-omr-etat" class="hint" style="margin:6px 0 0;font-weight:600;"></div>
-        <details class="sm-crit" ${cl.sommativeInfo.critOuvert ? "open" : ""}><summary><b>Critères évalués</b> — choisissez pour chaque critère : Individuelle, Collective ou Non évalué</summary>
+        <details class="sm-crit" ${cl.sommativeInfo.critOuvert ? "open" : ""}><summary><b>Critères évalués</b> — les critères individuels sont ceux cochés au <b>diagnostic individuel</b> (🎯) ; ici, vous pouvez seulement passer un critère en « Collective »</summary>
           <table class="sm-ct"><tbody>${crits.map(k => `<tr><td>${esc(k.nom)}${k.diag ? "" : ' <span class="muted">(match)</span>'}</td><td>
             ${[["I", "Individuelle"], ["C", "Collective"], ["X", "Non évalué"]].map(o => `<label><input type="radio" name="smr-${k.id}" data-sm-r="${k.id}" value="${o[0]}" ${k.role === o[0] ? "checked" : ""}> ${o[1]}</label>`).join(" ")}
           </td></tr>`).join("")}</tbody></table>
@@ -48087,10 +48135,22 @@ window.JSYNC = window.JSYNC || (function () {
       const f = box.querySelector(".fiche"); if (f) f.classList.add("fx-vierge");
       if (!document.getElementById("fx-vierge-css")) {
         const st = document.createElement("style"); st.id = "fx-vierge-css";
-        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}";   // seule la ligne « Élève » est retirée
+        st.textContent = ".fiche.fx-vierge .fiche-id tr:has(.fx-nom){display:none}" +            // ligne « Élève » retirée
+          ".fiche.fx-vierge .fiche-grille tbody td:first-child span{display:none}" +                  // pas de badge « critère 2AC »
+          ".fiche .fx-dev{display:none}.fiche.fx-vierge .fx-dev{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;font-size:8pt;color:#475569;font-family:Arial,sans-serif}" +
+          ".fiche.fx-vierge .fx-dev img{width:30px;height:30px;border-radius:50%}.fiche.fx-vierge .fx-dev b{color:#1F2D3D}" +
+          "body.fx-imp .credit-mb,body.fx-imp .page-title,body.fx-imp .page-sub,body.fx-imp footer{display:none !important}";
         document.head.appendChild(st);
       }
-      const fin = () => { if (f) f.classList.remove("fx-vierge"); window.removeEventListener("afterprint", fin); };
+      // logo et nom du développeur sur la même feuille (le pied de page de l'application n'est pas imprimé)
+      if (f && !f.querySelector(".fx-dev")) {
+        const cr = document.querySelector(".credit-mb"), lg = cr && cr.querySelector("img");
+        const d = document.createElement("div"); d.className = "fx-dev";
+        d.innerHTML = (lg ? '<img src="' + lg.src + '" alt="">' : "") + '<span><b>تطوير: المهدي بوخميرة — مهندس وأستاذ التربية البدنية والرياضية</b><br>Développé par Mehdi Boukhmira — ingénieur et professeur d&#39;EPS · Prepa-1st</span>';
+        f.appendChild(d);
+      }
+      document.body.classList.add("fx-imp");
+      const fin = () => { if (f) f.classList.remove("fx-vierge"); document.body.classList.remove("fx-imp"); window.removeEventListener("afterprint", fin); };
       window.addEventListener("afterprint", fin);
       finPrintFeuilles(); window.print();
       setTimeout(() => { if (!window.matchMedia || !matchMedia("print").matches) fin(); }, 1500);
@@ -95009,6 +95069,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 18h45</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 19h15</div>
 </body>
 </html>
