@@ -16052,7 +16052,7 @@ window.JSYNC = window.JSYNC || (function () {
         <span style="flex:1"></span>
         <button class="btn" id="fiche-raz" ${eleveEvalue(el) ? "" : "disabled"}>🧹 Effacer le diagnostic de cet élève</button>
         <button class="btn" id="fiche-grille">🖨 Grille de la classe</button>
-        <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
+        <button class="btn btn-primary" id="fiche-print" title="Fiche vierge (sans nom ni cases cochées) à utiliser pour tous les élèves de la classe">🖨 Imprimer la fiche (vierge)</button>
       </div>
 
 <style>
@@ -16091,7 +16091,7 @@ window.JSYNC = window.JSYNC || (function () {
 
         <table class="fiche-id">
           <tr>
-            <th>Élève :</th><td colspan="3"><b>${esc(el.nom)}</b></td>
+            <th>Élève :</th><td colspan="3"><b class="fx-nom">${esc(el.nom)}</b></td>
           </tr>
           <tr>
             <th>Classe :</th><td>${esc(cl.nom)}</td>
@@ -16190,7 +16190,23 @@ window.JSYNC = window.JSYNC || (function () {
     $("fiche-sel").onchange = (e) => { ficheEleveId = e.target.value; render(); };
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
-    $("fiche-print").onclick = () => { finPrintFeuilles(); window.print(); };
+    $("fiche-print").onclick = () => {
+      // fiche vierge : ni nom d'élève, ni cases cochées, ni notes → une fiche pour toute la classe
+      const f = box.querySelector(".fiche"); if (f) f.classList.add("fx-vierge");
+      if (!document.getElementById("fx-vierge-css")) {
+        const st = document.createElement("style"); st.id = "fx-vierge-css";
+        st.textContent = ".fiche.fx-vierge .fx-nom,.fiche.fx-vierge #fiche-appr,.fiche.fx-vierge .fiche-sugg{visibility:hidden}" +
+          ".fiche.fx-vierge .case.on{color:inherit !important}.fiche.fx-vierge .case.on .box{background:transparent !important;border-color:#6E7A8A !important}" +
+          ".fiche.fx-vierge .bar-note{color:transparent !important}.fiche.fx-vierge .bar-note::after{content:'…… /2';color:#111}" +
+          ".fiche.fx-vierge #fiche-total{color:transparent;position:relative}.fiche.fx-vierge #fiche-total::after{content:'……';color:#111;position:absolute;left:0}" +
+          ".fiche.fx-vierge #fi-obs,.fiche.fx-vierge #fi-obj{color:transparent !important}.fiche.fx-vierge #fi-obj::placeholder{color:transparent !important}";
+        document.head.appendChild(st);
+      }
+      const fin = () => { if (f) f.classList.remove("fx-vierge"); window.removeEventListener("afterprint", fin); };
+      window.addEventListener("afterprint", fin);
+      finPrintFeuilles(); window.print();
+      setTimeout(() => { if (!window.matchMedia || !matchMedia("print").matches) fin(); }, 1500);
+    };
     $("fiche-grille").onclick = () => diagImprimerGrille(cl);
     $("fiche-raz").onclick = () => confirmModal("Effacer le diagnostic", "Toutes les notes du diagnostic individuel de « " + el.nom + " » seront effacées. Continuer ?", "Effacer", () => {
       el.scores = {}; save(); toast("Diagnostic de « " + el.nom + " » effacé"); render();
@@ -26692,7 +26708,7 @@ window.JSYNC = window.JSYNC || (function () {
         <span style="flex:1"></span>
         <button class="btn" id="fiche-raz" ${eleveEvalue(el) ? "" : "disabled"}>🧹 Effacer le diagnostic de cet élève</button>
         <button class="btn" id="fiche-grille">🖨 Grille de la classe</button>
-        <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
+        <button class="btn btn-primary" id="fiche-print" title="Fiche vierge (sans nom ni cases cochées) à utiliser pour tous les élèves de la classe">🖨 Imprimer la fiche (vierge)</button>
       </div>
 
 <style>
@@ -26731,7 +26747,7 @@ window.JSYNC = window.JSYNC || (function () {
 
         <table class="fiche-id">
           <tr>
-            <th>Élève :</th><td colspan="3"><b>${esc(el.nom)}</b></td>
+            <th>Élève :</th><td colspan="3"><b class="fx-nom">${esc(el.nom)}</b></td>
           </tr>
           <tr>
             <th>Classe :</th><td>${esc(cl.nom)}</td>
@@ -26830,7 +26846,23 @@ window.JSYNC = window.JSYNC || (function () {
     $("fiche-sel").onchange = (e) => { ficheEleveId = e.target.value; render(); };
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
-    $("fiche-print").onclick = () => { finPrintFeuilles(); window.print(); };
+    $("fiche-print").onclick = () => {
+      // fiche vierge : ni nom d'élève, ni cases cochées, ni notes → une fiche pour toute la classe
+      const f = box.querySelector(".fiche"); if (f) f.classList.add("fx-vierge");
+      if (!document.getElementById("fx-vierge-css")) {
+        const st = document.createElement("style"); st.id = "fx-vierge-css";
+        st.textContent = ".fiche.fx-vierge .fx-nom,.fiche.fx-vierge #fiche-appr,.fiche.fx-vierge .fiche-sugg{visibility:hidden}" +
+          ".fiche.fx-vierge .case.on{color:inherit !important}.fiche.fx-vierge .case.on .box{background:transparent !important;border-color:#6E7A8A !important}" +
+          ".fiche.fx-vierge .bar-note{color:transparent !important}.fiche.fx-vierge .bar-note::after{content:'…… /2';color:#111}" +
+          ".fiche.fx-vierge #fiche-total{color:transparent;position:relative}.fiche.fx-vierge #fiche-total::after{content:'……';color:#111;position:absolute;left:0}" +
+          ".fiche.fx-vierge #fi-obs,.fiche.fx-vierge #fi-obj{color:transparent !important}.fiche.fx-vierge #fi-obj::placeholder{color:transparent !important}";
+        document.head.appendChild(st);
+      }
+      const fin = () => { if (f) f.classList.remove("fx-vierge"); window.removeEventListener("afterprint", fin); };
+      window.addEventListener("afterprint", fin);
+      finPrintFeuilles(); window.print();
+      setTimeout(() => { if (!window.matchMedia || !matchMedia("print").matches) fin(); }, 1500);
+    };
     $("fiche-grille").onclick = () => diagImprimerGrille(cl);
     $("fiche-raz").onclick = () => confirmModal("Effacer le diagnostic", "Toutes les notes du diagnostic individuel de « " + el.nom + " » seront effacées. Continuer ?", "Effacer", () => {
       el.scores = {}; save(); toast("Diagnostic de « " + el.nom + " » effacé"); render();
@@ -37329,7 +37361,7 @@ window.JSYNC = window.JSYNC || (function () {
         <span style="flex:1"></span>
         <button class="btn" id="fiche-raz" ${eleveEvalue(el) ? "" : "disabled"}>🧹 Effacer le diagnostic de cet élève</button>
         <button class="btn" id="fiche-grille">🖨 Grille de la classe</button>
-        <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
+        <button class="btn btn-primary" id="fiche-print" title="Fiche vierge (sans nom ni cases cochées) à utiliser pour tous les élèves de la classe">🖨 Imprimer la fiche (vierge)</button>
       </div>
 
 <style>
@@ -37368,7 +37400,7 @@ window.JSYNC = window.JSYNC || (function () {
 
         <table class="fiche-id">
           <tr>
-            <th>Élève :</th><td colspan="3"><b>${esc(el.nom)}</b></td>
+            <th>Élève :</th><td colspan="3"><b class="fx-nom">${esc(el.nom)}</b></td>
           </tr>
           <tr>
             <th>Classe :</th><td>${esc(cl.nom)}</td>
@@ -37467,7 +37499,23 @@ window.JSYNC = window.JSYNC || (function () {
     $("fiche-sel").onchange = (e) => { ficheEleveId = e.target.value; render(); };
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
-    $("fiche-print").onclick = () => { finPrintFeuilles(); window.print(); };
+    $("fiche-print").onclick = () => {
+      // fiche vierge : ni nom d'élève, ni cases cochées, ni notes → une fiche pour toute la classe
+      const f = box.querySelector(".fiche"); if (f) f.classList.add("fx-vierge");
+      if (!document.getElementById("fx-vierge-css")) {
+        const st = document.createElement("style"); st.id = "fx-vierge-css";
+        st.textContent = ".fiche.fx-vierge .fx-nom,.fiche.fx-vierge #fiche-appr,.fiche.fx-vierge .fiche-sugg{visibility:hidden}" +
+          ".fiche.fx-vierge .case.on{color:inherit !important}.fiche.fx-vierge .case.on .box{background:transparent !important;border-color:#6E7A8A !important}" +
+          ".fiche.fx-vierge .bar-note{color:transparent !important}.fiche.fx-vierge .bar-note::after{content:'…… /2';color:#111}" +
+          ".fiche.fx-vierge #fiche-total{color:transparent;position:relative}.fiche.fx-vierge #fiche-total::after{content:'……';color:#111;position:absolute;left:0}" +
+          ".fiche.fx-vierge #fi-obs,.fiche.fx-vierge #fi-obj{color:transparent !important}.fiche.fx-vierge #fi-obj::placeholder{color:transparent !important}";
+        document.head.appendChild(st);
+      }
+      const fin = () => { if (f) f.classList.remove("fx-vierge"); window.removeEventListener("afterprint", fin); };
+      window.addEventListener("afterprint", fin);
+      finPrintFeuilles(); window.print();
+      setTimeout(() => { if (!window.matchMedia || !matchMedia("print").matches) fin(); }, 1500);
+    };
     $("fiche-grille").onclick = () => diagImprimerGrille(cl);
     $("fiche-raz").onclick = () => confirmModal("Effacer le diagnostic", "Toutes les notes du diagnostic individuel de « " + el.nom + " » seront effacées. Continuer ?", "Effacer", () => {
       el.scores = {}; save(); toast("Diagnostic de « " + el.nom + " » effacé"); render();
@@ -47896,7 +47944,7 @@ window.JSYNC = window.JSYNC || (function () {
         <span style="flex:1"></span>
         <button class="btn" id="fiche-raz" ${eleveEvalue(el) ? "" : "disabled"}>🧹 Effacer le diagnostic de cet élève</button>
         <button class="btn" id="fiche-grille">🖨 Grille de la classe</button>
-        <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
+        <button class="btn btn-primary" id="fiche-print" title="Fiche vierge (sans nom ni cases cochées) à utiliser pour tous les élèves de la classe">🖨 Imprimer la fiche (vierge)</button>
       </div>
 
 <style>
@@ -47935,7 +47983,7 @@ window.JSYNC = window.JSYNC || (function () {
 
         <table class="fiche-id">
           <tr>
-            <th>Élève :</th><td colspan="3"><b>${esc(el.nom)}</b></td>
+            <th>Élève :</th><td colspan="3"><b class="fx-nom">${esc(el.nom)}</b></td>
           </tr>
           <tr>
             <th>Classe :</th><td>${esc(cl.nom)}</td>
@@ -48034,7 +48082,23 @@ window.JSYNC = window.JSYNC || (function () {
     $("fiche-sel").onchange = (e) => { ficheEleveId = e.target.value; render(); };
     $("fiche-prev").onclick = () => { ficheEleveId = cl.eleves[idx - 1].id; render(); };
     $("fiche-next").onclick = () => { ficheEleveId = cl.eleves[idx + 1].id; render(); };
-    $("fiche-print").onclick = () => { finPrintFeuilles(); window.print(); };
+    $("fiche-print").onclick = () => {
+      // fiche vierge : ni nom d'élève, ni cases cochées, ni notes → une fiche pour toute la classe
+      const f = box.querySelector(".fiche"); if (f) f.classList.add("fx-vierge");
+      if (!document.getElementById("fx-vierge-css")) {
+        const st = document.createElement("style"); st.id = "fx-vierge-css";
+        st.textContent = ".fiche.fx-vierge .fx-nom,.fiche.fx-vierge #fiche-appr,.fiche.fx-vierge .fiche-sugg{visibility:hidden}" +
+          ".fiche.fx-vierge .case.on{color:inherit !important}.fiche.fx-vierge .case.on .box{background:transparent !important;border-color:#6E7A8A !important}" +
+          ".fiche.fx-vierge .bar-note{color:transparent !important}.fiche.fx-vierge .bar-note::after{content:'…… /2';color:#111}" +
+          ".fiche.fx-vierge #fiche-total{color:transparent;position:relative}.fiche.fx-vierge #fiche-total::after{content:'……';color:#111;position:absolute;left:0}" +
+          ".fiche.fx-vierge #fi-obs,.fiche.fx-vierge #fi-obj{color:transparent !important}.fiche.fx-vierge #fi-obj::placeholder{color:transparent !important}";
+        document.head.appendChild(st);
+      }
+      const fin = () => { if (f) f.classList.remove("fx-vierge"); window.removeEventListener("afterprint", fin); };
+      window.addEventListener("afterprint", fin);
+      finPrintFeuilles(); window.print();
+      setTimeout(() => { if (!window.matchMedia || !matchMedia("print").matches) fin(); }, 1500);
+    };
     $("fiche-grille").onclick = () => diagImprimerGrille(cl);
     $("fiche-raz").onclick = () => confirmModal("Effacer le diagnostic", "Toutes les notes du diagnostic individuel de « " + el.nom + " » seront effacées. Continuer ?", "Effacer", () => {
       el.scores = {}; save(); toast("Diagnostic de « " + el.nom + " » effacé"); render();
@@ -94949,6 +95013,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 17h30</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 17h45</div>
 </body>
 </html>
