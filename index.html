@@ -3145,10 +3145,7 @@ const JOURNAL_DEFAUT = {
     const r = document.documentElement.style;
     const p = hex || JC_DEFAUT.p, l = hex ? jcMix(hex, "blanc", .28) : JC_DEFAUT.l, d = hex ? jcMix(hex, "noir", .45) : JC_DEFAUT.d;
     r.setProperty("--primary", p); r.setProperty("--primary-light", l); r.setProperty("--primary-dark", d);
-    try {   // barre du classeur (fenêtre parente)
-      const pr = window.parent && window.parent !== window ? window.parent.document.documentElement.style : null;
-      if (pr) { const a = hex || JC_DEFAUT.app; pr.setProperty("--app-c", a); pr.setProperty("--app-cd", jcMix(a, "noir", .55)); pr.setProperty("--app-cl", jcMix(a, "blanc", .45)); }
-    } catch (e) {}
+    // la barre du classeur garde la couleur de l'application ouverte (gérée par le classeur)
   }
   function renderCycleDetail() {
     renderCyclesTabs();
@@ -94840,6 +94837,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 12h15</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 12h30</div>
 </body>
 </html>
