@@ -16055,11 +16055,39 @@ window.JSYNC = window.JSYNC || (function () {
         <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
       </div>
 
-      <div class="fiche">
-        <div class="fiche-head">
-          <h3>FICHE DE DIAGNOSTIC INITIAL INDIVIDUEL</h3>
-          <p>BASKET-BALL – ÉVALUATION DIAGNOSTIQUE · Cycle d'enseignement EPS</p>
-        </div>
+<style>
+.fiche.fx{font-family:Arial,Helvetica,sans-serif;}
+.fiche.fx .fx-tete{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
+.fiche.fx .fx-titre{border:2px solid #8B2E3C;border-radius:8px;padding:6px 18px;font-size:1.05rem;font-weight:700;font-style:italic;color:#8B2E3C}
+.fiche.fx .fx-classe{border:2px solid #8B2E3C;border-radius:8px;padding:6px 16px;font-size:.95rem;color:#1F4E79;min-width:150px}
+.fiche.fx .fx-sous{font-size:.78rem;color:#333;margin:0 0 8px}
+.fiche.fx .fiche-id th,.fiche.fx .fiche-id td,.fiche.fx .fiche-grille th,.fiche.fx .fiche-grille td{border:1px solid #444}
+.fiche.fx .fiche-id th{background:#E8E8E8}
+.fiche.fx .fiche-grille thead th{background:#D9EAD3 !important;color:#111 !important;font-size:.74rem;letter-spacing:.02em}
+.fiche.fx .fiche-grille thead th:first-child{background:#E8E8E8 !important}
+.fiche.fx .fiche-grille thead th:last-child{background:#F4CCCC !important}
+.fiche.fx .fiche-grille tbody tr:nth-child(even) td{background:#F7F9FC}
+.fiche.fx .fiche-grille tbody td:first-child{background:#fff}
+.fiche.fx .fiche-grille td.bar-note{background:#FBF3F3 !important;font-weight:700;color:#111}
+.fiche.fx .fiche-bloc{border:1px solid #444;border-radius:4px}
+@media print{
+  @page{size:A4 portrait;margin:8mm}
+  .fiche.fx{padding:0;zoom:.78}
+  .fiche.fx .fiche-grille th,.fiche.fx .fiche-grille td{padding:1.5px 4px;font-size:8pt}
+  .fiche.fx .case{padding:0 3px;font-size:8pt}.fiche.fx .case .box{width:11px;height:11px}
+  .fiche.fx .fiche-consigne{margin:0 0 4px;font-size:8pt}.fiche.fx .fx-titre{font-size:12pt;padding:4px 14px}.fiche.fx .fx-classe{font-size:10.5pt;padding:4px 12px}
+  .fiche.fx .fiche-id{margin-bottom:6px}
+  .fiche.fx .fiche-grille td div{font-size:6.5pt !important;line-height:1.15 !important;margin-top:1px !important}
+  .fiche.fx .fiche-id th,.fiche.fx .fiche-id td{padding:3px 6px;font-size:8.5pt}
+  .fiche.fx .fiche-total{margin:6px 0 2px}.fiche.fx .fiche-lecture{margin:0 0 6px}
+  .fiche.fx .fiche-bloc{padding:5px 8px;margin-bottom:5px}.fiche.fx .fiche-bloc textarea{min-height:0;height:12mm}
+  .fiche.fx .fiche-sugg{display:none}
+  .fiche.fx .fiche-grille thead th,.fiche.fx .fiche-id th,.fiche.fx .fiche-grille td.bar-note{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+      <div class="fiche fx">
+        <div class="fx-tete"><div class="fx-titre">Fiche de diagnostic individuel ${esc(smNivCode(cl) || "")} — Basket-ball</div><div class="fx-classe">Classe : <b>${esc(cl.nom)}</b></div></div>
+        <p class="fx-sous">Évaluation diagnostique initiale · Cycle d'enseignement EPS</p>
 
         <table class="fiche-id">
           <tr>
@@ -16078,8 +16106,8 @@ window.JSYNC = window.JSYNC || (function () {
           </tr>
         </table>
 
-        <details class="no-print" style="margin:6px 0 10px;border:1px dashed #C9D1DC;border-radius:10px;padding:8px 12px;background:#FAFBFC" ${diagExclus(cl).length ? "open" : ""}>
-          <summary style="cursor:pointer;font-weight:700">🎯 Critères à diagnostiquer — ${compActives(cl).length}/${compDiagTous(cl).length} retenus <span class="muted" style="font-weight:400">(valable pour toute la classe ; le total est ramené sur 20 et l'analyse ne tient compte que des critères retenus)</span></summary>
+        <details class="no-print" style="margin:6px 0 10px;border:1px dashed #C9D1DC;border-radius:10px;padding:8px 12px;background:#FAFBFC" open>
+          <summary style="cursor:pointer;font-weight:700">🎯 Cochez les critères à diagnostiquer — ${compActives(cl).length}/${compDiagTous(cl).length} cochés <span class="muted" style="font-weight:400">(toute la classe : seuls les critères cochés apparaissent sur la fiche, la grille à imprimer et dans l'analyse didactique ; total ramené sur 20)</span></summary>
           <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px">${compDiagTous(cl).map(k => `<label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer${k.niv ? ";font-weight:700;color:#1F4E79" : ""}"><input type="checkbox" data-dx="${k.id}" ${diagExclus(cl).indexOf(k.id) < 0 ? "checked" : ""}> ${k.nom}</label>`).join("")}</div>
         </details>
         <p class="fiche-consigne">Consigne : observer l'élève dans des situations individuelles simples et cocher la case correspondant au niveau réellement constaté.</p>
@@ -26667,11 +26695,39 @@ window.JSYNC = window.JSYNC || (function () {
         <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
       </div>
 
-      <div class="fiche">
-        <div class="fiche-head">
-          <h3>FICHE DE DIAGNOSTIC INITIAL INDIVIDUEL</h3>
-          <p>HANDBALL – ÉVALUATION DIAGNOSTIQUE · Cycle d'enseignement EPS</p>
-        </div>
+<style>
+.fiche.fx{font-family:Arial,Helvetica,sans-serif;}
+.fiche.fx .fx-tete{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
+.fiche.fx .fx-titre{border:2px solid #8B2E3C;border-radius:8px;padding:6px 18px;font-size:1.05rem;font-weight:700;font-style:italic;color:#8B2E3C}
+.fiche.fx .fx-classe{border:2px solid #8B2E3C;border-radius:8px;padding:6px 16px;font-size:.95rem;color:#1F4E79;min-width:150px}
+.fiche.fx .fx-sous{font-size:.78rem;color:#333;margin:0 0 8px}
+.fiche.fx .fiche-id th,.fiche.fx .fiche-id td,.fiche.fx .fiche-grille th,.fiche.fx .fiche-grille td{border:1px solid #444}
+.fiche.fx .fiche-id th{background:#E8E8E8}
+.fiche.fx .fiche-grille thead th{background:#D9EAD3 !important;color:#111 !important;font-size:.74rem;letter-spacing:.02em}
+.fiche.fx .fiche-grille thead th:first-child{background:#E8E8E8 !important}
+.fiche.fx .fiche-grille thead th:last-child{background:#F4CCCC !important}
+.fiche.fx .fiche-grille tbody tr:nth-child(even) td{background:#F7F9FC}
+.fiche.fx .fiche-grille tbody td:first-child{background:#fff}
+.fiche.fx .fiche-grille td.bar-note{background:#FBF3F3 !important;font-weight:700;color:#111}
+.fiche.fx .fiche-bloc{border:1px solid #444;border-radius:4px}
+@media print{
+  @page{size:A4 portrait;margin:8mm}
+  .fiche.fx{padding:0;zoom:.78}
+  .fiche.fx .fiche-grille th,.fiche.fx .fiche-grille td{padding:1.5px 4px;font-size:8pt}
+  .fiche.fx .case{padding:0 3px;font-size:8pt}.fiche.fx .case .box{width:11px;height:11px}
+  .fiche.fx .fiche-consigne{margin:0 0 4px;font-size:8pt}.fiche.fx .fx-titre{font-size:12pt;padding:4px 14px}.fiche.fx .fx-classe{font-size:10.5pt;padding:4px 12px}
+  .fiche.fx .fiche-id{margin-bottom:6px}
+  .fiche.fx .fiche-grille td div{font-size:6.5pt !important;line-height:1.15 !important;margin-top:1px !important}
+  .fiche.fx .fiche-id th,.fiche.fx .fiche-id td{padding:3px 6px;font-size:8.5pt}
+  .fiche.fx .fiche-total{margin:6px 0 2px}.fiche.fx .fiche-lecture{margin:0 0 6px}
+  .fiche.fx .fiche-bloc{padding:5px 8px;margin-bottom:5px}.fiche.fx .fiche-bloc textarea{min-height:0;height:12mm}
+  .fiche.fx .fiche-sugg{display:none}
+  .fiche.fx .fiche-grille thead th,.fiche.fx .fiche-id th,.fiche.fx .fiche-grille td.bar-note{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+      <div class="fiche fx">
+        <div class="fx-tete"><div class="fx-titre">Fiche de diagnostic individuel ${esc(smNivCode(cl) || "")} — Handball</div><div class="fx-classe">Classe : <b>${esc(cl.nom)}</b></div></div>
+        <p class="fx-sous">Évaluation diagnostique initiale · Cycle d'enseignement EPS</p>
 
         <table class="fiche-id">
           <tr>
@@ -26690,8 +26746,8 @@ window.JSYNC = window.JSYNC || (function () {
           </tr>
         </table>
 
-        <details class="no-print" style="margin:6px 0 10px;border:1px dashed #C9D1DC;border-radius:10px;padding:8px 12px;background:#FAFBFC" ${diagExclus(cl).length ? "open" : ""}>
-          <summary style="cursor:pointer;font-weight:700">🎯 Critères à diagnostiquer — ${compActives(cl).length}/${compDiagTous(cl).length} retenus <span class="muted" style="font-weight:400">(valable pour toute la classe ; le total est ramené sur 20 et l'analyse ne tient compte que des critères retenus)</span></summary>
+        <details class="no-print" style="margin:6px 0 10px;border:1px dashed #C9D1DC;border-radius:10px;padding:8px 12px;background:#FAFBFC" open>
+          <summary style="cursor:pointer;font-weight:700">🎯 Cochez les critères à diagnostiquer — ${compActives(cl).length}/${compDiagTous(cl).length} cochés <span class="muted" style="font-weight:400">(toute la classe : seuls les critères cochés apparaissent sur la fiche, la grille à imprimer et dans l'analyse didactique ; total ramené sur 20)</span></summary>
           <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px">${compDiagTous(cl).map(k => `<label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer${k.niv ? ";font-weight:700;color:#1F4E79" : ""}"><input type="checkbox" data-dx="${k.id}" ${diagExclus(cl).indexOf(k.id) < 0 ? "checked" : ""}> ${k.nom}</label>`).join("")}</div>
         </details>
         <p class="fiche-consigne">Consigne : observer l'élève dans des situations individuelles simples et cocher la case correspondant au niveau réellement constaté.</p>
@@ -37276,11 +37332,39 @@ window.JSYNC = window.JSYNC || (function () {
         <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
       </div>
 
-      <div class="fiche">
-        <div class="fiche-head">
-          <h3>FICHE DE DIAGNOSTIC INITIAL INDIVIDUEL</h3>
-          <p>FOOTBALL – ÉVALUATION DIAGNOSTIQUE · Cycle d'enseignement EPS</p>
-        </div>
+<style>
+.fiche.fx{font-family:Arial,Helvetica,sans-serif;}
+.fiche.fx .fx-tete{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
+.fiche.fx .fx-titre{border:2px solid #8B2E3C;border-radius:8px;padding:6px 18px;font-size:1.05rem;font-weight:700;font-style:italic;color:#8B2E3C}
+.fiche.fx .fx-classe{border:2px solid #8B2E3C;border-radius:8px;padding:6px 16px;font-size:.95rem;color:#1F4E79;min-width:150px}
+.fiche.fx .fx-sous{font-size:.78rem;color:#333;margin:0 0 8px}
+.fiche.fx .fiche-id th,.fiche.fx .fiche-id td,.fiche.fx .fiche-grille th,.fiche.fx .fiche-grille td{border:1px solid #444}
+.fiche.fx .fiche-id th{background:#E8E8E8}
+.fiche.fx .fiche-grille thead th{background:#D9EAD3 !important;color:#111 !important;font-size:.74rem;letter-spacing:.02em}
+.fiche.fx .fiche-grille thead th:first-child{background:#E8E8E8 !important}
+.fiche.fx .fiche-grille thead th:last-child{background:#F4CCCC !important}
+.fiche.fx .fiche-grille tbody tr:nth-child(even) td{background:#F7F9FC}
+.fiche.fx .fiche-grille tbody td:first-child{background:#fff}
+.fiche.fx .fiche-grille td.bar-note{background:#FBF3F3 !important;font-weight:700;color:#111}
+.fiche.fx .fiche-bloc{border:1px solid #444;border-radius:4px}
+@media print{
+  @page{size:A4 portrait;margin:8mm}
+  .fiche.fx{padding:0;zoom:.78}
+  .fiche.fx .fiche-grille th,.fiche.fx .fiche-grille td{padding:1.5px 4px;font-size:8pt}
+  .fiche.fx .case{padding:0 3px;font-size:8pt}.fiche.fx .case .box{width:11px;height:11px}
+  .fiche.fx .fiche-consigne{margin:0 0 4px;font-size:8pt}.fiche.fx .fx-titre{font-size:12pt;padding:4px 14px}.fiche.fx .fx-classe{font-size:10.5pt;padding:4px 12px}
+  .fiche.fx .fiche-id{margin-bottom:6px}
+  .fiche.fx .fiche-grille td div{font-size:6.5pt !important;line-height:1.15 !important;margin-top:1px !important}
+  .fiche.fx .fiche-id th,.fiche.fx .fiche-id td{padding:3px 6px;font-size:8.5pt}
+  .fiche.fx .fiche-total{margin:6px 0 2px}.fiche.fx .fiche-lecture{margin:0 0 6px}
+  .fiche.fx .fiche-bloc{padding:5px 8px;margin-bottom:5px}.fiche.fx .fiche-bloc textarea{min-height:0;height:12mm}
+  .fiche.fx .fiche-sugg{display:none}
+  .fiche.fx .fiche-grille thead th,.fiche.fx .fiche-id th,.fiche.fx .fiche-grille td.bar-note{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+      <div class="fiche fx">
+        <div class="fx-tete"><div class="fx-titre">Fiche de diagnostic individuel ${esc(smNivCode(cl) || "")} — Football</div><div class="fx-classe">Classe : <b>${esc(cl.nom)}</b></div></div>
+        <p class="fx-sous">Évaluation diagnostique initiale · Cycle d'enseignement EPS</p>
 
         <table class="fiche-id">
           <tr>
@@ -37299,8 +37383,8 @@ window.JSYNC = window.JSYNC || (function () {
           </tr>
         </table>
 
-        <details class="no-print" style="margin:6px 0 10px;border:1px dashed #C9D1DC;border-radius:10px;padding:8px 12px;background:#FAFBFC" ${diagExclus(cl).length ? "open" : ""}>
-          <summary style="cursor:pointer;font-weight:700">🎯 Critères à diagnostiquer — ${compActives(cl).length}/${compDiagTous(cl).length} retenus <span class="muted" style="font-weight:400">(valable pour toute la classe ; le total est ramené sur 20 et l'analyse ne tient compte que des critères retenus)</span></summary>
+        <details class="no-print" style="margin:6px 0 10px;border:1px dashed #C9D1DC;border-radius:10px;padding:8px 12px;background:#FAFBFC" open>
+          <summary style="cursor:pointer;font-weight:700">🎯 Cochez les critères à diagnostiquer — ${compActives(cl).length}/${compDiagTous(cl).length} cochés <span class="muted" style="font-weight:400">(toute la classe : seuls les critères cochés apparaissent sur la fiche, la grille à imprimer et dans l'analyse didactique ; total ramené sur 20)</span></summary>
           <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px">${compDiagTous(cl).map(k => `<label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer${k.niv ? ";font-weight:700;color:#1F4E79" : ""}"><input type="checkbox" data-dx="${k.id}" ${diagExclus(cl).indexOf(k.id) < 0 ? "checked" : ""}> ${k.nom}</label>`).join("")}</div>
         </details>
         <p class="fiche-consigne">Consigne : observer l'élève dans des situations individuelles simples et cocher la case correspondant au niveau réellement constaté.</p>
@@ -47815,11 +47899,39 @@ window.JSYNC = window.JSYNC || (function () {
         <button class="btn btn-primary" id="fiche-print">🖨 Imprimer la fiche</button>
       </div>
 
-      <div class="fiche">
-        <div class="fiche-head">
-          <h3>FICHE DE DIAGNOSTIC INITIAL INDIVIDUEL</h3>
-          <p>VOLLEY-BALL – ÉVALUATION DIAGNOSTIQUE · Cycle d'enseignement EPS</p>
-        </div>
+<style>
+.fiche.fx{font-family:Arial,Helvetica,sans-serif;}
+.fiche.fx .fx-tete{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
+.fiche.fx .fx-titre{border:2px solid #8B2E3C;border-radius:8px;padding:6px 18px;font-size:1.05rem;font-weight:700;font-style:italic;color:#8B2E3C}
+.fiche.fx .fx-classe{border:2px solid #8B2E3C;border-radius:8px;padding:6px 16px;font-size:.95rem;color:#1F4E79;min-width:150px}
+.fiche.fx .fx-sous{font-size:.78rem;color:#333;margin:0 0 8px}
+.fiche.fx .fiche-id th,.fiche.fx .fiche-id td,.fiche.fx .fiche-grille th,.fiche.fx .fiche-grille td{border:1px solid #444}
+.fiche.fx .fiche-id th{background:#E8E8E8}
+.fiche.fx .fiche-grille thead th{background:#D9EAD3 !important;color:#111 !important;font-size:.74rem;letter-spacing:.02em}
+.fiche.fx .fiche-grille thead th:first-child{background:#E8E8E8 !important}
+.fiche.fx .fiche-grille thead th:last-child{background:#F4CCCC !important}
+.fiche.fx .fiche-grille tbody tr:nth-child(even) td{background:#F7F9FC}
+.fiche.fx .fiche-grille tbody td:first-child{background:#fff}
+.fiche.fx .fiche-grille td.bar-note{background:#FBF3F3 !important;font-weight:700;color:#111}
+.fiche.fx .fiche-bloc{border:1px solid #444;border-radius:4px}
+@media print{
+  @page{size:A4 portrait;margin:8mm}
+  .fiche.fx{padding:0;zoom:.78}
+  .fiche.fx .fiche-grille th,.fiche.fx .fiche-grille td{padding:1.5px 4px;font-size:8pt}
+  .fiche.fx .case{padding:0 3px;font-size:8pt}.fiche.fx .case .box{width:11px;height:11px}
+  .fiche.fx .fiche-consigne{margin:0 0 4px;font-size:8pt}.fiche.fx .fx-titre{font-size:12pt;padding:4px 14px}.fiche.fx .fx-classe{font-size:10.5pt;padding:4px 12px}
+  .fiche.fx .fiche-id{margin-bottom:6px}
+  .fiche.fx .fiche-grille td div{font-size:6.5pt !important;line-height:1.15 !important;margin-top:1px !important}
+  .fiche.fx .fiche-id th,.fiche.fx .fiche-id td{padding:3px 6px;font-size:8.5pt}
+  .fiche.fx .fiche-total{margin:6px 0 2px}.fiche.fx .fiche-lecture{margin:0 0 6px}
+  .fiche.fx .fiche-bloc{padding:5px 8px;margin-bottom:5px}.fiche.fx .fiche-bloc textarea{min-height:0;height:12mm}
+  .fiche.fx .fiche-sugg{display:none}
+  .fiche.fx .fiche-grille thead th,.fiche.fx .fiche-id th,.fiche.fx .fiche-grille td.bar-note{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+      <div class="fiche fx">
+        <div class="fx-tete"><div class="fx-titre">Fiche de diagnostic individuel ${esc(smNivCode(cl) || "")} — Volley-ball</div><div class="fx-classe">Classe : <b>${esc(cl.nom)}</b></div></div>
+        <p class="fx-sous">Évaluation diagnostique initiale · Cycle d'enseignement EPS</p>
 
         <table class="fiche-id">
           <tr>
@@ -47838,8 +47950,8 @@ window.JSYNC = window.JSYNC || (function () {
           </tr>
         </table>
 
-        <details class="no-print" style="margin:6px 0 10px;border:1px dashed #C9D1DC;border-radius:10px;padding:8px 12px;background:#FAFBFC" ${diagExclus(cl).length ? "open" : ""}>
-          <summary style="cursor:pointer;font-weight:700">🎯 Critères à diagnostiquer — ${compActives(cl).length}/${compDiagTous(cl).length} retenus <span class="muted" style="font-weight:400">(valable pour toute la classe ; le total est ramené sur 20 et l'analyse ne tient compte que des critères retenus)</span></summary>
+        <details class="no-print" style="margin:6px 0 10px;border:1px dashed #C9D1DC;border-radius:10px;padding:8px 12px;background:#FAFBFC" open>
+          <summary style="cursor:pointer;font-weight:700">🎯 Cochez les critères à diagnostiquer — ${compActives(cl).length}/${compDiagTous(cl).length} cochés <span class="muted" style="font-weight:400">(toute la classe : seuls les critères cochés apparaissent sur la fiche, la grille à imprimer et dans l'analyse didactique ; total ramené sur 20)</span></summary>
           <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px">${compDiagTous(cl).map(k => `<label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer${k.niv ? ";font-weight:700;color:#1F4E79" : ""}"><input type="checkbox" data-dx="${k.id}" ${diagExclus(cl).indexOf(k.id) < 0 ? "checked" : ""}> ${k.nom}</label>`).join("")}</div>
         </details>
         <p class="fiche-consigne">Consigne : observer l'élève dans des situations individuelles simples et cocher la case correspondant au niveau réellement constaté.</p>
@@ -94837,6 +94949,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 12h30</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 04-11-2026 · 17h30</div>
 </body>
 </html>
