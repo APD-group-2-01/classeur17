@@ -104806,6 +104806,21 @@ var QICONS = {
      ailleurs y sont reportées. L'application qu'on quitte n'est pas modifiée
      (elle peut encore enregistrer) : elle le sera à la prochaine ouverture. */
   var syncOcc = false;
+  /* modification enregistrée dans l'application ouverte (élève supprimé, ajouté, renommé…) :
+     les autres applications sont mises à jour aussitôt, en arrière-plan */
+  var autoT = null, CLES_AUTO = /^(cahierJournalierEPS_v2::|basketDidactic|handDidactic|footDidactic|volleyDidactic|qualitesPhysiques|navetteRapide|DIDUR_)/;
+  function autoSync(){
+    clearTimeout(autoT);
+    autoT = setTimeout(function(){
+      if (syncOcc || !window.SyncClassesEPS) return;
+      SyncClassesEPS.synchroniser(current || null).then(function(r){
+        (r.modifiees || []).forEach(function(a){ if (a !== current && frames[a]) { try { frames[a].remove(); } catch(e){} delete frames[a]; } });
+        if (r.message) annonce(r.message);
+      }).catch(function(){});
+    }, 1500);
+  }
+  window.addEventListener("storage", function(e){ if (e.key && CLES_AUTO.test(e.key)) autoSync(); });
+  window.addEventListener("message", function(e){ if (e && e.data === "eps:classes") autoSync(); });
   function open(id){
     if (!window.SyncClassesEPS || syncOcc || !appById(id)) return ouvrirApp(id);
     var quitte = (current && frames[current]) ? current : null;
@@ -104815,13 +104830,14 @@ var QICONS = {
       var fini = false;
       var suite = function(){ if (fini) return; fini = true; syncOcc = false; ouvrirApp(id); };
       setTimeout(suite, 6000);
+      clearTimeout(autoT);
       SyncClassesEPS.synchroniser(quitte).then(function(r){
         (r.modifiees || []).forEach(function(a){
           if (a !== quitte && frames[a]) { try { frames[a].remove(); } catch(e){} delete frames[a]; }
         });
         if (r.message) annonce(r.message);
       }).catch(function(){}).then(suite);
-    }, 300);
+    }, 600);
   }
 
   function ouvrirApp(id){
@@ -104891,6 +104907,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 05-11-2026 · 19h45</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 05-11-2026 · 20h15</div>
 </body>
 </html>
