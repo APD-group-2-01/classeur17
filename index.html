@@ -23723,12 +23723,12 @@ window.XlsxLite = (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        ${seVoixListe().length ? `<label>Voix <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
+        ${seVoixListe().length ? `<label>Commentateur (voix) <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
         <label><input type="checkbox" id="se-compte" ${d.cfg.compte !== false ? "checked" : ""}> Compte à rebours (3-2-1 au départ, 10 dernières secondes)</label>
-        <p class="gr-aide" style="margin:2px 0 6px">${vx ? "La voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe trouvée sur cet appareil : installez-la (paramètres de synthèse vocale) ; le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."}</p>
+        <p class="gr-aide" style="margin:2px 0 6px">${vx ? seVoixListe().length + " voix arabe(s) disponible(s) — la voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe chargée pour l'instant. Si elle n'apparaît pas après quelques secondes : utilisez Chrome ou Edge (voix « Google العربية », « Microsoft Hamed / Salma »), ou installez la voix arabe dans les paramètres de synthèse vocale du téléphone. Le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."} ${vx ? "" : '<button type="button" class="gr-btn" id="se-voix-re" style="padding:3px 8px;font-size:.75rem">↻ Rechercher les voix</button>'}</p>
         <div class="se-tests">
           <button type="button" class="gr-btn" data-test="sif">📣 Sifflet</button>
           <button type="button" class="gr-btn" data-test="debut">Appel capitaines</button><button type="button" class="gr-btn" data-test="compte">Compte 3-2-1</button>${seCollectif(f) ? '<button type="button" class="gr-btn" data-test="but">Clameur + معلق</button>' : ""}<button type="button" class="gr-btn" data-test="fin">Fin</button>
@@ -23816,6 +23816,7 @@ window.XlsxLite = (function () {
     q("se-arb").onchange = e => { d.cfg.arbitrage = e.target.checked; seArb = e.target.checked; seReaffecter(ids, d.rot, d.ateliers.length); sauver(); };
     q("se-voix").onchange = e => { d.cfg.voix = e.target.checked; sauver(false); };
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
+    if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
@@ -23920,7 +23921,11 @@ window.XlsxLite = (function () {
     if (e.key === SE_KEY) { SE_DB = seLire(); renderSeance(); }
     else if (e.key && (/Didactic::v1$/.test(e.key) || /^cahierJournalierEPS_v2::/.test(e.key))) renderSeance();
   });
-  try { if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { if (document.getElementById("se-vue") && seChrono.etat !== "match") renderSeance(); }; } catch (e) {}
+  // voix de synthèse : le navigateur les charge en différé (liste vide au premier appel) → écoute + nouvelles tentatives
+  let seNbVoix = -1;
+  const seVoixMaj = () => { const n = seVoixListe().length; if (n !== seNbVoix) { seNbVoix = n; if (document.getElementById("se-vue") && ["match", "appel", "compte"].indexOf(seChrono.etat) < 0) renderSeance(); } };
+  try { if (window.speechSynthesis) { if (speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", seVoixMaj); speechSynthesis.getVoices(); } } catch (e) {}
+  function seAttendreVoix() { let n = 0; (function t() { try { speechSynthesis.getVoices(); } catch (e) {} seVoixMaj(); if (seVoixListe().length || ++n > 20) return; setTimeout(t, 500); })(); }
   (function seCss() {
     const st = document.createElement("style");
     st.textContent = `
@@ -24043,7 +24048,7 @@ window.XlsxLite = (function () {
       let v = document.getElementById("se-vue");
       if (!v) { v = document.createElement("div"); v.id = "se-vue"; v.innerHTML = '<h1>⏱ Gestion de séance — ' + esc(SE.nom) + '</h1><div id="se-zone"></div>'; document.body.appendChild(v); }
       document.body.classList.add("se-ouvert");
-      renderSeance();
+      renderSeance(); seAttendreVoix();
     });
   }
   function seFermer() {
@@ -35633,12 +35638,12 @@ window.XlsxLite = (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        ${seVoixListe().length ? `<label>Voix <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
+        ${seVoixListe().length ? `<label>Commentateur (voix) <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
         <label><input type="checkbox" id="se-compte" ${d.cfg.compte !== false ? "checked" : ""}> Compte à rebours (3-2-1 au départ, 10 dernières secondes)</label>
-        <p class="gr-aide" style="margin:2px 0 6px">${vx ? "La voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe trouvée sur cet appareil : installez-la (paramètres de synthèse vocale) ; le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."}</p>
+        <p class="gr-aide" style="margin:2px 0 6px">${vx ? seVoixListe().length + " voix arabe(s) disponible(s) — la voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe chargée pour l'instant. Si elle n'apparaît pas après quelques secondes : utilisez Chrome ou Edge (voix « Google العربية », « Microsoft Hamed / Salma »), ou installez la voix arabe dans les paramètres de synthèse vocale du téléphone. Le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."} ${vx ? "" : '<button type="button" class="gr-btn" id="se-voix-re" style="padding:3px 8px;font-size:.75rem">↻ Rechercher les voix</button>'}</p>
         <div class="se-tests">
           <button type="button" class="gr-btn" data-test="sif">📣 Sifflet</button>
           <button type="button" class="gr-btn" data-test="debut">Appel capitaines</button><button type="button" class="gr-btn" data-test="compte">Compte 3-2-1</button>${seCollectif(f) ? '<button type="button" class="gr-btn" data-test="but">Clameur + معلق</button>' : ""}<button type="button" class="gr-btn" data-test="fin">Fin</button>
@@ -35726,6 +35731,7 @@ window.XlsxLite = (function () {
     q("se-arb").onchange = e => { d.cfg.arbitrage = e.target.checked; seArb = e.target.checked; seReaffecter(ids, d.rot, d.ateliers.length); sauver(); };
     q("se-voix").onchange = e => { d.cfg.voix = e.target.checked; sauver(false); };
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
+    if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
@@ -35830,7 +35836,11 @@ window.XlsxLite = (function () {
     if (e.key === SE_KEY) { SE_DB = seLire(); renderSeance(); }
     else if (e.key && (/Didactic::v1$/.test(e.key) || /^cahierJournalierEPS_v2::/.test(e.key))) renderSeance();
   });
-  try { if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { if (document.getElementById("se-vue") && seChrono.etat !== "match") renderSeance(); }; } catch (e) {}
+  // voix de synthèse : le navigateur les charge en différé (liste vide au premier appel) → écoute + nouvelles tentatives
+  let seNbVoix = -1;
+  const seVoixMaj = () => { const n = seVoixListe().length; if (n !== seNbVoix) { seNbVoix = n; if (document.getElementById("se-vue") && ["match", "appel", "compte"].indexOf(seChrono.etat) < 0) renderSeance(); } };
+  try { if (window.speechSynthesis) { if (speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", seVoixMaj); speechSynthesis.getVoices(); } } catch (e) {}
+  function seAttendreVoix() { let n = 0; (function t() { try { speechSynthesis.getVoices(); } catch (e) {} seVoixMaj(); if (seVoixListe().length || ++n > 20) return; setTimeout(t, 500); })(); }
   (function seCss() {
     const st = document.createElement("style");
     st.textContent = `
@@ -35953,7 +35963,7 @@ window.XlsxLite = (function () {
       let v = document.getElementById("se-vue");
       if (!v) { v = document.createElement("div"); v.id = "se-vue"; v.innerHTML = '<h1>⏱ Gestion de séance — ' + esc(SE.nom) + '</h1><div id="se-zone"></div>'; document.body.appendChild(v); }
       document.body.classList.add("se-ouvert");
-      renderSeance();
+      renderSeance(); seAttendreVoix();
     });
   }
   function seFermer() {
@@ -47540,12 +47550,12 @@ window.XlsxLite = (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        ${seVoixListe().length ? `<label>Voix <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
+        ${seVoixListe().length ? `<label>Commentateur (voix) <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
         <label><input type="checkbox" id="se-compte" ${d.cfg.compte !== false ? "checked" : ""}> Compte à rebours (3-2-1 au départ, 10 dernières secondes)</label>
-        <p class="gr-aide" style="margin:2px 0 6px">${vx ? "La voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe trouvée sur cet appareil : installez-la (paramètres de synthèse vocale) ; le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."}</p>
+        <p class="gr-aide" style="margin:2px 0 6px">${vx ? seVoixListe().length + " voix arabe(s) disponible(s) — la voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe chargée pour l'instant. Si elle n'apparaît pas après quelques secondes : utilisez Chrome ou Edge (voix « Google العربية », « Microsoft Hamed / Salma »), ou installez la voix arabe dans les paramètres de synthèse vocale du téléphone. Le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."} ${vx ? "" : '<button type="button" class="gr-btn" id="se-voix-re" style="padding:3px 8px;font-size:.75rem">↻ Rechercher les voix</button>'}</p>
         <div class="se-tests">
           <button type="button" class="gr-btn" data-test="sif">📣 Sifflet</button>
           <button type="button" class="gr-btn" data-test="debut">Appel capitaines</button><button type="button" class="gr-btn" data-test="compte">Compte 3-2-1</button>${seCollectif(f) ? '<button type="button" class="gr-btn" data-test="but">Clameur + معلق</button>' : ""}<button type="button" class="gr-btn" data-test="fin">Fin</button>
@@ -47633,6 +47643,7 @@ window.XlsxLite = (function () {
     q("se-arb").onchange = e => { d.cfg.arbitrage = e.target.checked; seArb = e.target.checked; seReaffecter(ids, d.rot, d.ateliers.length); sauver(); };
     q("se-voix").onchange = e => { d.cfg.voix = e.target.checked; sauver(false); };
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
+    if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
@@ -47737,7 +47748,11 @@ window.XlsxLite = (function () {
     if (e.key === SE_KEY) { SE_DB = seLire(); renderSeance(); }
     else if (e.key && (/Didactic::v1$/.test(e.key) || /^cahierJournalierEPS_v2::/.test(e.key))) renderSeance();
   });
-  try { if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { if (document.getElementById("se-vue") && seChrono.etat !== "match") renderSeance(); }; } catch (e) {}
+  // voix de synthèse : le navigateur les charge en différé (liste vide au premier appel) → écoute + nouvelles tentatives
+  let seNbVoix = -1;
+  const seVoixMaj = () => { const n = seVoixListe().length; if (n !== seNbVoix) { seNbVoix = n; if (document.getElementById("se-vue") && ["match", "appel", "compte"].indexOf(seChrono.etat) < 0) renderSeance(); } };
+  try { if (window.speechSynthesis) { if (speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", seVoixMaj); speechSynthesis.getVoices(); } } catch (e) {}
+  function seAttendreVoix() { let n = 0; (function t() { try { speechSynthesis.getVoices(); } catch (e) {} seVoixMaj(); if (seVoixListe().length || ++n > 20) return; setTimeout(t, 500); })(); }
   (function seCss() {
     const st = document.createElement("style");
     st.textContent = `
@@ -47860,7 +47875,7 @@ window.XlsxLite = (function () {
       let v = document.getElementById("se-vue");
       if (!v) { v = document.createElement("div"); v.id = "se-vue"; v.innerHTML = '<h1>⏱ Gestion de séance — ' + esc(SE.nom) + '</h1><div id="se-zone"></div>'; document.body.appendChild(v); }
       document.body.classList.add("se-ouvert");
-      renderSeance();
+      renderSeance(); seAttendreVoix();
     });
   }
   function seFermer() {
@@ -59293,12 +59308,12 @@ window.XlsxLite = (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        ${seVoixListe().length ? `<label>Voix <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
+        ${seVoixListe().length ? `<label>Commentateur (voix) <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
         <label><input type="checkbox" id="se-compte" ${d.cfg.compte !== false ? "checked" : ""}> Compte à rebours (3-2-1 au départ, 10 dernières secondes)</label>
-        <p class="gr-aide" style="margin:2px 0 6px">${vx ? "La voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe trouvée sur cet appareil : installez-la (paramètres de synthèse vocale) ; le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."}</p>
+        <p class="gr-aide" style="margin:2px 0 6px">${vx ? seVoixListe().length + " voix arabe(s) disponible(s) — la voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe chargée pour l'instant. Si elle n'apparaît pas après quelques secondes : utilisez Chrome ou Edge (voix « Google العربية », « Microsoft Hamed / Salma »), ou installez la voix arabe dans les paramètres de synthèse vocale du téléphone. Le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."} ${vx ? "" : '<button type="button" class="gr-btn" id="se-voix-re" style="padding:3px 8px;font-size:.75rem">↻ Rechercher les voix</button>'}</p>
         <div class="se-tests">
           <button type="button" class="gr-btn" data-test="sif">📣 Sifflet</button>
           <button type="button" class="gr-btn" data-test="debut">Appel capitaines</button><button type="button" class="gr-btn" data-test="compte">Compte 3-2-1</button>${seCollectif(f) ? '<button type="button" class="gr-btn" data-test="but">Clameur + معلق</button>' : ""}<button type="button" class="gr-btn" data-test="fin">Fin</button>
@@ -59386,6 +59401,7 @@ window.XlsxLite = (function () {
     q("se-arb").onchange = e => { d.cfg.arbitrage = e.target.checked; seArb = e.target.checked; seReaffecter(ids, d.rot, d.ateliers.length); sauver(); };
     q("se-voix").onchange = e => { d.cfg.voix = e.target.checked; sauver(false); };
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
+    if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
@@ -59490,7 +59506,11 @@ window.XlsxLite = (function () {
     if (e.key === SE_KEY) { SE_DB = seLire(); renderSeance(); }
     else if (e.key && (/Didactic::v1$/.test(e.key) || /^cahierJournalierEPS_v2::/.test(e.key))) renderSeance();
   });
-  try { if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { if (document.getElementById("se-vue") && seChrono.etat !== "match") renderSeance(); }; } catch (e) {}
+  // voix de synthèse : le navigateur les charge en différé (liste vide au premier appel) → écoute + nouvelles tentatives
+  let seNbVoix = -1;
+  const seVoixMaj = () => { const n = seVoixListe().length; if (n !== seNbVoix) { seNbVoix = n; if (document.getElementById("se-vue") && ["match", "appel", "compte"].indexOf(seChrono.etat) < 0) renderSeance(); } };
+  try { if (window.speechSynthesis) { if (speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", seVoixMaj); speechSynthesis.getVoices(); } } catch (e) {}
+  function seAttendreVoix() { let n = 0; (function t() { try { speechSynthesis.getVoices(); } catch (e) {} seVoixMaj(); if (seVoixListe().length || ++n > 20) return; setTimeout(t, 500); })(); }
   (function seCss() {
     const st = document.createElement("style");
     st.textContent = `
@@ -59613,7 +59633,7 @@ window.XlsxLite = (function () {
       let v = document.getElementById("se-vue");
       if (!v) { v = document.createElement("div"); v.id = "se-vue"; v.innerHTML = '<h1>⏱ Gestion de séance — ' + esc(SE.nom) + '</h1><div id="se-zone"></div>'; document.body.appendChild(v); }
       document.body.classList.add("se-ouvert");
-      renderSeance();
+      renderSeance(); seAttendreVoix();
     });
   }
   function seFermer() {
@@ -72239,12 +72259,12 @@ window.OMRKIT = window.OMRKIT || (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        ${seVoixListe().length ? `<label>Voix <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
+        ${seVoixListe().length ? `<label>Commentateur (voix) <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
         <label><input type="checkbox" id="se-compte" ${d.cfg.compte !== false ? "checked" : ""}> Compte à rebours (3-2-1 au départ, 10 dernières secondes)</label>
-        <p class="gr-aide" style="margin:2px 0 6px">${vx ? "La voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe trouvée sur cet appareil : installez-la (paramètres de synthèse vocale) ; le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."}</p>
+        <p class="gr-aide" style="margin:2px 0 6px">${vx ? seVoixListe().length + " voix arabe(s) disponible(s) — la voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe chargée pour l'instant. Si elle n'apparaît pas après quelques secondes : utilisez Chrome ou Edge (voix « Google العربية », « Microsoft Hamed / Salma »), ou installez la voix arabe dans les paramètres de synthèse vocale du téléphone. Le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."} ${vx ? "" : '<button type="button" class="gr-btn" id="se-voix-re" style="padding:3px 8px;font-size:.75rem">↻ Rechercher les voix</button>'}</p>
         <div class="se-tests">
           <button type="button" class="gr-btn" data-test="sif">📣 Sifflet</button>
           <button type="button" class="gr-btn" data-test="debut">Appel capitaines</button><button type="button" class="gr-btn" data-test="compte">Compte 3-2-1</button>${seCollectif(f) ? '<button type="button" class="gr-btn" data-test="but">Clameur + معلق</button>' : ""}<button type="button" class="gr-btn" data-test="fin">Fin</button>
@@ -72332,6 +72352,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     q("se-arb").onchange = e => { d.cfg.arbitrage = e.target.checked; seArb = e.target.checked; seReaffecter(ids, d.rot, d.ateliers.length); sauver(); };
     q("se-voix").onchange = e => { d.cfg.voix = e.target.checked; sauver(false); };
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
+    if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
@@ -72436,7 +72457,11 @@ window.OMRKIT = window.OMRKIT || (function () {
     if (e.key === SE_KEY) { SE_DB = seLire(); renderSeance(); }
     else if (e.key && (/Didactic::v1$/.test(e.key) || /^cahierJournalierEPS_v2::/.test(e.key))) renderSeance();
   });
-  try { if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { if (document.getElementById("se-vue") && seChrono.etat !== "match") renderSeance(); }; } catch (e) {}
+  // voix de synthèse : le navigateur les charge en différé (liste vide au premier appel) → écoute + nouvelles tentatives
+  let seNbVoix = -1;
+  const seVoixMaj = () => { const n = seVoixListe().length; if (n !== seNbVoix) { seNbVoix = n; if (document.getElementById("se-vue") && ["match", "appel", "compte"].indexOf(seChrono.etat) < 0) renderSeance(); } };
+  try { if (window.speechSynthesis) { if (speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", seVoixMaj); speechSynthesis.getVoices(); } } catch (e) {}
+  function seAttendreVoix() { let n = 0; (function t() { try { speechSynthesis.getVoices(); } catch (e) {} seVoixMaj(); if (seVoixListe().length || ++n > 20) return; setTimeout(t, 500); })(); }
   (function seCss() {
     const st = document.createElement("style");
     st.textContent = `
@@ -72559,7 +72584,7 @@ window.OMRKIT = window.OMRKIT || (function () {
       let v = document.getElementById("se-vue");
       if (!v) { v = document.createElement("div"); v.id = "se-vue"; v.innerHTML = '<h1>⏱ Gestion de séance — ' + esc(SE.nom) + '</h1><div id="se-zone"></div>'; document.body.appendChild(v); }
       document.body.classList.add("se-ouvert");
-      renderSeance();
+      renderSeance(); seAttendreVoix();
     });
   }
   function seFermer() {
@@ -83321,12 +83346,12 @@ GrilleAPS({
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        ${seVoixListe().length ? `<label>Voix <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
+        ${seVoixListe().length ? `<label>Commentateur (voix) <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
         <label><input type="checkbox" id="se-compte" ${d.cfg.compte !== false ? "checked" : ""}> Compte à rebours (3-2-1 au départ, 10 dernières secondes)</label>
-        <p class="gr-aide" style="margin:2px 0 6px">${vx ? "La voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe trouvée sur cet appareil : installez-la (paramètres de synthèse vocale) ; le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."}</p>
+        <p class="gr-aide" style="margin:2px 0 6px">${vx ? seVoixListe().length + " voix arabe(s) disponible(s) — la voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe chargée pour l'instant. Si elle n'apparaît pas après quelques secondes : utilisez Chrome ou Edge (voix « Google العربية », « Microsoft Hamed / Salma »), ou installez la voix arabe dans les paramètres de synthèse vocale du téléphone. Le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."} ${vx ? "" : '<button type="button" class="gr-btn" id="se-voix-re" style="padding:3px 8px;font-size:.75rem">↻ Rechercher les voix</button>'}</p>
         <div class="se-tests">
           <button type="button" class="gr-btn" data-test="sif">📣 Sifflet</button>
           <button type="button" class="gr-btn" data-test="debut">Appel capitaines</button><button type="button" class="gr-btn" data-test="compte">Compte 3-2-1</button>${seCollectif(f) ? '<button type="button" class="gr-btn" data-test="but">Clameur + معلق</button>' : ""}<button type="button" class="gr-btn" data-test="fin">Fin</button>
@@ -83414,6 +83439,7 @@ GrilleAPS({
     q("se-arb").onchange = e => { d.cfg.arbitrage = e.target.checked; seArb = e.target.checked; seReaffecter(ids, d.rot, d.ateliers.length); sauver(); };
     q("se-voix").onchange = e => { d.cfg.voix = e.target.checked; sauver(false); };
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
+    if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
@@ -83518,7 +83544,11 @@ GrilleAPS({
     if (e.key === SE_KEY) { SE_DB = seLire(); renderSeance(); }
     else if (e.key && (/Didactic::v1$/.test(e.key) || /^cahierJournalierEPS_v2::/.test(e.key))) renderSeance();
   });
-  try { if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { if (document.getElementById("se-vue") && seChrono.etat !== "match") renderSeance(); }; } catch (e) {}
+  // voix de synthèse : le navigateur les charge en différé (liste vide au premier appel) → écoute + nouvelles tentatives
+  let seNbVoix = -1;
+  const seVoixMaj = () => { const n = seVoixListe().length; if (n !== seNbVoix) { seNbVoix = n; if (document.getElementById("se-vue") && ["match", "appel", "compte"].indexOf(seChrono.etat) < 0) renderSeance(); } };
+  try { if (window.speechSynthesis) { if (speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", seVoixMaj); speechSynthesis.getVoices(); } } catch (e) {}
+  function seAttendreVoix() { let n = 0; (function t() { try { speechSynthesis.getVoices(); } catch (e) {} seVoixMaj(); if (seVoixListe().length || ++n > 20) return; setTimeout(t, 500); })(); }
   (function seCss() {
     const st = document.createElement("style");
     st.textContent = `
@@ -83641,7 +83671,7 @@ GrilleAPS({
       let v = document.getElementById("se-vue");
       if (!v) { v = document.createElement("div"); v.id = "se-vue"; v.innerHTML = '<h1>⏱ Gestion de séance — ' + esc(SE.nom) + '</h1><div id="se-zone"></div>'; document.body.appendChild(v); }
       document.body.classList.add("se-ouvert");
-      renderSeance();
+      renderSeance(); seAttendreVoix();
     });
   }
   function seFermer() {
@@ -95174,12 +95204,12 @@ window.DISC = {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        ${seVoixListe().length ? `<label>Voix <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
+        ${seVoixListe().length ? `<label>Commentateur (voix) <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
         <label><input type="checkbox" id="se-compte" ${d.cfg.compte !== false ? "checked" : ""}> Compte à rebours (3-2-1 au départ, 10 dernières secondes)</label>
-        <p class="gr-aide" style="margin:2px 0 6px">${vx ? "La voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe trouvée sur cet appareil : installez-la (paramètres de synthèse vocale) ; le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."}</p>
+        <p class="gr-aide" style="margin:2px 0 6px">${vx ? seVoixListe().length + " voix arabe(s) disponible(s) — la voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe chargée pour l'instant. Si elle n'apparaît pas après quelques secondes : utilisez Chrome ou Edge (voix « Google العربية », « Microsoft Hamed / Salma »), ou installez la voix arabe dans les paramètres de synthèse vocale du téléphone. Le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."} ${vx ? "" : '<button type="button" class="gr-btn" id="se-voix-re" style="padding:3px 8px;font-size:.75rem">↻ Rechercher les voix</button>'}</p>
         <div class="se-tests">
           <button type="button" class="gr-btn" data-test="sif">📣 Sifflet</button>
           <button type="button" class="gr-btn" data-test="debut">Appel capitaines</button><button type="button" class="gr-btn" data-test="compte">Compte 3-2-1</button>${seCollectif(f) ? '<button type="button" class="gr-btn" data-test="but">Clameur + معلق</button>' : ""}<button type="button" class="gr-btn" data-test="fin">Fin</button>
@@ -95267,6 +95297,7 @@ window.DISC = {
     q("se-arb").onchange = e => { d.cfg.arbitrage = e.target.checked; seArb = e.target.checked; seReaffecter(ids, d.rot, d.ateliers.length); sauver(); };
     q("se-voix").onchange = e => { d.cfg.voix = e.target.checked; sauver(false); };
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
+    if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
@@ -95371,7 +95402,11 @@ window.DISC = {
     if (e.key === SE_KEY) { SE_DB = seLire(); renderSeance(); }
     else if (e.key && (/Didactic::v1$/.test(e.key) || /^cahierJournalierEPS_v2::/.test(e.key))) renderSeance();
   });
-  try { if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { if (document.getElementById("se-vue") && seChrono.etat !== "match") renderSeance(); }; } catch (e) {}
+  // voix de synthèse : le navigateur les charge en différé (liste vide au premier appel) → écoute + nouvelles tentatives
+  let seNbVoix = -1;
+  const seVoixMaj = () => { const n = seVoixListe().length; if (n !== seNbVoix) { seNbVoix = n; if (document.getElementById("se-vue") && ["match", "appel", "compte"].indexOf(seChrono.etat) < 0) renderSeance(); } };
+  try { if (window.speechSynthesis) { if (speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", seVoixMaj); speechSynthesis.getVoices(); } } catch (e) {}
+  function seAttendreVoix() { let n = 0; (function t() { try { speechSynthesis.getVoices(); } catch (e) {} seVoixMaj(); if (seVoixListe().length || ++n > 20) return; setTimeout(t, 500); })(); }
   (function seCss() {
     const st = document.createElement("style");
     st.textContent = `
@@ -95494,7 +95529,7 @@ window.DISC = {
       let v = document.getElementById("se-vue");
       if (!v) { v = document.createElement("div"); v.id = "se-vue"; v.innerHTML = '<h1>⏱ Gestion de séance — ' + esc(SE.nom) + '</h1><div id="se-zone"></div>'; document.body.appendChild(v); }
       document.body.classList.add("se-ouvert");
-      renderSeance();
+      renderSeance(); seAttendreVoix();
     });
   }
   function seFermer() {
@@ -99808,12 +99843,12 @@ window.DISC = {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        ${seVoixListe().length ? `<label>Voix <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
+        ${seVoixListe().length ? `<label>Commentateur (voix) <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
         <label><input type="checkbox" id="se-compte" ${d.cfg.compte !== false ? "checked" : ""}> Compte à rebours (3-2-1 au départ, 10 dernières secondes)</label>
-        <p class="gr-aide" style="margin:2px 0 6px">${vx ? "La voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe trouvée sur cet appareil : installez-la (paramètres de synthèse vocale) ; le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."}</p>
+        <p class="gr-aide" style="margin:2px 0 6px">${vx ? seVoixListe().length + " voix arabe(s) disponible(s) — la voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe chargée pour l'instant. Si elle n'apparaît pas après quelques secondes : utilisez Chrome ou Edge (voix « Google العربية », « Microsoft Hamed / Salma »), ou installez la voix arabe dans les paramètres de synthèse vocale du téléphone. Le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."} ${vx ? "" : '<button type="button" class="gr-btn" id="se-voix-re" style="padding:3px 8px;font-size:.75rem">↻ Rechercher les voix</button>'}</p>
         <div class="se-tests">
           <button type="button" class="gr-btn" data-test="sif">📣 Sifflet</button>
           <button type="button" class="gr-btn" data-test="debut">Appel capitaines</button><button type="button" class="gr-btn" data-test="compte">Compte 3-2-1</button>${seCollectif(f) ? '<button type="button" class="gr-btn" data-test="but">Clameur + معلق</button>' : ""}<button type="button" class="gr-btn" data-test="fin">Fin</button>
@@ -99901,6 +99936,7 @@ window.DISC = {
     q("se-arb").onchange = e => { d.cfg.arbitrage = e.target.checked; seArb = e.target.checked; seReaffecter(ids, d.rot, d.ateliers.length); sauver(); };
     q("se-voix").onchange = e => { d.cfg.voix = e.target.checked; sauver(false); };
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
+    if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
@@ -100005,7 +100041,11 @@ window.DISC = {
     if (e.key === SE_KEY) { SE_DB = seLire(); renderSeance(); }
     else if (e.key && (/Didactic::v1$/.test(e.key) || /^cahierJournalierEPS_v2::/.test(e.key))) renderSeance();
   });
-  try { if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { if (document.getElementById("se-vue") && seChrono.etat !== "match") renderSeance(); }; } catch (e) {}
+  // voix de synthèse : le navigateur les charge en différé (liste vide au premier appel) → écoute + nouvelles tentatives
+  let seNbVoix = -1;
+  const seVoixMaj = () => { const n = seVoixListe().length; if (n !== seNbVoix) { seNbVoix = n; if (document.getElementById("se-vue") && ["match", "appel", "compte"].indexOf(seChrono.etat) < 0) renderSeance(); } };
+  try { if (window.speechSynthesis) { if (speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", seVoixMaj); speechSynthesis.getVoices(); } } catch (e) {}
+  function seAttendreVoix() { let n = 0; (function t() { try { speechSynthesis.getVoices(); } catch (e) {} seVoixMaj(); if (seVoixListe().length || ++n > 20) return; setTimeout(t, 500); })(); }
   (function seCss() {
     const st = document.createElement("style");
     st.textContent = `
@@ -100128,7 +100168,7 @@ window.DISC = {
       let v = document.getElementById("se-vue");
       if (!v) { v = document.createElement("div"); v.id = "se-vue"; v.innerHTML = '<h1>⏱ Gestion de séance — ' + esc(SE.nom) + '</h1><div id="se-zone"></div>'; document.body.appendChild(v); }
       document.body.classList.add("se-ouvert");
-      renderSeance();
+      renderSeance(); seAttendreVoix();
     });
   }
   function seFermer() {
@@ -104266,12 +104306,12 @@ window.DISC = {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        ${seVoixListe().length ? `<label>Voix <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
+        ${seVoixListe().length ? `<label>Commentateur (voix) <select id="se-voixsel">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</select></label>` : ""}
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
         <label><input type="checkbox" id="se-compte" ${d.cfg.compte !== false ? "checked" : ""}> Compte à rebours (3-2-1 au départ, 10 dernières secondes)</label>
-        <p class="gr-aide" style="margin:2px 0 6px">${vx ? "La voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe trouvée sur cet appareil : installez-la (paramètres de synthèse vocale) ; le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."}</p>
+        <p class="gr-aide" style="margin:2px 0 6px">${vx ? seVoixListe().length + " voix arabe(s) disponible(s) — la voix est jouée au volume maximum de l'appareil : pour la cour, branchez une enceinte Bluetooth." : "⚠ Aucune voix arabe chargée pour l'instant. Si elle n'apparaît pas après quelques secondes : utilisez Chrome ou Edge (voix « Google العربية », « Microsoft Hamed / Salma »), ou installez la voix arabe dans les paramètres de synthèse vocale du téléphone. Le sifflet, les bips et le compte à rebours affiché fonctionnent toujours."} ${vx ? "" : '<button type="button" class="gr-btn" id="se-voix-re" style="padding:3px 8px;font-size:.75rem">↻ Rechercher les voix</button>'}</p>
         <div class="se-tests">
           <button type="button" class="gr-btn" data-test="sif">📣 Sifflet</button>
           <button type="button" class="gr-btn" data-test="debut">Appel capitaines</button><button type="button" class="gr-btn" data-test="compte">Compte 3-2-1</button>${seCollectif(f) ? '<button type="button" class="gr-btn" data-test="but">Clameur + معلق</button>' : ""}<button type="button" class="gr-btn" data-test="fin">Fin</button>
@@ -104359,6 +104399,7 @@ window.DISC = {
     q("se-arb").onchange = e => { d.cfg.arbitrage = e.target.checked; seArb = e.target.checked; seReaffecter(ids, d.rot, d.ateliers.length); sauver(); };
     q("se-voix").onchange = e => { d.cfg.voix = e.target.checked; sauver(false); };
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
+    if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
@@ -104463,7 +104504,11 @@ window.DISC = {
     if (e.key === SE_KEY) { SE_DB = seLire(); renderSeance(); }
     else if (e.key && (/Didactic::v1$/.test(e.key) || /^cahierJournalierEPS_v2::/.test(e.key))) renderSeance();
   });
-  try { if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { if (document.getElementById("se-vue") && seChrono.etat !== "match") renderSeance(); }; } catch (e) {}
+  // voix de synthèse : le navigateur les charge en différé (liste vide au premier appel) → écoute + nouvelles tentatives
+  let seNbVoix = -1;
+  const seVoixMaj = () => { const n = seVoixListe().length; if (n !== seNbVoix) { seNbVoix = n; if (document.getElementById("se-vue") && ["match", "appel", "compte"].indexOf(seChrono.etat) < 0) renderSeance(); } };
+  try { if (window.speechSynthesis) { if (speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", seVoixMaj); speechSynthesis.getVoices(); } } catch (e) {}
+  function seAttendreVoix() { let n = 0; (function t() { try { speechSynthesis.getVoices(); } catch (e) {} seVoixMaj(); if (seVoixListe().length || ++n > 20) return; setTimeout(t, 500); })(); }
   (function seCss() {
     const st = document.createElement("style");
     st.textContent = `
@@ -104586,7 +104631,7 @@ window.DISC = {
       let v = document.getElementById("se-vue");
       if (!v) { v = document.createElement("div"); v.id = "se-vue"; v.innerHTML = '<h1>⏱ Gestion de séance — ' + esc(SE.nom) + '</h1><div id="se-zone"></div>'; document.body.appendChild(v); }
       document.body.classList.add("se-ouvert");
-      renderSeance();
+      renderSeance(); seAttendreVoix();
     });
   }
   function seFermer() {
@@ -106196,6 +106241,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 05-11-2026 · 22h30</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 05-11-2026 · 22h45</div>
 </body>
 </html>
