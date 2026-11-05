@@ -104525,7 +104525,7 @@ window.DISC = {
       });
 
       /* 4. ce qui manque dans chaque application */
-      var ajoutees = {}, elevesAj = {}, appsEl = {}, elevesRet = {}, appsRet = {};
+      var ajoutees = {}, elevesAj = {}, appsEl = {}, elevesRet = {}, appsRet = {}, prevus = [];
       Object.keys(cur).forEach(function (app) {
         if (app === sauf) return;
         var c = cur[app], ign = reg.ign[app] || {}, ie = reg.ignEl[app] || {};
@@ -104546,7 +104546,7 @@ window.DISC = {
           });
           var ret = c[ck].ordre.filter(function (ek) { return estSupp(ck, ek, c[ck].eleves[ek].m); });
           if (ret.length) { plan(app).retirer.push({ ref: c[ck].ref, eleves: ret.map(function (ek) { return c[ck].eleves[ek].nom; }) }); ret.forEach(function (ek) { elevesRet[c[ck].eleves[ek].nom] = 1; }); appsRet[app] = 1; }
-          if (manque.length) { plan(app).ajouts.push({ ref: c[ck].ref, vide: c[ck].vide, eleves: manque.map(function (ek) { return u.eleves[ek]; }) }); manque.forEach(function (ek) { elevesAj[ck + "|" + ek] = u.nom; }); appsEl[app] = 1; }
+          if (manque.length) { plan(app).ajouts.push({ ref: c[ck].ref, vide: c[ck].vide, eleves: manque.map(function (ek) { return u.eleves[ek]; }) }); manque.forEach(function (ek) { prevus.push({ app: app, ck: ck, k: ek, m: u.eleves[ek].m, cl: u.nom }); }); }
         });
       });
 
@@ -104564,6 +104564,8 @@ window.DISC = {
       }).then(function (relus) {
         // photo de ce que chaque application contient réellement maintenant
         if (relus) A.forEach(function (a, i) { if (relus[i]) cur[a.id] = rattacher(relus[i]); });
+        // élèves vraiment ajoutés (certaines applications refusent d'ajouter dans une classe déjà commencée)
+        prevus.forEach(function (x) { var c = cur[x.app] && cur[x.app][x.ck]; if (modifiees.indexOf(x.app) >= 0 && c && chercher(c, { k: x.k, m: x.m })) { elevesAj[x.ck + "|" + x.k] = x.cl; appsEl[x.app] = 1; } });
         Object.keys(cur).forEach(function (app) { reg.vus[app] = photo(cur[app]); });
         try { ls.setItem(RK, JSON.stringify(reg)); } catch (e) {}
         var noms = Object.keys(ajoutees), msg = "", sn = Object.keys(supprimees);
@@ -104808,14 +104810,14 @@ var QICONS = {
   var syncOcc = false;
   /* modification enregistrée dans l'application ouverte (élève supprimé, ajouté, renommé…) :
      les autres applications sont mises à jour aussitôt, en arrière-plan */
-  var autoT = null, CLES_AUTO = /^(cahierJournalierEPS_v2::|basketDidactic|handDidactic|footDidactic|volleyDidactic|qualitesPhysiques|navetteRapide|DIDUR_)/;
+  var dernierMsg = "", autoT = null, CLES_AUTO = /^(cahierJournalierEPS_v2::|basketDidactic|handDidactic|footDidactic|volleyDidactic|qualitesPhysiques|navetteRapide|DIDUR_)/;
   function autoSync(){
     clearTimeout(autoT);
     autoT = setTimeout(function(){
       if (syncOcc || !window.SyncClassesEPS) return;
       SyncClassesEPS.synchroniser(current || null).then(function(r){
         (r.modifiees || []).forEach(function(a){ if (a !== current && frames[a]) { try { frames[a].remove(); } catch(e){} delete frames[a]; } });
-        if (r.message) annonce(r.message);
+        if (r.message && r.message !== dernierMsg) { dernierMsg = r.message; annonce(r.message); }
       }).catch(function(){});
     }, 1500);
   }
@@ -104835,7 +104837,7 @@ var QICONS = {
         (r.modifiees || []).forEach(function(a){
           if (a !== quitte && frames[a]) { try { frames[a].remove(); } catch(e){} delete frames[a]; }
         });
-        if (r.message) annonce(r.message);
+        if (r.message && r.message !== dernierMsg) { dernierMsg = r.message; annonce(r.message); }
       }).catch(function(){}).then(suite);
     }, 600);
   }
@@ -104907,6 +104909,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 05-11-2026 · 20h15</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 05-11-2026 · 20h30</div>
 </body>
 </html>
