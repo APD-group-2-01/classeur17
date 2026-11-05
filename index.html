@@ -1148,7 +1148,6 @@ table.grid-table .row-head, table.grid-table .row-num{ background:#F4F0FB !impor
       <a href="#" class="nav-link" data-page="journal"><span class="nav-ic">🗓️</span><span>Journal Scolaire</span></a>
       <a href="#" class="nav-link" data-page="conges"><span class="nav-ic">🌴</span><span>Liste des Congés</span></a>
       <a href="#" class="nav-link" data-page="aptitudes"><span class="nav-ic">📏</span><span>Test d'Aptitudes</span></a>
-      <a href="#" class="nav-link" data-page="groupes"><span class="nav-ic">👥</span><span>Répartition des Groupes</span></a>
       <a href="#" class="nav-link" data-page="cycles"><span class="nav-ic">🏆</span><span>Cycles</span></a>
       <a href="#" class="nav-link" data-page="bareme"><span class="nav-ic">📊</span><span>Barème Athlétisme</span></a>
       <a href="#" class="nav-link" data-page="notation"><span class="nav-ic">🤸</span><span>Notation Gymnastique</span></a>
@@ -1265,12 +1264,6 @@ table.grid-table .row-head, table.grid-table .row-num{ background:#F4F0FB !impor
       <div class="table-scroll">
         <table class="grid-table" id="aptitudes-table"></table>
       </div>
-    </section>
-
-    <!-- RÉPARTITION DES GROUPES -->
-    <section class="page" id="page-groupes">
-      <h1 class="page-title">Répartition des Groupes</h1>
-      <div class="groupes-grid" id="groupes-grid"></div>
     </section>
 
     <!-- CYCLES -->
@@ -2199,6 +2192,19 @@ const JOURNAL_DEFAUT = {
     const cleC = s => (window.parent && window.parent.SyncClassesEPS) ? window.parent.SyncClassesEPS.cleClasse(s) : String(s || "").trim().toLowerCase();
     file.forEach(it => {
       const nd = state.data.niveaux[it.niveau]; if (!nd) return;
+      if (it.retirer) {
+        const cl = nd.classes.filter(c => cleC(c) === cleC(it.nom))[0]; if (!cl || !nd.cycles[cl]) return;
+        const vide = o => { const x = {}; Object.keys(o || {}).forEach(k => { x[k] = Array.isArray(o[k]) ? o[k].map(() => "") : ""; }); return x; };
+        it.retirer.forEach(nom => {
+          const k = cleN(nom), ref = (nd.cycles[cl][REF_CYCLE_ID] || {}).rows || [];
+          let idx = ref.findIndex(r => r && r.nom && cleN(r.nom) === k);
+          if (idx === -1) Object.keys(nd.cycles[cl]).some(cy => { const rr = (nd.cycles[cl][cy] || {}).rows || []; idx = rr.findIndex(r => r && r.nom && cleN(r.nom) === k); return idx !== -1; });
+          if (idx === -1) return;
+          Object.keys(nd.cycles[cl]).forEach(cy => { const rr = (nd.cycles[cl][cy] || {}).rows; if (!rr || !rr[idx]) return; const o = rr.splice(idx, 1)[0]; rr.push(vide(o)); });
+          const ap = ((nd.aptitudes || {})[cl] || {}).rows; if (ap && ap[idx]) { const o = ap.splice(idx, 1)[0]; ap.push(vide(o)); }
+        });
+        return;
+      }
       if (it.supprimer) {
         const old = nd.classes.filter(c => cleC(c) === cleC(it.supprimer))[0]; if (!old) return;
         nd.classes = nd.classes.filter(c => c !== old);
@@ -3509,7 +3515,13 @@ const JOURNAL_DEFAUT = {
       const nameInput = document.createElement("input");
       nameInput.type = "text"; nameInput.className = "cell-input cell-name";
       nameInput.value = row.nom || "";
-      nameInput.addEventListener("input", () => { row.nom = nameInput.value; if (bcApplyRow(row, evalCfg)) refreshBcCells(); saveDebounced(); });
+      nameInput.addEventListener("input", () => {
+        row.nom = nameInput.value;
+        // même ligne = même élève : le nom suit dans toutes les APS de la classe et dans le test d'aptitudes
+        try { const nd0 = curNiveauData(), cl0 = nd0.activeClasse;
+          CYCLES.forEach(cfg => { const r = ((nd0.cycles[cl0] || {})[cfg.id] || {}).rows; if (r && r[idx]) r[idx].nom = nameInput.value; });
+          const ap = ((nd0.aptitudes || {})[cl0] || {}).rows; if (ap && ap[idx]) ap[idx].nom = nameInput.value; } catch (e) {}
+        if (bcApplyRow(row, evalCfg)) refreshBcCells(); saveDebounced(); });
       tdName.appendChild(nameInput);
       tr.appendChild(tdName);
 
@@ -5822,6 +5834,78 @@ const JOURNAL_DEFAUT = {
 })();
 
 @@SCRIPTCLOSE7f3a@@>
+<style>
+.pro-sel{position:relative;display:inline-flex;}
+.pro-sel > select{position:absolute !important;opacity:0 !important;pointer-events:none !important;width:1px !important;height:1px !important;left:0;top:0;}
+.pro-sel-b{display:inline-flex;align-items:center;gap:8px;font:inherit;font-weight:800;font-size:.95rem;color:#fff;padding:8px 12px 8px 16px;min-width:74px;border-radius:999px;cursor:pointer;
+  background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.08));border:1px solid rgba(255,255,255,.38);box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 4px 12px -6px rgba(0,0,0,.45);transition:background .15s ease,transform .1s ease;}
+.pro-sel-b:hover{background:linear-gradient(180deg,rgba(255,255,255,.3),rgba(255,255,255,.14));}
+.pro-sel-b:active{transform:translateY(1px);}
+.pro-sel-b small{font-size:.66rem;font-weight:700;opacity:.75;text-transform:uppercase;letter-spacing:.06em;}
+.pro-sel-b svg{opacity:.85;transition:transform .15s ease;}
+.pro-sel-b.ouvert svg{transform:rotate(180deg);}
+.pro-sel-m{position:fixed;z-index:100000;min-width:220px;max-width:min(92vw,440px);background:#fff;border-radius:16px;box-shadow:0 24px 50px -16px rgba(30,10,70,.55),0 0 0 1px rgba(76,29,149,.12);overflow:hidden;animation:proSel .14s ease-out;font-family:inherit;}
+@keyframes proSel{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
+.pro-sel-t{background:linear-gradient(135deg,#4C1D95,#7C3AED);color:#fff;font-weight:800;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;}
+.pro-sel-t span{font-weight:600;opacity:.8;letter-spacing:0;text-transform:none;}
+.pro-sel-l{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;padding:12px;max-height:60vh;overflow:auto;}
+.pro-sel-l button{font:inherit;font-weight:800;font-size:1rem;color:#3B1677;background:#F6F2FF;border:1.5px solid #DDD3F5;border-radius:12px;padding:12px 8px;cursor:pointer;transition:all .12s ease;}
+.pro-sel-l button:hover{background:#EDE4FF;border-color:#A78BFA;transform:translateY(-1px);}
+.pro-sel-l button.on{background:linear-gradient(135deg,#5B2BB8,#8B5CF6);color:#fff;border-color:transparent;box-shadow:0 6px 14px -6px rgba(91,43,184,.7);}
+.pro-sel-l button[disabled]{opacity:.5;cursor:default;}
+@media print{.pro-sel-m{display:none !important;}}
+</style>
+<script>
+/* listes de la barre du cahier (niveau, classe, année) : menu déroulant moderne à la place de la liste du navigateur */
+(function () {
+  "use strict";
+  var TITRES = { "niveau-select": "Niveau", "classe-select": "Classe active" };
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function fermer() { var m = document.querySelector(".pro-sel-m"); if (m) m.remove(); Array.prototype.forEach.call(document.querySelectorAll(".pro-sel-b.ouvert"), function (b) { b.classList.remove("ouvert"); }); }
+  function ameliorer(sel) {
+    if (sel.__pro) return; sel.__pro = true;
+    var w = document.createElement("span"); w.className = "pro-sel"; sel.parentNode.insertBefore(w, sel); w.appendChild(sel);
+    var b = document.createElement("button"); b.type = "button"; b.className = "pro-sel-b"; w.appendChild(b);
+    var titre = TITRES[sel.id] || sel.getAttribute("aria-label") || sel.title || "";
+    function lab() {
+      var o = sel.options[sel.selectedIndex], t = o ? o.text : "—";
+      if (b.__t === t) return; b.__t = t;
+      b.innerHTML = "<span>" + esc(t) + "</span><svg width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>";
+      b.title = titre;
+    }
+    lab();
+    new MutationObserver(lab).observe(sel, { childList: true, subtree: true, attributes: true, characterData: true });
+    sel.addEventListener("change", lab);
+    setInterval(lab, 800);   // valeur changée par le programme (changement de niveau, de classe…)
+    b.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var deja = b.classList.contains("ouvert"); fermer(); if (deja) return;
+      b.classList.add("ouvert");
+      var m = document.createElement("div"); m.className = "pro-sel-m";
+      var opts = Array.prototype.slice.call(sel.options);
+      m.innerHTML = "<div class='pro-sel-t'>" + esc(titre) + "<span>" + opts.length + "</span></div><div class='pro-sel-l'>" +
+        opts.map(function (o, i) { return "<button type='button' data-i='" + i + "' class='" + (i === sel.selectedIndex ? "on" : "") + "'" + (o.disabled ? " disabled" : "") + ">" + esc(o.text) + "</button>"; }).join("") + "</div>";
+      document.body.appendChild(m);
+      var r = b.getBoundingClientRect(), mw = m.offsetWidth, x = Math.min(Math.max(8, r.left), window.innerWidth - mw - 8);
+      m.style.left = x + "px"; m.style.top = (r.bottom + 8) + "px"; m.style.minWidth = Math.max(220, r.width) + "px";
+      m.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var t = ev.target.closest("button[data-i]"); if (!t || t.disabled) return;
+        var i = +t.getAttribute("data-i");
+        if (i !== sel.selectedIndex) { sel.selectedIndex = i; sel.dispatchEvent(new Event("change", { bubbles: true })); sel.dispatchEvent(new Event("input", { bubbles: true })); }
+        fermer(); lab();
+      });
+    });
+  }
+  function poser() { Array.prototype.forEach.call(document.querySelectorAll(".topbar-actions select"), ameliorer); }
+  document.addEventListener("click", fermer);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") fermer(); });
+  window.addEventListener("resize", fermer); window.addEventListener("scroll", fermer, true);
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", poser); else poser();
+  setTimeout(poser, 1500);
+})();
+@@SCRIPTCLOSE7f3a@@>
+
 </body>
 </html>
 </script>
@@ -23001,7 +23085,7 @@ window.XlsxLite = (function () {
   function seClasseActive() {
     try {
       if (window.__GR_CFG && window.__GR_CFG.contexte)
-        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "" } : null).catch(() => null);
+        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "", eleves: c.eleves || [] } : null).catch(() => null);
     } catch (e) {}
     try {
       if (APP === "didur") {
@@ -23060,10 +23144,36 @@ window.XlsxLite = (function () {
         }
       } catch (e) {}
     }
+    // groupes tirés dans la séance (enregistrés avec la séance)
+    const K = classe + "::" + apsId, d0 = SE_DB[K];
+    if (d0 && Array.isArray(d0.groupes) && d0.groupes.length >= 2) return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: d0.groupes };
+    // ancien tirage du cahier journalier : repris une fois dans la séance
     const J = seJournal(), nd = J && seNiveauDe(J, classe), t = nd && nd.grTirages && nd.grTirages[nd.__cl] && nd.grTirages[nd.__cl][apsId];
-    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2)
-      return { source: "Répartition des groupes du cahier journalier", groupes: t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length) };
+    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2) {
+      const gr = t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length);
+      SE_DB[K] = SE_DB[K] || {}; SE_DB[K].groupes = gr; seSave();
+      return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: gr };
+    }
     return { source: null, groupes: [] };
+  }
+  /* élèves de la classe (application, sinon cahier journalier) et sexe */
+  function seEleves(classe) {
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
+    const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
+    Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
+    return out;
+  }
+  function seMelanger(t) { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; }
+  function seTirer(classe, nb) {
+    const el = seEleves(classe); if (el.length < 2) return null;
+    nb = Math.max(2, Math.min(8, nb, el.length));
+    const gr = Array.from({ length: nb }, () => []), cF = Array(nb).fill(0);
+    seMelanger(el.filter(e => e.sexe === "F")).concat(seMelanger(el.filter(e => e.sexe !== "F"))).forEach(e => {
+      const o = seMelanger(gr.map((_, i) => i)).sort((a, b) => (gr[a].length - gr[b].length) || (e.sexe === "F" ? cF[a] - cF[b] : 0));
+      gr[o[0]].push(e.nom); if (e.sexe === "F") cF[o[0]]++;
+    });
+    return gr.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.sort((a, b) => a.localeCompare(b, "fr")) }));
   }
   function seData(classe, apsId) {
     const k = classe + "::" + apsId;
@@ -23511,9 +23621,22 @@ window.XlsxLite = (function () {
         <span style="flex:1"></span>
         <button type="button" class="gr-btn" id="se-plein">⛶ Plein écran</button>
         <button type="button" class="gr-btn se-fermer" id="se-fermer">Fermer ✕</button></div>`;
+    const nbEl = seEleves(classe).length;
+    const tirageCtl = (lib) => `<span class="se-tir">Groupes <select id="se-tnb">${[2, 3, 4, 5, 6, 7, 8].map(n => `<option${n === (ids.length >= 2 ? ids.length : 4) ? " selected" : ""}>${n}</option>`).join("")}</select>
+        ou joueurs / groupe <select id="se-tpar"><option value="">—</option>${[3, 4, 5, 6, 7, 8, 9, 10].map(n => `<option>${n}</option>`).join("")}</select>
+        <button type="button" class="gr-btn gr-tirer" id="se-tirer">${lib}</button></span>`;
+    const brancherTirage = () => {
+      const b = document.getElementById("se-tirer"); if (!b) return;
+      const par = document.getElementById("se-tpar"), nbS = document.getElementById("se-tnb");
+      par.onchange = () => { const p = +par.value; if (p) nbS.value = String(Math.max(2, Math.min(8, Math.ceil(nbEl / p)))); };
+      b.onclick = () => {
+        const faire = () => { const gr = seTirer(classe, +nbS.value); if (!gr) { seToast("Aucun élève trouvé pour cette classe", "error"); return; } d.groupes = gr; d.rot = []; d.res = {}; d.buteurs = []; seSave(); renderSeance(); seToast(gr.length + " groupes tirés au sort (garçons / filles équilibrés)", "success"); };
+        if (d.groupes && Object.keys(d.res || {}).length) askConfirm("Nouveau tirage", "Les groupes, le planning et les scores de cette APS seront remplacés.", "Tirer", faire); else faire();
+      };
+    };
     if (ids.length < 2) {
-      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)}.</b><br>Les groupes ne sont jamais recréés ici : ils viennent ${SE_APP[seAps] ? "des <b>équipes du Diagnostic collectif</b> de cette application (bouton « ⚡ Répartir la classe »), ou à défaut " : ""}de la <b>Répartition des groupes</b> du cahier journalier pour cette APS (le tirage se fait automatiquement en ouvrant cette page du cahier).</div>`;
-      seBrancherTete(z, d);
+      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)} (${nbEl} élèves).</b><br>${SE_APP[seAps] && seAps !== "c-volley" ? "Les équipes du <b>Diagnostic collectif</b> de cette application sont utilisées dès qu'elles existent (bouton « ⚡ Répartir la classe »). Sinon, " : ""}tirez les groupes au sort ici : répartition aléatoire équilibrée garçons / filles, enregistrée pour cette classe et cette APS.<div style="margin-top:10px">${tirageCtl("🎲 Tirer les groupes")}</div></div>`;
+      seBrancherTete(z, d); brancherTirage();
       return;
     }
     // planning : (re)généré si absent ou si les groupes ont changé et qu'aucun score n'est saisi
@@ -23534,7 +23657,7 @@ window.XlsxLite = (function () {
     seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
-      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b> — toute modification des groupes y est reprise automatiquement.</p>`;
+      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
     // panneau latéral
     const rangs = (ro.m || []).map((m, i) => { const x = d.res[seRot + ":" + i] || {}; const r = seResultat(d, seRot, i);
       return `<div class="se-score"><span class="se-pas" style="background:${col(m[0])}">${m[0]}</span><input type="number" min="0" data-sc="${seRot}:${i}:a" value="${x.a == null ? "" : x.a}"><b>–</b><input type="number" min="0" data-sc="${seRot}:${i}:b" value="${x.b == null ? "" : x.b}"><span class="se-pas" style="background:${col(m[1])}">${m[1]}</span>
@@ -23624,7 +23747,7 @@ window.XlsxLite = (function () {
         <div class="se-box"><b>Ateliers — ${esc(aps.nom)}</b>${ateliersEd}</div>
       </div>`;
     seAfficherChrono();
-    seBrancherTete(z, d);
+    seBrancherTete(z, d); brancherTirage();
     const q = id => document.getElementById(id);
     const sauver = (re) => { seSave(); if (re !== false) renderSeance(); };
     if (q("se-go")) q("se-go").onclick = () => seDemarrer(ctx);
@@ -23854,7 +23977,7 @@ window.XlsxLite = (function () {
 
   function seOuvrir() {
     seClasseActive().then(c => {
-      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; }
+      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; SE.ctxCl = c.nom; SE.ctxEl = c.eleves || []; }
       if (!SE.classe) SE.classe = seClassesListe()[0] || null;
       if (!SE.niv && SE.classe) { const J = seJournal(), nd = J && seNiveauDe(J, SE.classe); SE.niv = nd ? nd.__niv : ""; }
       SE_DB = seLire();
@@ -34741,7 +34864,7 @@ window.XlsxLite = (function () {
   function seClasseActive() {
     try {
       if (window.__GR_CFG && window.__GR_CFG.contexte)
-        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "" } : null).catch(() => null);
+        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "", eleves: c.eleves || [] } : null).catch(() => null);
     } catch (e) {}
     try {
       if (APP === "didur") {
@@ -34800,10 +34923,36 @@ window.XlsxLite = (function () {
         }
       } catch (e) {}
     }
+    // groupes tirés dans la séance (enregistrés avec la séance)
+    const K = classe + "::" + apsId, d0 = SE_DB[K];
+    if (d0 && Array.isArray(d0.groupes) && d0.groupes.length >= 2) return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: d0.groupes };
+    // ancien tirage du cahier journalier : repris une fois dans la séance
     const J = seJournal(), nd = J && seNiveauDe(J, classe), t = nd && nd.grTirages && nd.grTirages[nd.__cl] && nd.grTirages[nd.__cl][apsId];
-    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2)
-      return { source: "Répartition des groupes du cahier journalier", groupes: t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length) };
+    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2) {
+      const gr = t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length);
+      SE_DB[K] = SE_DB[K] || {}; SE_DB[K].groupes = gr; seSave();
+      return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: gr };
+    }
     return { source: null, groupes: [] };
+  }
+  /* élèves de la classe (application, sinon cahier journalier) et sexe */
+  function seEleves(classe) {
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
+    const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
+    Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
+    return out;
+  }
+  function seMelanger(t) { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; }
+  function seTirer(classe, nb) {
+    const el = seEleves(classe); if (el.length < 2) return null;
+    nb = Math.max(2, Math.min(8, nb, el.length));
+    const gr = Array.from({ length: nb }, () => []), cF = Array(nb).fill(0);
+    seMelanger(el.filter(e => e.sexe === "F")).concat(seMelanger(el.filter(e => e.sexe !== "F"))).forEach(e => {
+      const o = seMelanger(gr.map((_, i) => i)).sort((a, b) => (gr[a].length - gr[b].length) || (e.sexe === "F" ? cF[a] - cF[b] : 0));
+      gr[o[0]].push(e.nom); if (e.sexe === "F") cF[o[0]]++;
+    });
+    return gr.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.sort((a, b) => a.localeCompare(b, "fr")) }));
   }
   function seData(classe, apsId) {
     const k = classe + "::" + apsId;
@@ -35251,9 +35400,22 @@ window.XlsxLite = (function () {
         <span style="flex:1"></span>
         <button type="button" class="gr-btn" id="se-plein">⛶ Plein écran</button>
         <button type="button" class="gr-btn se-fermer" id="se-fermer">Fermer ✕</button></div>`;
+    const nbEl = seEleves(classe).length;
+    const tirageCtl = (lib) => `<span class="se-tir">Groupes <select id="se-tnb">${[2, 3, 4, 5, 6, 7, 8].map(n => `<option${n === (ids.length >= 2 ? ids.length : 4) ? " selected" : ""}>${n}</option>`).join("")}</select>
+        ou joueurs / groupe <select id="se-tpar"><option value="">—</option>${[3, 4, 5, 6, 7, 8, 9, 10].map(n => `<option>${n}</option>`).join("")}</select>
+        <button type="button" class="gr-btn gr-tirer" id="se-tirer">${lib}</button></span>`;
+    const brancherTirage = () => {
+      const b = document.getElementById("se-tirer"); if (!b) return;
+      const par = document.getElementById("se-tpar"), nbS = document.getElementById("se-tnb");
+      par.onchange = () => { const p = +par.value; if (p) nbS.value = String(Math.max(2, Math.min(8, Math.ceil(nbEl / p)))); };
+      b.onclick = () => {
+        const faire = () => { const gr = seTirer(classe, +nbS.value); if (!gr) { seToast("Aucun élève trouvé pour cette classe", "error"); return; } d.groupes = gr; d.rot = []; d.res = {}; d.buteurs = []; seSave(); renderSeance(); seToast(gr.length + " groupes tirés au sort (garçons / filles équilibrés)", "success"); };
+        if (d.groupes && Object.keys(d.res || {}).length) askConfirm("Nouveau tirage", "Les groupes, le planning et les scores de cette APS seront remplacés.", "Tirer", faire); else faire();
+      };
+    };
     if (ids.length < 2) {
-      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)}.</b><br>Les groupes ne sont jamais recréés ici : ils viennent ${SE_APP[seAps] ? "des <b>équipes du Diagnostic collectif</b> de cette application (bouton « ⚡ Répartir la classe »), ou à défaut " : ""}de la <b>Répartition des groupes</b> du cahier journalier pour cette APS (le tirage se fait automatiquement en ouvrant cette page du cahier).</div>`;
-      seBrancherTete(z, d);
+      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)} (${nbEl} élèves).</b><br>${SE_APP[seAps] && seAps !== "c-volley" ? "Les équipes du <b>Diagnostic collectif</b> de cette application sont utilisées dès qu'elles existent (bouton « ⚡ Répartir la classe »). Sinon, " : ""}tirez les groupes au sort ici : répartition aléatoire équilibrée garçons / filles, enregistrée pour cette classe et cette APS.<div style="margin-top:10px">${tirageCtl("🎲 Tirer les groupes")}</div></div>`;
+      seBrancherTete(z, d); brancherTirage();
       return;
     }
     // planning : (re)généré si absent ou si les groupes ont changé et qu'aucun score n'est saisi
@@ -35274,7 +35436,7 @@ window.XlsxLite = (function () {
     seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
-      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b> — toute modification des groupes y est reprise automatiquement.</p>`;
+      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
     // panneau latéral
     const rangs = (ro.m || []).map((m, i) => { const x = d.res[seRot + ":" + i] || {}; const r = seResultat(d, seRot, i);
       return `<div class="se-score"><span class="se-pas" style="background:${col(m[0])}">${m[0]}</span><input type="number" min="0" data-sc="${seRot}:${i}:a" value="${x.a == null ? "" : x.a}"><b>–</b><input type="number" min="0" data-sc="${seRot}:${i}:b" value="${x.b == null ? "" : x.b}"><span class="se-pas" style="background:${col(m[1])}">${m[1]}</span>
@@ -35364,7 +35526,7 @@ window.XlsxLite = (function () {
         <div class="se-box"><b>Ateliers — ${esc(aps.nom)}</b>${ateliersEd}</div>
       </div>`;
     seAfficherChrono();
-    seBrancherTete(z, d);
+    seBrancherTete(z, d); brancherTirage();
     const q = id => document.getElementById(id);
     const sauver = (re) => { seSave(); if (re !== false) renderSeance(); };
     if (q("se-go")) q("se-go").onclick = () => seDemarrer(ctx);
@@ -35594,7 +35756,7 @@ window.XlsxLite = (function () {
 
   function seOuvrir() {
     seClasseActive().then(c => {
-      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; }
+      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; SE.ctxCl = c.nom; SE.ctxEl = c.eleves || []; }
       if (!SE.classe) SE.classe = seClassesListe()[0] || null;
       if (!SE.niv && SE.classe) { const J = seJournal(), nd = J && seNiveauDe(J, SE.classe); SE.niv = nd ? nd.__niv : ""; }
       SE_DB = seLire();
@@ -46478,7 +46640,7 @@ window.XlsxLite = (function () {
   function seClasseActive() {
     try {
       if (window.__GR_CFG && window.__GR_CFG.contexte)
-        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "" } : null).catch(() => null);
+        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "", eleves: c.eleves || [] } : null).catch(() => null);
     } catch (e) {}
     try {
       if (APP === "didur") {
@@ -46537,10 +46699,36 @@ window.XlsxLite = (function () {
         }
       } catch (e) {}
     }
+    // groupes tirés dans la séance (enregistrés avec la séance)
+    const K = classe + "::" + apsId, d0 = SE_DB[K];
+    if (d0 && Array.isArray(d0.groupes) && d0.groupes.length >= 2) return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: d0.groupes };
+    // ancien tirage du cahier journalier : repris une fois dans la séance
     const J = seJournal(), nd = J && seNiveauDe(J, classe), t = nd && nd.grTirages && nd.grTirages[nd.__cl] && nd.grTirages[nd.__cl][apsId];
-    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2)
-      return { source: "Répartition des groupes du cahier journalier", groupes: t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length) };
+    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2) {
+      const gr = t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length);
+      SE_DB[K] = SE_DB[K] || {}; SE_DB[K].groupes = gr; seSave();
+      return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: gr };
+    }
     return { source: null, groupes: [] };
+  }
+  /* élèves de la classe (application, sinon cahier journalier) et sexe */
+  function seEleves(classe) {
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
+    const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
+    Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
+    return out;
+  }
+  function seMelanger(t) { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; }
+  function seTirer(classe, nb) {
+    const el = seEleves(classe); if (el.length < 2) return null;
+    nb = Math.max(2, Math.min(8, nb, el.length));
+    const gr = Array.from({ length: nb }, () => []), cF = Array(nb).fill(0);
+    seMelanger(el.filter(e => e.sexe === "F")).concat(seMelanger(el.filter(e => e.sexe !== "F"))).forEach(e => {
+      const o = seMelanger(gr.map((_, i) => i)).sort((a, b) => (gr[a].length - gr[b].length) || (e.sexe === "F" ? cF[a] - cF[b] : 0));
+      gr[o[0]].push(e.nom); if (e.sexe === "F") cF[o[0]]++;
+    });
+    return gr.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.sort((a, b) => a.localeCompare(b, "fr")) }));
   }
   function seData(classe, apsId) {
     const k = classe + "::" + apsId;
@@ -46988,9 +47176,22 @@ window.XlsxLite = (function () {
         <span style="flex:1"></span>
         <button type="button" class="gr-btn" id="se-plein">⛶ Plein écran</button>
         <button type="button" class="gr-btn se-fermer" id="se-fermer">Fermer ✕</button></div>`;
+    const nbEl = seEleves(classe).length;
+    const tirageCtl = (lib) => `<span class="se-tir">Groupes <select id="se-tnb">${[2, 3, 4, 5, 6, 7, 8].map(n => `<option${n === (ids.length >= 2 ? ids.length : 4) ? " selected" : ""}>${n}</option>`).join("")}</select>
+        ou joueurs / groupe <select id="se-tpar"><option value="">—</option>${[3, 4, 5, 6, 7, 8, 9, 10].map(n => `<option>${n}</option>`).join("")}</select>
+        <button type="button" class="gr-btn gr-tirer" id="se-tirer">${lib}</button></span>`;
+    const brancherTirage = () => {
+      const b = document.getElementById("se-tirer"); if (!b) return;
+      const par = document.getElementById("se-tpar"), nbS = document.getElementById("se-tnb");
+      par.onchange = () => { const p = +par.value; if (p) nbS.value = String(Math.max(2, Math.min(8, Math.ceil(nbEl / p)))); };
+      b.onclick = () => {
+        const faire = () => { const gr = seTirer(classe, +nbS.value); if (!gr) { seToast("Aucun élève trouvé pour cette classe", "error"); return; } d.groupes = gr; d.rot = []; d.res = {}; d.buteurs = []; seSave(); renderSeance(); seToast(gr.length + " groupes tirés au sort (garçons / filles équilibrés)", "success"); };
+        if (d.groupes && Object.keys(d.res || {}).length) askConfirm("Nouveau tirage", "Les groupes, le planning et les scores de cette APS seront remplacés.", "Tirer", faire); else faire();
+      };
+    };
     if (ids.length < 2) {
-      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)}.</b><br>Les groupes ne sont jamais recréés ici : ils viennent ${SE_APP[seAps] ? "des <b>équipes du Diagnostic collectif</b> de cette application (bouton « ⚡ Répartir la classe »), ou à défaut " : ""}de la <b>Répartition des groupes</b> du cahier journalier pour cette APS (le tirage se fait automatiquement en ouvrant cette page du cahier).</div>`;
-      seBrancherTete(z, d);
+      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)} (${nbEl} élèves).</b><br>${SE_APP[seAps] && seAps !== "c-volley" ? "Les équipes du <b>Diagnostic collectif</b> de cette application sont utilisées dès qu'elles existent (bouton « ⚡ Répartir la classe »). Sinon, " : ""}tirez les groupes au sort ici : répartition aléatoire équilibrée garçons / filles, enregistrée pour cette classe et cette APS.<div style="margin-top:10px">${tirageCtl("🎲 Tirer les groupes")}</div></div>`;
+      seBrancherTete(z, d); brancherTirage();
       return;
     }
     // planning : (re)généré si absent ou si les groupes ont changé et qu'aucun score n'est saisi
@@ -47011,7 +47212,7 @@ window.XlsxLite = (function () {
     seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
-      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b> — toute modification des groupes y est reprise automatiquement.</p>`;
+      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
     // panneau latéral
     const rangs = (ro.m || []).map((m, i) => { const x = d.res[seRot + ":" + i] || {}; const r = seResultat(d, seRot, i);
       return `<div class="se-score"><span class="se-pas" style="background:${col(m[0])}">${m[0]}</span><input type="number" min="0" data-sc="${seRot}:${i}:a" value="${x.a == null ? "" : x.a}"><b>–</b><input type="number" min="0" data-sc="${seRot}:${i}:b" value="${x.b == null ? "" : x.b}"><span class="se-pas" style="background:${col(m[1])}">${m[1]}</span>
@@ -47101,7 +47302,7 @@ window.XlsxLite = (function () {
         <div class="se-box"><b>Ateliers — ${esc(aps.nom)}</b>${ateliersEd}</div>
       </div>`;
     seAfficherChrono();
-    seBrancherTete(z, d);
+    seBrancherTete(z, d); brancherTirage();
     const q = id => document.getElementById(id);
     const sauver = (re) => { seSave(); if (re !== false) renderSeance(); };
     if (q("se-go")) q("se-go").onclick = () => seDemarrer(ctx);
@@ -47331,7 +47532,7 @@ window.XlsxLite = (function () {
 
   function seOuvrir() {
     seClasseActive().then(c => {
-      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; }
+      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; SE.ctxCl = c.nom; SE.ctxEl = c.eleves || []; }
       if (!SE.classe) SE.classe = seClassesListe()[0] || null;
       if (!SE.niv && SE.classe) { const J = seJournal(), nd = J && seNiveauDe(J, SE.classe); SE.niv = nd ? nd.__niv : ""; }
       SE_DB = seLire();
@@ -58061,7 +58262,7 @@ window.XlsxLite = (function () {
   function seClasseActive() {
     try {
       if (window.__GR_CFG && window.__GR_CFG.contexte)
-        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "" } : null).catch(() => null);
+        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "", eleves: c.eleves || [] } : null).catch(() => null);
     } catch (e) {}
     try {
       if (APP === "didur") {
@@ -58120,10 +58321,36 @@ window.XlsxLite = (function () {
         }
       } catch (e) {}
     }
+    // groupes tirés dans la séance (enregistrés avec la séance)
+    const K = classe + "::" + apsId, d0 = SE_DB[K];
+    if (d0 && Array.isArray(d0.groupes) && d0.groupes.length >= 2) return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: d0.groupes };
+    // ancien tirage du cahier journalier : repris une fois dans la séance
     const J = seJournal(), nd = J && seNiveauDe(J, classe), t = nd && nd.grTirages && nd.grTirages[nd.__cl] && nd.grTirages[nd.__cl][apsId];
-    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2)
-      return { source: "Répartition des groupes du cahier journalier", groupes: t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length) };
+    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2) {
+      const gr = t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length);
+      SE_DB[K] = SE_DB[K] || {}; SE_DB[K].groupes = gr; seSave();
+      return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: gr };
+    }
     return { source: null, groupes: [] };
+  }
+  /* élèves de la classe (application, sinon cahier journalier) et sexe */
+  function seEleves(classe) {
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
+    const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
+    Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
+    return out;
+  }
+  function seMelanger(t) { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; }
+  function seTirer(classe, nb) {
+    const el = seEleves(classe); if (el.length < 2) return null;
+    nb = Math.max(2, Math.min(8, nb, el.length));
+    const gr = Array.from({ length: nb }, () => []), cF = Array(nb).fill(0);
+    seMelanger(el.filter(e => e.sexe === "F")).concat(seMelanger(el.filter(e => e.sexe !== "F"))).forEach(e => {
+      const o = seMelanger(gr.map((_, i) => i)).sort((a, b) => (gr[a].length - gr[b].length) || (e.sexe === "F" ? cF[a] - cF[b] : 0));
+      gr[o[0]].push(e.nom); if (e.sexe === "F") cF[o[0]]++;
+    });
+    return gr.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.sort((a, b) => a.localeCompare(b, "fr")) }));
   }
   function seData(classe, apsId) {
     const k = classe + "::" + apsId;
@@ -58571,9 +58798,22 @@ window.XlsxLite = (function () {
         <span style="flex:1"></span>
         <button type="button" class="gr-btn" id="se-plein">⛶ Plein écran</button>
         <button type="button" class="gr-btn se-fermer" id="se-fermer">Fermer ✕</button></div>`;
+    const nbEl = seEleves(classe).length;
+    const tirageCtl = (lib) => `<span class="se-tir">Groupes <select id="se-tnb">${[2, 3, 4, 5, 6, 7, 8].map(n => `<option${n === (ids.length >= 2 ? ids.length : 4) ? " selected" : ""}>${n}</option>`).join("")}</select>
+        ou joueurs / groupe <select id="se-tpar"><option value="">—</option>${[3, 4, 5, 6, 7, 8, 9, 10].map(n => `<option>${n}</option>`).join("")}</select>
+        <button type="button" class="gr-btn gr-tirer" id="se-tirer">${lib}</button></span>`;
+    const brancherTirage = () => {
+      const b = document.getElementById("se-tirer"); if (!b) return;
+      const par = document.getElementById("se-tpar"), nbS = document.getElementById("se-tnb");
+      par.onchange = () => { const p = +par.value; if (p) nbS.value = String(Math.max(2, Math.min(8, Math.ceil(nbEl / p)))); };
+      b.onclick = () => {
+        const faire = () => { const gr = seTirer(classe, +nbS.value); if (!gr) { seToast("Aucun élève trouvé pour cette classe", "error"); return; } d.groupes = gr; d.rot = []; d.res = {}; d.buteurs = []; seSave(); renderSeance(); seToast(gr.length + " groupes tirés au sort (garçons / filles équilibrés)", "success"); };
+        if (d.groupes && Object.keys(d.res || {}).length) askConfirm("Nouveau tirage", "Les groupes, le planning et les scores de cette APS seront remplacés.", "Tirer", faire); else faire();
+      };
+    };
     if (ids.length < 2) {
-      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)}.</b><br>Les groupes ne sont jamais recréés ici : ils viennent ${SE_APP[seAps] ? "des <b>équipes du Diagnostic collectif</b> de cette application (bouton « ⚡ Répartir la classe »), ou à défaut " : ""}de la <b>Répartition des groupes</b> du cahier journalier pour cette APS (le tirage se fait automatiquement en ouvrant cette page du cahier).</div>`;
-      seBrancherTete(z, d);
+      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)} (${nbEl} élèves).</b><br>${SE_APP[seAps] && seAps !== "c-volley" ? "Les équipes du <b>Diagnostic collectif</b> de cette application sont utilisées dès qu'elles existent (bouton « ⚡ Répartir la classe »). Sinon, " : ""}tirez les groupes au sort ici : répartition aléatoire équilibrée garçons / filles, enregistrée pour cette classe et cette APS.<div style="margin-top:10px">${tirageCtl("🎲 Tirer les groupes")}</div></div>`;
+      seBrancherTete(z, d); brancherTirage();
       return;
     }
     // planning : (re)généré si absent ou si les groupes ont changé et qu'aucun score n'est saisi
@@ -58594,7 +58834,7 @@ window.XlsxLite = (function () {
     seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
-      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b> — toute modification des groupes y est reprise automatiquement.</p>`;
+      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
     // panneau latéral
     const rangs = (ro.m || []).map((m, i) => { const x = d.res[seRot + ":" + i] || {}; const r = seResultat(d, seRot, i);
       return `<div class="se-score"><span class="se-pas" style="background:${col(m[0])}">${m[0]}</span><input type="number" min="0" data-sc="${seRot}:${i}:a" value="${x.a == null ? "" : x.a}"><b>–</b><input type="number" min="0" data-sc="${seRot}:${i}:b" value="${x.b == null ? "" : x.b}"><span class="se-pas" style="background:${col(m[1])}">${m[1]}</span>
@@ -58684,7 +58924,7 @@ window.XlsxLite = (function () {
         <div class="se-box"><b>Ateliers — ${esc(aps.nom)}</b>${ateliersEd}</div>
       </div>`;
     seAfficherChrono();
-    seBrancherTete(z, d);
+    seBrancherTete(z, d); brancherTirage();
     const q = id => document.getElementById(id);
     const sauver = (re) => { seSave(); if (re !== false) renderSeance(); };
     if (q("se-go")) q("se-go").onclick = () => seDemarrer(ctx);
@@ -58914,7 +59154,7 @@ window.XlsxLite = (function () {
 
   function seOuvrir() {
     seClasseActive().then(c => {
-      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; }
+      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; SE.ctxCl = c.nom; SE.ctxEl = c.eleves || []; }
       if (!SE.classe) SE.classe = seClassesListe()[0] || null;
       if (!SE.niv && SE.classe) { const J = seJournal(), nd = J && seNiveauDe(J, SE.classe); SE.niv = nd ? nd.__niv : ""; }
       SE_DB = seLire();
@@ -70861,7 +71101,7 @@ window.OMRKIT = window.OMRKIT || (function () {
   function seClasseActive() {
     try {
       if (window.__GR_CFG && window.__GR_CFG.contexte)
-        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "" } : null).catch(() => null);
+        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "", eleves: c.eleves || [] } : null).catch(() => null);
     } catch (e) {}
     try {
       if (APP === "didur") {
@@ -70920,10 +71160,36 @@ window.OMRKIT = window.OMRKIT || (function () {
         }
       } catch (e) {}
     }
+    // groupes tirés dans la séance (enregistrés avec la séance)
+    const K = classe + "::" + apsId, d0 = SE_DB[K];
+    if (d0 && Array.isArray(d0.groupes) && d0.groupes.length >= 2) return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: d0.groupes };
+    // ancien tirage du cahier journalier : repris une fois dans la séance
     const J = seJournal(), nd = J && seNiveauDe(J, classe), t = nd && nd.grTirages && nd.grTirages[nd.__cl] && nd.grTirages[nd.__cl][apsId];
-    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2)
-      return { source: "Répartition des groupes du cahier journalier", groupes: t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length) };
+    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2) {
+      const gr = t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length);
+      SE_DB[K] = SE_DB[K] || {}; SE_DB[K].groupes = gr; seSave();
+      return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: gr };
+    }
     return { source: null, groupes: [] };
+  }
+  /* élèves de la classe (application, sinon cahier journalier) et sexe */
+  function seEleves(classe) {
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
+    const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
+    Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
+    return out;
+  }
+  function seMelanger(t) { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; }
+  function seTirer(classe, nb) {
+    const el = seEleves(classe); if (el.length < 2) return null;
+    nb = Math.max(2, Math.min(8, nb, el.length));
+    const gr = Array.from({ length: nb }, () => []), cF = Array(nb).fill(0);
+    seMelanger(el.filter(e => e.sexe === "F")).concat(seMelanger(el.filter(e => e.sexe !== "F"))).forEach(e => {
+      const o = seMelanger(gr.map((_, i) => i)).sort((a, b) => (gr[a].length - gr[b].length) || (e.sexe === "F" ? cF[a] - cF[b] : 0));
+      gr[o[0]].push(e.nom); if (e.sexe === "F") cF[o[0]]++;
+    });
+    return gr.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.sort((a, b) => a.localeCompare(b, "fr")) }));
   }
   function seData(classe, apsId) {
     const k = classe + "::" + apsId;
@@ -71371,9 +71637,22 @@ window.OMRKIT = window.OMRKIT || (function () {
         <span style="flex:1"></span>
         <button type="button" class="gr-btn" id="se-plein">⛶ Plein écran</button>
         <button type="button" class="gr-btn se-fermer" id="se-fermer">Fermer ✕</button></div>`;
+    const nbEl = seEleves(classe).length;
+    const tirageCtl = (lib) => `<span class="se-tir">Groupes <select id="se-tnb">${[2, 3, 4, 5, 6, 7, 8].map(n => `<option${n === (ids.length >= 2 ? ids.length : 4) ? " selected" : ""}>${n}</option>`).join("")}</select>
+        ou joueurs / groupe <select id="se-tpar"><option value="">—</option>${[3, 4, 5, 6, 7, 8, 9, 10].map(n => `<option>${n}</option>`).join("")}</select>
+        <button type="button" class="gr-btn gr-tirer" id="se-tirer">${lib}</button></span>`;
+    const brancherTirage = () => {
+      const b = document.getElementById("se-tirer"); if (!b) return;
+      const par = document.getElementById("se-tpar"), nbS = document.getElementById("se-tnb");
+      par.onchange = () => { const p = +par.value; if (p) nbS.value = String(Math.max(2, Math.min(8, Math.ceil(nbEl / p)))); };
+      b.onclick = () => {
+        const faire = () => { const gr = seTirer(classe, +nbS.value); if (!gr) { seToast("Aucun élève trouvé pour cette classe", "error"); return; } d.groupes = gr; d.rot = []; d.res = {}; d.buteurs = []; seSave(); renderSeance(); seToast(gr.length + " groupes tirés au sort (garçons / filles équilibrés)", "success"); };
+        if (d.groupes && Object.keys(d.res || {}).length) askConfirm("Nouveau tirage", "Les groupes, le planning et les scores de cette APS seront remplacés.", "Tirer", faire); else faire();
+      };
+    };
     if (ids.length < 2) {
-      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)}.</b><br>Les groupes ne sont jamais recréés ici : ils viennent ${SE_APP[seAps] ? "des <b>équipes du Diagnostic collectif</b> de cette application (bouton « ⚡ Répartir la classe »), ou à défaut " : ""}de la <b>Répartition des groupes</b> du cahier journalier pour cette APS (le tirage se fait automatiquement en ouvrant cette page du cahier).</div>`;
-      seBrancherTete(z, d);
+      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)} (${nbEl} élèves).</b><br>${SE_APP[seAps] && seAps !== "c-volley" ? "Les équipes du <b>Diagnostic collectif</b> de cette application sont utilisées dès qu'elles existent (bouton « ⚡ Répartir la classe »). Sinon, " : ""}tirez les groupes au sort ici : répartition aléatoire équilibrée garçons / filles, enregistrée pour cette classe et cette APS.<div style="margin-top:10px">${tirageCtl("🎲 Tirer les groupes")}</div></div>`;
+      seBrancherTete(z, d); brancherTirage();
       return;
     }
     // planning : (re)généré si absent ou si les groupes ont changé et qu'aucun score n'est saisi
@@ -71394,7 +71673,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
-      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b> — toute modification des groupes y est reprise automatiquement.</p>`;
+      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
     // panneau latéral
     const rangs = (ro.m || []).map((m, i) => { const x = d.res[seRot + ":" + i] || {}; const r = seResultat(d, seRot, i);
       return `<div class="se-score"><span class="se-pas" style="background:${col(m[0])}">${m[0]}</span><input type="number" min="0" data-sc="${seRot}:${i}:a" value="${x.a == null ? "" : x.a}"><b>–</b><input type="number" min="0" data-sc="${seRot}:${i}:b" value="${x.b == null ? "" : x.b}"><span class="se-pas" style="background:${col(m[1])}">${m[1]}</span>
@@ -71484,7 +71763,7 @@ window.OMRKIT = window.OMRKIT || (function () {
         <div class="se-box"><b>Ateliers — ${esc(aps.nom)}</b>${ateliersEd}</div>
       </div>`;
     seAfficherChrono();
-    seBrancherTete(z, d);
+    seBrancherTete(z, d); brancherTirage();
     const q = id => document.getElementById(id);
     const sauver = (re) => { seSave(); if (re !== false) renderSeance(); };
     if (q("se-go")) q("se-go").onclick = () => seDemarrer(ctx);
@@ -71714,7 +71993,7 @@ window.OMRKIT = window.OMRKIT || (function () {
 
   function seOuvrir() {
     seClasseActive().then(c => {
-      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; }
+      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; SE.ctxCl = c.nom; SE.ctxEl = c.eleves || []; }
       if (!SE.classe) SE.classe = seClassesListe()[0] || null;
       if (!SE.niv && SE.classe) { const J = seJournal(), nd = J && seNiveauDe(J, SE.classe); SE.niv = nd ? nd.__niv : ""; }
       SE_DB = seLire();
@@ -81797,7 +82076,7 @@ GrilleAPS({
   function seClasseActive() {
     try {
       if (window.__GR_CFG && window.__GR_CFG.contexte)
-        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "" } : null).catch(() => null);
+        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "", eleves: c.eleves || [] } : null).catch(() => null);
     } catch (e) {}
     try {
       if (APP === "didur") {
@@ -81856,10 +82135,36 @@ GrilleAPS({
         }
       } catch (e) {}
     }
+    // groupes tirés dans la séance (enregistrés avec la séance)
+    const K = classe + "::" + apsId, d0 = SE_DB[K];
+    if (d0 && Array.isArray(d0.groupes) && d0.groupes.length >= 2) return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: d0.groupes };
+    // ancien tirage du cahier journalier : repris une fois dans la séance
     const J = seJournal(), nd = J && seNiveauDe(J, classe), t = nd && nd.grTirages && nd.grTirages[nd.__cl] && nd.grTirages[nd.__cl][apsId];
-    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2)
-      return { source: "Répartition des groupes du cahier journalier", groupes: t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length) };
+    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2) {
+      const gr = t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length);
+      SE_DB[K] = SE_DB[K] || {}; SE_DB[K].groupes = gr; seSave();
+      return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: gr };
+    }
     return { source: null, groupes: [] };
+  }
+  /* élèves de la classe (application, sinon cahier journalier) et sexe */
+  function seEleves(classe) {
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
+    const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
+    Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
+    return out;
+  }
+  function seMelanger(t) { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; }
+  function seTirer(classe, nb) {
+    const el = seEleves(classe); if (el.length < 2) return null;
+    nb = Math.max(2, Math.min(8, nb, el.length));
+    const gr = Array.from({ length: nb }, () => []), cF = Array(nb).fill(0);
+    seMelanger(el.filter(e => e.sexe === "F")).concat(seMelanger(el.filter(e => e.sexe !== "F"))).forEach(e => {
+      const o = seMelanger(gr.map((_, i) => i)).sort((a, b) => (gr[a].length - gr[b].length) || (e.sexe === "F" ? cF[a] - cF[b] : 0));
+      gr[o[0]].push(e.nom); if (e.sexe === "F") cF[o[0]]++;
+    });
+    return gr.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.sort((a, b) => a.localeCompare(b, "fr")) }));
   }
   function seData(classe, apsId) {
     const k = classe + "::" + apsId;
@@ -82307,9 +82612,22 @@ GrilleAPS({
         <span style="flex:1"></span>
         <button type="button" class="gr-btn" id="se-plein">⛶ Plein écran</button>
         <button type="button" class="gr-btn se-fermer" id="se-fermer">Fermer ✕</button></div>`;
+    const nbEl = seEleves(classe).length;
+    const tirageCtl = (lib) => `<span class="se-tir">Groupes <select id="se-tnb">${[2, 3, 4, 5, 6, 7, 8].map(n => `<option${n === (ids.length >= 2 ? ids.length : 4) ? " selected" : ""}>${n}</option>`).join("")}</select>
+        ou joueurs / groupe <select id="se-tpar"><option value="">—</option>${[3, 4, 5, 6, 7, 8, 9, 10].map(n => `<option>${n}</option>`).join("")}</select>
+        <button type="button" class="gr-btn gr-tirer" id="se-tirer">${lib}</button></span>`;
+    const brancherTirage = () => {
+      const b = document.getElementById("se-tirer"); if (!b) return;
+      const par = document.getElementById("se-tpar"), nbS = document.getElementById("se-tnb");
+      par.onchange = () => { const p = +par.value; if (p) nbS.value = String(Math.max(2, Math.min(8, Math.ceil(nbEl / p)))); };
+      b.onclick = () => {
+        const faire = () => { const gr = seTirer(classe, +nbS.value); if (!gr) { seToast("Aucun élève trouvé pour cette classe", "error"); return; } d.groupes = gr; d.rot = []; d.res = {}; d.buteurs = []; seSave(); renderSeance(); seToast(gr.length + " groupes tirés au sort (garçons / filles équilibrés)", "success"); };
+        if (d.groupes && Object.keys(d.res || {}).length) askConfirm("Nouveau tirage", "Les groupes, le planning et les scores de cette APS seront remplacés.", "Tirer", faire); else faire();
+      };
+    };
     if (ids.length < 2) {
-      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)}.</b><br>Les groupes ne sont jamais recréés ici : ils viennent ${SE_APP[seAps] ? "des <b>équipes du Diagnostic collectif</b> de cette application (bouton « ⚡ Répartir la classe »), ou à défaut " : ""}de la <b>Répartition des groupes</b> du cahier journalier pour cette APS (le tirage se fait automatiquement en ouvrant cette page du cahier).</div>`;
-      seBrancherTete(z, d);
+      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)} (${nbEl} élèves).</b><br>${SE_APP[seAps] && seAps !== "c-volley" ? "Les équipes du <b>Diagnostic collectif</b> de cette application sont utilisées dès qu'elles existent (bouton « ⚡ Répartir la classe »). Sinon, " : ""}tirez les groupes au sort ici : répartition aléatoire équilibrée garçons / filles, enregistrée pour cette classe et cette APS.<div style="margin-top:10px">${tirageCtl("🎲 Tirer les groupes")}</div></div>`;
+      seBrancherTete(z, d); brancherTirage();
       return;
     }
     // planning : (re)généré si absent ou si les groupes ont changé et qu'aucun score n'est saisi
@@ -82330,7 +82648,7 @@ GrilleAPS({
     seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
-      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b> — toute modification des groupes y est reprise automatiquement.</p>`;
+      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
     // panneau latéral
     const rangs = (ro.m || []).map((m, i) => { const x = d.res[seRot + ":" + i] || {}; const r = seResultat(d, seRot, i);
       return `<div class="se-score"><span class="se-pas" style="background:${col(m[0])}">${m[0]}</span><input type="number" min="0" data-sc="${seRot}:${i}:a" value="${x.a == null ? "" : x.a}"><b>–</b><input type="number" min="0" data-sc="${seRot}:${i}:b" value="${x.b == null ? "" : x.b}"><span class="se-pas" style="background:${col(m[1])}">${m[1]}</span>
@@ -82420,7 +82738,7 @@ GrilleAPS({
         <div class="se-box"><b>Ateliers — ${esc(aps.nom)}</b>${ateliersEd}</div>
       </div>`;
     seAfficherChrono();
-    seBrancherTete(z, d);
+    seBrancherTete(z, d); brancherTirage();
     const q = id => document.getElementById(id);
     const sauver = (re) => { seSave(); if (re !== false) renderSeance(); };
     if (q("se-go")) q("se-go").onclick = () => seDemarrer(ctx);
@@ -82650,7 +82968,7 @@ GrilleAPS({
 
   function seOuvrir() {
     seClasseActive().then(c => {
-      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; }
+      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; SE.ctxCl = c.nom; SE.ctxEl = c.eleves || []; }
       if (!SE.classe) SE.classe = seClassesListe()[0] || null;
       if (!SE.niv && SE.classe) { const J = seJournal(), nd = J && seNiveauDe(J, SE.classe); SE.niv = nd ? nd.__niv : ""; }
       SE_DB = seLire();
@@ -93338,7 +93656,7 @@ window.DISC = {
   function seClasseActive() {
     try {
       if (window.__GR_CFG && window.__GR_CFG.contexte)
-        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "" } : null).catch(() => null);
+        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "", eleves: c.eleves || [] } : null).catch(() => null);
     } catch (e) {}
     try {
       if (APP === "didur") {
@@ -93397,10 +93715,36 @@ window.DISC = {
         }
       } catch (e) {}
     }
+    // groupes tirés dans la séance (enregistrés avec la séance)
+    const K = classe + "::" + apsId, d0 = SE_DB[K];
+    if (d0 && Array.isArray(d0.groupes) && d0.groupes.length >= 2) return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: d0.groupes };
+    // ancien tirage du cahier journalier : repris une fois dans la séance
     const J = seJournal(), nd = J && seNiveauDe(J, classe), t = nd && nd.grTirages && nd.grTirages[nd.__cl] && nd.grTirages[nd.__cl][apsId];
-    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2)
-      return { source: "Répartition des groupes du cahier journalier", groupes: t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length) };
+    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2) {
+      const gr = t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length);
+      SE_DB[K] = SE_DB[K] || {}; SE_DB[K].groupes = gr; seSave();
+      return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: gr };
+    }
     return { source: null, groupes: [] };
+  }
+  /* élèves de la classe (application, sinon cahier journalier) et sexe */
+  function seEleves(classe) {
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
+    const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
+    Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
+    return out;
+  }
+  function seMelanger(t) { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; }
+  function seTirer(classe, nb) {
+    const el = seEleves(classe); if (el.length < 2) return null;
+    nb = Math.max(2, Math.min(8, nb, el.length));
+    const gr = Array.from({ length: nb }, () => []), cF = Array(nb).fill(0);
+    seMelanger(el.filter(e => e.sexe === "F")).concat(seMelanger(el.filter(e => e.sexe !== "F"))).forEach(e => {
+      const o = seMelanger(gr.map((_, i) => i)).sort((a, b) => (gr[a].length - gr[b].length) || (e.sexe === "F" ? cF[a] - cF[b] : 0));
+      gr[o[0]].push(e.nom); if (e.sexe === "F") cF[o[0]]++;
+    });
+    return gr.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.sort((a, b) => a.localeCompare(b, "fr")) }));
   }
   function seData(classe, apsId) {
     const k = classe + "::" + apsId;
@@ -93848,9 +94192,22 @@ window.DISC = {
         <span style="flex:1"></span>
         <button type="button" class="gr-btn" id="se-plein">⛶ Plein écran</button>
         <button type="button" class="gr-btn se-fermer" id="se-fermer">Fermer ✕</button></div>`;
+    const nbEl = seEleves(classe).length;
+    const tirageCtl = (lib) => `<span class="se-tir">Groupes <select id="se-tnb">${[2, 3, 4, 5, 6, 7, 8].map(n => `<option${n === (ids.length >= 2 ? ids.length : 4) ? " selected" : ""}>${n}</option>`).join("")}</select>
+        ou joueurs / groupe <select id="se-tpar"><option value="">—</option>${[3, 4, 5, 6, 7, 8, 9, 10].map(n => `<option>${n}</option>`).join("")}</select>
+        <button type="button" class="gr-btn gr-tirer" id="se-tirer">${lib}</button></span>`;
+    const brancherTirage = () => {
+      const b = document.getElementById("se-tirer"); if (!b) return;
+      const par = document.getElementById("se-tpar"), nbS = document.getElementById("se-tnb");
+      par.onchange = () => { const p = +par.value; if (p) nbS.value = String(Math.max(2, Math.min(8, Math.ceil(nbEl / p)))); };
+      b.onclick = () => {
+        const faire = () => { const gr = seTirer(classe, +nbS.value); if (!gr) { seToast("Aucun élève trouvé pour cette classe", "error"); return; } d.groupes = gr; d.rot = []; d.res = {}; d.buteurs = []; seSave(); renderSeance(); seToast(gr.length + " groupes tirés au sort (garçons / filles équilibrés)", "success"); };
+        if (d.groupes && Object.keys(d.res || {}).length) askConfirm("Nouveau tirage", "Les groupes, le planning et les scores de cette APS seront remplacés.", "Tirer", faire); else faire();
+      };
+    };
     if (ids.length < 2) {
-      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)}.</b><br>Les groupes ne sont jamais recréés ici : ils viennent ${SE_APP[seAps] ? "des <b>équipes du Diagnostic collectif</b> de cette application (bouton « ⚡ Répartir la classe »), ou à défaut " : ""}de la <b>Répartition des groupes</b> du cahier journalier pour cette APS (le tirage se fait automatiquement en ouvrant cette page du cahier).</div>`;
-      seBrancherTete(z, d);
+      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)} (${nbEl} élèves).</b><br>${SE_APP[seAps] && seAps !== "c-volley" ? "Les équipes du <b>Diagnostic collectif</b> de cette application sont utilisées dès qu'elles existent (bouton « ⚡ Répartir la classe »). Sinon, " : ""}tirez les groupes au sort ici : répartition aléatoire équilibrée garçons / filles, enregistrée pour cette classe et cette APS.<div style="margin-top:10px">${tirageCtl("🎲 Tirer les groupes")}</div></div>`;
+      seBrancherTete(z, d); brancherTirage();
       return;
     }
     // planning : (re)généré si absent ou si les groupes ont changé et qu'aucun score n'est saisi
@@ -93871,7 +94228,7 @@ window.DISC = {
     seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
-      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b> — toute modification des groupes y est reprise automatiquement.</p>`;
+      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
     // panneau latéral
     const rangs = (ro.m || []).map((m, i) => { const x = d.res[seRot + ":" + i] || {}; const r = seResultat(d, seRot, i);
       return `<div class="se-score"><span class="se-pas" style="background:${col(m[0])}">${m[0]}</span><input type="number" min="0" data-sc="${seRot}:${i}:a" value="${x.a == null ? "" : x.a}"><b>–</b><input type="number" min="0" data-sc="${seRot}:${i}:b" value="${x.b == null ? "" : x.b}"><span class="se-pas" style="background:${col(m[1])}">${m[1]}</span>
@@ -93961,7 +94318,7 @@ window.DISC = {
         <div class="se-box"><b>Ateliers — ${esc(aps.nom)}</b>${ateliersEd}</div>
       </div>`;
     seAfficherChrono();
-    seBrancherTete(z, d);
+    seBrancherTete(z, d); brancherTirage();
     const q = id => document.getElementById(id);
     const sauver = (re) => { seSave(); if (re !== false) renderSeance(); };
     if (q("se-go")) q("se-go").onclick = () => seDemarrer(ctx);
@@ -94191,7 +94548,7 @@ window.DISC = {
 
   function seOuvrir() {
     seClasseActive().then(c => {
-      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; }
+      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; SE.ctxCl = c.nom; SE.ctxEl = c.eleves || []; }
       if (!SE.classe) SE.classe = seClassesListe()[0] || null;
       if (!SE.niv && SE.classe) { const J = seJournal(), nd = J && seNiveauDe(J, SE.classe); SE.niv = nd ? nd.__niv : ""; }
       SE_DB = seLire();
@@ -97826,7 +98183,7 @@ window.DISC = {
   function seClasseActive() {
     try {
       if (window.__GR_CFG && window.__GR_CFG.contexte)
-        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "" } : null).catch(() => null);
+        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "", eleves: c.eleves || [] } : null).catch(() => null);
     } catch (e) {}
     try {
       if (APP === "didur") {
@@ -97885,10 +98242,36 @@ window.DISC = {
         }
       } catch (e) {}
     }
+    // groupes tirés dans la séance (enregistrés avec la séance)
+    const K = classe + "::" + apsId, d0 = SE_DB[K];
+    if (d0 && Array.isArray(d0.groupes) && d0.groupes.length >= 2) return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: d0.groupes };
+    // ancien tirage du cahier journalier : repris une fois dans la séance
     const J = seJournal(), nd = J && seNiveauDe(J, classe), t = nd && nd.grTirages && nd.grTirages[nd.__cl] && nd.grTirages[nd.__cl][apsId];
-    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2)
-      return { source: "Répartition des groupes du cahier journalier", groupes: t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length) };
+    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2) {
+      const gr = t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length);
+      SE_DB[K] = SE_DB[K] || {}; SE_DB[K].groupes = gr; seSave();
+      return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: gr };
+    }
     return { source: null, groupes: [] };
+  }
+  /* élèves de la classe (application, sinon cahier journalier) et sexe */
+  function seEleves(classe) {
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
+    const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
+    Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
+    return out;
+  }
+  function seMelanger(t) { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; }
+  function seTirer(classe, nb) {
+    const el = seEleves(classe); if (el.length < 2) return null;
+    nb = Math.max(2, Math.min(8, nb, el.length));
+    const gr = Array.from({ length: nb }, () => []), cF = Array(nb).fill(0);
+    seMelanger(el.filter(e => e.sexe === "F")).concat(seMelanger(el.filter(e => e.sexe !== "F"))).forEach(e => {
+      const o = seMelanger(gr.map((_, i) => i)).sort((a, b) => (gr[a].length - gr[b].length) || (e.sexe === "F" ? cF[a] - cF[b] : 0));
+      gr[o[0]].push(e.nom); if (e.sexe === "F") cF[o[0]]++;
+    });
+    return gr.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.sort((a, b) => a.localeCompare(b, "fr")) }));
   }
   function seData(classe, apsId) {
     const k = classe + "::" + apsId;
@@ -98336,9 +98719,22 @@ window.DISC = {
         <span style="flex:1"></span>
         <button type="button" class="gr-btn" id="se-plein">⛶ Plein écran</button>
         <button type="button" class="gr-btn se-fermer" id="se-fermer">Fermer ✕</button></div>`;
+    const nbEl = seEleves(classe).length;
+    const tirageCtl = (lib) => `<span class="se-tir">Groupes <select id="se-tnb">${[2, 3, 4, 5, 6, 7, 8].map(n => `<option${n === (ids.length >= 2 ? ids.length : 4) ? " selected" : ""}>${n}</option>`).join("")}</select>
+        ou joueurs / groupe <select id="se-tpar"><option value="">—</option>${[3, 4, 5, 6, 7, 8, 9, 10].map(n => `<option>${n}</option>`).join("")}</select>
+        <button type="button" class="gr-btn gr-tirer" id="se-tirer">${lib}</button></span>`;
+    const brancherTirage = () => {
+      const b = document.getElementById("se-tirer"); if (!b) return;
+      const par = document.getElementById("se-tpar"), nbS = document.getElementById("se-tnb");
+      par.onchange = () => { const p = +par.value; if (p) nbS.value = String(Math.max(2, Math.min(8, Math.ceil(nbEl / p)))); };
+      b.onclick = () => {
+        const faire = () => { const gr = seTirer(classe, +nbS.value); if (!gr) { seToast("Aucun élève trouvé pour cette classe", "error"); return; } d.groupes = gr; d.rot = []; d.res = {}; d.buteurs = []; seSave(); renderSeance(); seToast(gr.length + " groupes tirés au sort (garçons / filles équilibrés)", "success"); };
+        if (d.groupes && Object.keys(d.res || {}).length) askConfirm("Nouveau tirage", "Les groupes, le planning et les scores de cette APS seront remplacés.", "Tirer", faire); else faire();
+      };
+    };
     if (ids.length < 2) {
-      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)}.</b><br>Les groupes ne sont jamais recréés ici : ils viennent ${SE_APP[seAps] ? "des <b>équipes du Diagnostic collectif</b> de cette application (bouton « ⚡ Répartir la classe »), ou à défaut " : ""}de la <b>Répartition des groupes</b> du cahier journalier pour cette APS (le tirage se fait automatiquement en ouvrant cette page du cahier).</div>`;
-      seBrancherTete(z, d);
+      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)} (${nbEl} élèves).</b><br>${SE_APP[seAps] && seAps !== "c-volley" ? "Les équipes du <b>Diagnostic collectif</b> de cette application sont utilisées dès qu'elles existent (bouton « ⚡ Répartir la classe »). Sinon, " : ""}tirez les groupes au sort ici : répartition aléatoire équilibrée garçons / filles, enregistrée pour cette classe et cette APS.<div style="margin-top:10px">${tirageCtl("🎲 Tirer les groupes")}</div></div>`;
+      seBrancherTete(z, d); brancherTirage();
       return;
     }
     // planning : (re)généré si absent ou si les groupes ont changé et qu'aucun score n'est saisi
@@ -98359,7 +98755,7 @@ window.DISC = {
     seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
-      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b> — toute modification des groupes y est reprise automatiquement.</p>`;
+      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
     // panneau latéral
     const rangs = (ro.m || []).map((m, i) => { const x = d.res[seRot + ":" + i] || {}; const r = seResultat(d, seRot, i);
       return `<div class="se-score"><span class="se-pas" style="background:${col(m[0])}">${m[0]}</span><input type="number" min="0" data-sc="${seRot}:${i}:a" value="${x.a == null ? "" : x.a}"><b>–</b><input type="number" min="0" data-sc="${seRot}:${i}:b" value="${x.b == null ? "" : x.b}"><span class="se-pas" style="background:${col(m[1])}">${m[1]}</span>
@@ -98449,7 +98845,7 @@ window.DISC = {
         <div class="se-box"><b>Ateliers — ${esc(aps.nom)}</b>${ateliersEd}</div>
       </div>`;
     seAfficherChrono();
-    seBrancherTete(z, d);
+    seBrancherTete(z, d); brancherTirage();
     const q = id => document.getElementById(id);
     const sauver = (re) => { seSave(); if (re !== false) renderSeance(); };
     if (q("se-go")) q("se-go").onclick = () => seDemarrer(ctx);
@@ -98679,7 +99075,7 @@ window.DISC = {
 
   function seOuvrir() {
     seClasseActive().then(c => {
-      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; }
+      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; SE.ctxCl = c.nom; SE.ctxEl = c.eleves || []; }
       if (!SE.classe) SE.classe = seClassesListe()[0] || null;
       if (!SE.niv && SE.classe) { const J = seJournal(), nd = J && seNiveauDe(J, SE.classe); SE.niv = nd ? nd.__niv : ""; }
       SE_DB = seLire();
@@ -102138,7 +102534,7 @@ window.DISC = {
   function seClasseActive() {
     try {
       if (window.__GR_CFG && window.__GR_CFG.contexte)
-        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "" } : null).catch(() => null);
+        return Promise.resolve(window.__GR_CFG.contexte()).then(c => c && c.classe ? { nom: c.classe.nom, niv: c.niv || c.classe.niveauScolaire || "", eleves: c.eleves || [] } : null).catch(() => null);
     } catch (e) {}
     try {
       if (APP === "didur") {
@@ -102197,10 +102593,36 @@ window.DISC = {
         }
       } catch (e) {}
     }
+    // groupes tirés dans la séance (enregistrés avec la séance)
+    const K = classe + "::" + apsId, d0 = SE_DB[K];
+    if (d0 && Array.isArray(d0.groupes) && d0.groupes.length >= 2) return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: d0.groupes };
+    // ancien tirage du cahier journalier : repris une fois dans la séance
     const J = seJournal(), nd = J && seNiveauDe(J, classe), t = nd && nd.grTirages && nd.grTirages[nd.__cl] && nd.grTirages[nd.__cl][apsId];
-    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2)
-      return { source: "Répartition des groupes du cahier journalier", groupes: t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length) };
+    if (t && Array.isArray(t.groupes) && t.groupes.filter(g => g.length).length >= 2) {
+      const gr = t.groupes.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.slice() })).filter(g => g.eleves.length);
+      SE_DB[K] = SE_DB[K] || {}; SE_DB[K].groupes = gr; seSave();
+      return { source: "Tirage de la séance (aléatoire, équilibré garçons / filles)", tirage: true, groupes: gr };
+    }
     return { source: null, groupes: [] };
+  }
+  /* élèves de la classe (application, sinon cahier journalier) et sexe */
+  function seEleves(classe) {
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
+    const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
+    Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
+    return out;
+  }
+  function seMelanger(t) { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; }
+  function seTirer(classe, nb) {
+    const el = seEleves(classe); if (el.length < 2) return null;
+    nb = Math.max(2, Math.min(8, nb, el.length));
+    const gr = Array.from({ length: nb }, () => []), cF = Array(nb).fill(0);
+    seMelanger(el.filter(e => e.sexe === "F")).concat(seMelanger(el.filter(e => e.sexe !== "F"))).forEach(e => {
+      const o = seMelanger(gr.map((_, i) => i)).sort((a, b) => (gr[a].length - gr[b].length) || (e.sexe === "F" ? cF[a] - cF[b] : 0));
+      gr[o[0]].push(e.nom); if (e.sexe === "F") cF[o[0]]++;
+    });
+    return gr.map((g, i) => ({ id: GR_LETTRES[i], eleves: g.sort((a, b) => a.localeCompare(b, "fr")) }));
   }
   function seData(classe, apsId) {
     const k = classe + "::" + apsId;
@@ -102648,9 +103070,22 @@ window.DISC = {
         <span style="flex:1"></span>
         <button type="button" class="gr-btn" id="se-plein">⛶ Plein écran</button>
         <button type="button" class="gr-btn se-fermer" id="se-fermer">Fermer ✕</button></div>`;
+    const nbEl = seEleves(classe).length;
+    const tirageCtl = (lib) => `<span class="se-tir">Groupes <select id="se-tnb">${[2, 3, 4, 5, 6, 7, 8].map(n => `<option${n === (ids.length >= 2 ? ids.length : 4) ? " selected" : ""}>${n}</option>`).join("")}</select>
+        ou joueurs / groupe <select id="se-tpar"><option value="">—</option>${[3, 4, 5, 6, 7, 8, 9, 10].map(n => `<option>${n}</option>`).join("")}</select>
+        <button type="button" class="gr-btn gr-tirer" id="se-tirer">${lib}</button></span>`;
+    const brancherTirage = () => {
+      const b = document.getElementById("se-tirer"); if (!b) return;
+      const par = document.getElementById("se-tpar"), nbS = document.getElementById("se-tnb");
+      par.onchange = () => { const p = +par.value; if (p) nbS.value = String(Math.max(2, Math.min(8, Math.ceil(nbEl / p)))); };
+      b.onclick = () => {
+        const faire = () => { const gr = seTirer(classe, +nbS.value); if (!gr) { seToast("Aucun élève trouvé pour cette classe", "error"); return; } d.groupes = gr; d.rot = []; d.res = {}; d.buteurs = []; seSave(); renderSeance(); seToast(gr.length + " groupes tirés au sort (garçons / filles équilibrés)", "success"); };
+        if (d.groupes && Object.keys(d.res || {}).length) askConfirm("Nouveau tirage", "Les groupes, le planning et les scores de cette APS seront remplacés.", "Tirer", faire); else faire();
+      };
+    };
     if (ids.length < 2) {
-      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)}.</b><br>Les groupes ne sont jamais recréés ici : ils viennent ${SE_APP[seAps] ? "des <b>équipes du Diagnostic collectif</b> de cette application (bouton « ⚡ Répartir la classe »), ou à défaut " : ""}de la <b>Répartition des groupes</b> du cahier journalier pour cette APS (le tirage se fait automatiquement en ouvrant cette page du cahier).</div>`;
-      seBrancherTete(z, d);
+      z.innerHTML = tete + `<div class="se-vide"><b>Aucun groupe pour ${esc(aps.nom)} — classe ${esc(classe)} (${nbEl} élèves).</b><br>${SE_APP[seAps] && seAps !== "c-volley" ? "Les équipes du <b>Diagnostic collectif</b> de cette application sont utilisées dès qu'elles existent (bouton « ⚡ Répartir la classe »). Sinon, " : ""}tirez les groupes au sort ici : répartition aléatoire équilibrée garçons / filles, enregistrée pour cette classe et cette APS.<div style="margin-top:10px">${tirageCtl("🎲 Tirer les groupes")}</div></div>`;
+      seBrancherTete(z, d); brancherTirage();
       return;
     }
     // planning : (re)généré si absent ou si les groupes ont changé et qu'aucun score n'est saisi
@@ -102671,7 +103106,7 @@ window.DISC = {
     seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
-      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b> — toute modification des groupes y est reprise automatiquement.</p>`;
+      <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
     // panneau latéral
     const rangs = (ro.m || []).map((m, i) => { const x = d.res[seRot + ":" + i] || {}; const r = seResultat(d, seRot, i);
       return `<div class="se-score"><span class="se-pas" style="background:${col(m[0])}">${m[0]}</span><input type="number" min="0" data-sc="${seRot}:${i}:a" value="${x.a == null ? "" : x.a}"><b>–</b><input type="number" min="0" data-sc="${seRot}:${i}:b" value="${x.b == null ? "" : x.b}"><span class="se-pas" style="background:${col(m[1])}">${m[1]}</span>
@@ -102761,7 +103196,7 @@ window.DISC = {
         <div class="se-box"><b>Ateliers — ${esc(aps.nom)}</b>${ateliersEd}</div>
       </div>`;
     seAfficherChrono();
-    seBrancherTete(z, d);
+    seBrancherTete(z, d); brancherTirage();
     const q = id => document.getElementById(id);
     const sauver = (re) => { seSave(); if (re !== false) renderSeance(); };
     if (q("se-go")) q("se-go").onclick = () => seDemarrer(ctx);
@@ -102991,7 +103426,7 @@ window.DISC = {
 
   function seOuvrir() {
     seClasseActive().then(c => {
-      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; }
+      if (c && c.nom) { SE.classe = c.nom; SE.niv = c.niv || ""; SE.ctxCl = c.nom; SE.ctxEl = c.eleves || []; }
       if (!SE.classe) SE.classe = seClassesListe()[0] || null;
       if (!SE.niv && SE.classe) { const J = seJournal(), nd = J && seNiveauDe(J, SE.classe); SE.niv = nd ? nd.__niv : ""; }
       SE_DB = seLire();
@@ -103675,6 +104110,8 @@ window.DISC = {
      lire()  → [{ nom, niveau, eleves: [{ nom, sexe: "M" | "F" | null }], ref }]
      plan    → { nouvelles: [{ nom, niveau, eleves }], ajouts: [{ ref, eleves }], renommer: [{ ref, nom }] } */
   var A = [];
+  /* le nom figure-t-il dans la liste (même élève, écriture tolérée) ? */
+  function dansListe(l, nom) { var k = cleEleve(nom); return (l || []).some(function (n) { return cleEleve(n) === k; }); }
 
   /* 1. Cahier journalier : la classe est déposée dans une file, appliquée à l'ouverture du cahier */
   A.push({
@@ -103693,6 +104130,7 @@ window.DISC = {
       });
       // file en attente (cahier pas encore rouvert)
       jp(get("classeurEPS::fileClasses::journal::" + an), []).forEach(function (it) {
+        if (it.retirer) { out.forEach(function (c) { if (c.ref.niveau === it.niveau && cleClasse(c.nom) === cleClasse(it.nom)) c.eleves = c.eleves.filter(function (e) { return !dansListe(it.retirer, e.nom); }); }); return; }
         if (it.supprimer) { out = out.filter(function (c) { return !(c.ref.niveau === it.niveau && cleClasse(c.nom) === cleClasse(it.supprimer)); }); return; }
         if (it.renommer) { out.forEach(function (c) { if (c.ref.niveau === it.niveau && c.ref.nom === it.renommer) { c.nom = it.nom; c.ref = { niveau: it.niveau, nom: it.nom }; } }); return; }
         var c = out.filter(function (x) { return x.ref.niveau === it.niveau && cleClasse(x.nom) === cleClasse(it.nom); })[0];
@@ -103711,6 +104149,7 @@ window.DISC = {
       });
       p.ajouts.forEach(function (a) { f.push({ niveau: a.ref.niveau, nom: a.ref.nom, eleves: a.eleves.map(function (e) { return e.nom; }) }); n++; });
       (p.supprimer || []).forEach(function (r) { f.push({ niveau: r.niveau, supprimer: r.nom }); n++; });
+      (p.retirer || []).forEach(function (r) { f.push({ niveau: r.ref.niveau, nom: r.ref.nom, retirer: r.eleves }); n++; });
       if (!n) return Promise.resolve(false);
       ls.setItem(K, JSON.stringify(f));
       return Promise.resolve(true);
@@ -103735,6 +104174,7 @@ window.DISC = {
         p.nouvelles.forEach(function (c) { d.classes.push({ id: uid("id"), nom: c.nom, niveauScolaire: c.niveau || undefined, eleves: c.eleves.map(el), projet: null }); });
         p.ajouts.forEach(function (a) { var k = d.classes.filter(function (c) { return c.id === a.ref; })[0]; if (k) k.eleves = (k.eleves || []).concat(a.eleves.map(el)); });
         p.renommer.forEach(function (r) { var k = d.classes.filter(function (c) { return c.id === r.ref; })[0]; if (k) k.nom = r.nom; });
+        (p.retirer || []).forEach(function (r) { var k = d.classes.filter(function (c) { return c.id === r.ref; })[0]; if (k) k.eleves = (k.eleves || []).filter(function (e) { return !dansListe(r.eleves, e.nom); }); });
         var sup = p.supprimer || [];
         if (sup.length) { d.classes = d.classes.filter(function (c) { return sup.indexOf(c.id) < 0; }); if (sup.indexOf(d.activeId) >= 0) d.activeId = null; }
         if (!d.activeId && d.classes.length) d.activeId = d.classes[0].id;
@@ -103772,6 +104212,14 @@ window.DISC = {
         var k = r.classes.filter(function (c) { return c.id === x.ref; })[0]; if (!k) return;
         k.nom = x.nom; n++;
         if (k.id === r.activeId) { var SK = "DIDUR_V6_SESSION::" + an, se = jp(get(SK), null); if (se && typeof se === "object") { se.classe = x.nom; ls.setItem(SK, JSON.stringify(se)); } }
+      });
+      (p.retirer || []).forEach(function (x) {
+        var k = r.classes.filter(function (c) { return c.id === x.ref; })[0]; if (!k) return;
+        var garde = function (nm) { return !dansListe(x.eleves, nm); };
+        k.eleves = (k.eleves || []).filter(function (e) { return garde(e.nom); }); n++;
+        var SK = "DIDUR_V6_SESSION::" + an, filtre = function (se) { if (se && Array.isArray(se.rows)) se.rows = se.rows.filter(function (row) { return garde(String(row.prenom || "").trim()); }); return se; };
+        if (k.id === r.activeId) { var se = jp(get(SK), null); if (se && typeof se === "object") ls.setItem(SK, JSON.stringify(filtre(se))); }
+        else if (k.snap && k.snap[SK]) { var s2 = jp(k.snap[SK], null); if (s2) k.snap[SK] = JSON.stringify(filtre(s2)); }
       });
       var sup = p.supprimer || [];
       if (sup.length) {
@@ -103825,8 +104273,15 @@ window.DISC = {
         var sup = p.supprimer || [];
         return ren.then(function (cls) {
           p.renommer.forEach(function (r) { var k = cls.filter(function (c) { return c.id === r.ref; })[0]; if (k) { k.nom = r.nom; o.push(["classes", k]); } });
-          if (!o.length && !sup.length) { db.close(); return false; }
+          var ret = p.retirer || [];
+          if (!o.length && !sup.length && !ret.length) { db.close(); return false; }
           return (o.length ? idbEcrire(db, ["classes", "students"], o) : Promise.resolve()).then(function () {
+            if (!ret.length) return;
+            return idbTout(db, "students").then(function (sts) {
+              var dl = sts.filter(function (s) { return ret.some(function (x) { return x.ref === s.classeId && dansListe(x.eleves, s.nom); }); }).map(function (s) { return ["students", s.id]; });
+              if (dl.length) return idbSupprimer(db, ["students"], dl);
+            });
+          }).then(function () {
             if (!sup.length) return;
             return idbTout(db, "students").then(function (sts) {
               var dl = sup.map(function (id) { return ["classes", id]; }).concat(sts.filter(function (s) { return sup.indexOf(s.classeId) >= 0; }).map(function (s) { return ["students", s.id]; }));
@@ -103871,6 +104326,7 @@ window.DISC = {
             l.forEach(function (c) { parId[c.id] = c; });
             p.ajouts.forEach(function (a) { var k = parId[a.ref]; if (k) { k.eleves = (k.eleves || []).concat(a.eleves.map(el)); k._m = 1; } });
             p.renommer.forEach(function (r) { var k = parId[r.ref]; if (k) { k.nom = r.nom; k._m = 1; } });
+            (p.retirer || []).forEach(function (r) { var k = parId[r.ref]; if (k) { k.eleves = (k.eleves || []).filter(function (e) { return !dansListe(r.eleves, e.nom); }); k._m = 1; } });
             l.forEach(function (k) { if (k._m) { delete k._m; o.push(["classes", k]); } });
             var sup = (p.supprimer || []).filter(function (id) { return parId[id]; });
             if (!o.length && !sup.length) { db.close(); return false; }
@@ -103907,6 +104363,7 @@ window.DISC = {
         p.nouvelles.forEach(function (c) { d.classes.push(x[3](c, c.eleves.map(x[2]))); });
         p.ajouts.forEach(function (a) { var k = d.classes.filter(function (c) { return c.id === a.ref; })[0]; if (k) k.eleves = (k.eleves || []).concat(a.eleves.map(x[2])); });
         p.renommer.forEach(function (r) { var k = d.classes.filter(function (c) { return c.id === r.ref; })[0]; if (k) k.nom = r.nom; });
+        (p.retirer || []).forEach(function (r) { var k = d.classes.filter(function (c) { return c.id === r.ref; })[0]; if (k) k.eleves = (k.eleves || []).filter(function (e) { return !dansListe(r.eleves, e.nom); }); });
         var sup = p.supprimer || [];
         if (sup.length) { d.classes = d.classes.filter(function (c) { return sup.indexOf(c.id) < 0; }); d.active = 0; }
         ls.setItem(K, JSON.stringify(d));
@@ -103951,7 +104408,9 @@ window.DISC = {
   function executer(sauf) {
     var RK = "classeurEPS::syncClasses::" + anJournal();
     var reg = jp(get(RK), null) || {};
-    reg.vus = reg.vus || {}; reg.ign = reg.ign || {}; reg.ignEl = reg.ignEl || {}; reg.alias = reg.alias || {}; reg.supp = reg.supp || {};
+    reg.vus = reg.vus || {}; reg.ign = reg.ign || {}; reg.ignEl = reg.ignEl || {}; reg.alias = reg.alias || {}; reg.supp = reg.supp || {}; reg.suppEl = reg.suppEl || {};
+    /* élève supprimé dans une application (cahier compris) : à retirer partout */
+    function estSupp(ck, ek, m) { var s = reg.suppEl[ck]; if (!s) return false; if (s[ek]) return true; return Object.keys(s).some(function (sk) { return memeEleve({ k: ek, m: m || ek.split(" ") }, { k: sk, m: sk.split(" ") }); }); }
     // classes déjà supprimées du cahier journalier avant cette version : supprimées partout
     if (!reg.suppInit) { reg.suppInit = 1; Object.keys(reg.ign.journal || {}).forEach(function (ck) { reg.supp[ck] = { app: "journal", t: Date.now() }; }); }
     /* classe renommée : une application qui garde l'ancien nom est rattachée au nouveau */
@@ -103989,6 +104448,11 @@ window.DISC = {
           Object.keys(v).forEach(function (ck) {
             if (!c[ck]) return;
             v[ck].forEach(function (ek) { if (!c[ck].eleves[ek]) (ie[ck] = ie[ck] || {})[ek] = 1; });
+            // élèves supprimés ici par le professeur → supprimés partout (sauf classe vidée d'un coup : réinitialisation)
+            var partis = v[ck].filter(function (ek) { return !c[ck].eleves[ek] && !Object.keys(c[ck].eleves).some(function (k2) { return memeEleve({ k: ek, m: ek.split(" ") }, { k: k2, m: c[ck].eleves[k2].m }); }); });
+            if (partis.length && (c[ck].ordre.length || partis.length <= 2)) { var se = reg.suppEl[ck] = reg.suppEl[ck] || {}; partis.forEach(function (ek) { se[ek] = { app: app, t: Date.now() }; }); }
+            // élève ajouté de nouveau ici : il revient partout
+            if (reg.suppEl[ck]) c[ck].ordre.forEach(function (ek) { if (v[ck].indexOf(ek) < 0) { Object.keys(reg.suppEl[ck]).forEach(function (sk) { if (sk === ek || memeEleve({ k: ek, m: c[ck].eleves[ek].m }, { k: sk, m: sk.split(" ") })) delete reg.suppEl[ck][sk]; }); } });
           });
         }
         Object.keys(c).forEach(function (ck) {
@@ -103999,7 +104463,7 @@ window.DISC = {
 
       /* 2. renommages : appliqués aux autres applications */
       var plans = {};
-      function plan(app) { return plans[app] = plans[app] || { nouvelles: [], ajouts: [], renommer: [], supprimer: [] }; }
+      function plan(app) { return plans[app] = plans[app] || { nouvelles: [], ajouts: [], renommer: [], supprimer: [], retirer: [] }; }
       /* le cahier journalier est la référence : une classe retirée du cahier est supprimée partout */
       if (cur.journal && Object.keys(cur.journal).length) Object.keys(reg.ign.journal || {}).forEach(function (ck) {
         if (!cur.journal[ck] && !reg.supp[ck]) reg.supp[ck] = { app: "journal", t: Date.now() };
@@ -104045,6 +104509,7 @@ window.DISC = {
           if (!u.niveau && NIVEAUX.indexOf(x.niveau) >= 0) u.niveau = x.niveau;
           x.ordre.forEach(function (ek) {
             var e = x.eleves[ek];
+            if (estSupp(ck, ek, e.m)) return;
             var uk = chercher(u, { k: ek, m: e.m });
             if (!uk) { u.eleves[ek] = { nom: e.nom, sexe: e.sexe, m: e.m }; u.ordre.push(ek); }
             else if (!u.eleves[uk].sexe && e.sexe) u.eleves[uk].sexe = e.sexe;
@@ -104060,7 +104525,7 @@ window.DISC = {
       });
 
       /* 4. ce qui manque dans chaque application */
-      var ajoutees = {}, elevesAj = {}, appsEl = {};
+      var ajoutees = {}, elevesAj = {}, appsEl = {}, elevesRet = {}, appsRet = {};
       Object.keys(cur).forEach(function (app) {
         if (app === sauf) return;
         var c = cur[app], ign = reg.ign[app] || {}, ie = reg.ignEl[app] || {};
@@ -104079,6 +104544,8 @@ window.DISC = {
             if (chercher(c[ck], e)) return false;                                     // déjà dans la classe (même écrit autrement)
             return !supp.some(function (sk) { return memeEleve(e, { k: sk, m: sk.split(" ") }); });   // supprimé ici par le professeur
           });
+          var ret = c[ck].ordre.filter(function (ek) { return estSupp(ck, ek, c[ck].eleves[ek].m); });
+          if (ret.length) { plan(app).retirer.push({ ref: c[ck].ref, eleves: ret.map(function (ek) { return c[ck].eleves[ek].nom; }) }); ret.forEach(function (ek) { elevesRet[c[ck].eleves[ek].nom] = 1; }); appsRet[app] = 1; }
           if (manque.length) { plan(app).ajouts.push({ ref: c[ck].ref, vide: c[ck].vide, eleves: manque.map(function (ek) { return u.eleves[ek]; }) }); manque.forEach(function (ek) { elevesAj[ck + "|" + ek] = u.nom; }); appsEl[app] = 1; }
         });
       });
@@ -104100,7 +104567,9 @@ window.DISC = {
         Object.keys(cur).forEach(function (app) { reg.vus[app] = photo(cur[app]); });
         try { ls.setItem(RK, JSON.stringify(reg)); } catch (e) {}
         var noms = Object.keys(ajoutees), msg = "", sn = Object.keys(supprimees);
-        if (sn.length) msg = "🗑 " + (sn.length === 1 ? "Classe « " + sn[0] + " » supprimée" : sn.length + " classes supprimées (" + sn.slice(0, 4).join(", ") + (sn.length > 4 ? "…" : "") + ")") + " dans les autres applications. ";
+        var nr = Object.keys(elevesRet);
+        if (nr.length) msg = "🗑 " + (nr.length === 1 ? "« " + nr[0] + " » retiré(e)" : nr.length + " élèves retirés (" + nr.slice(0, 3).join(", ") + (nr.length > 3 ? "…" : "") + ")") + " dans " + (function () { var l = Object.keys(appsRet).map(function (a) { return NOMS[a] || a; }); return l.length > 3 ? l.length + " applications" : l.join(", "); })() + ". ";
+        if (sn.length) msg += "🗑 " + (sn.length === 1 ? "Classe « " + sn[0] + " » supprimée" : sn.length + " classes supprimées (" + sn.slice(0, 4).join(", ") + (sn.length > 4 ? "…" : "") + ")") + " dans les autres applications. ";
         if (noms.length) msg += "🔄 " + (noms.length === 1 ? "Classe « " + noms[0] + " » ajoutée" : noms.length + " classes ajoutées (" + noms.slice(0, 4).join(", ") + (noms.length > 4 ? "…" : "") + ")") +
           " dans " + (function (l) { var t = {}; noms.forEach(function (n) { ajoutees[n].forEach(function (a) { t[a] = 1; }); }); l = Object.keys(t).map(function (a) { return NOMS[a] || a; }); return l.length > 3 ? l.length + " applications" : l.join(", "); })() + ".";
         else if (renoms.length) msg += "🔄 Classe renommée dans toutes les applications : " + cur[renoms[0].app][renoms[0].vers].nom + ".";
@@ -104422,6 +104891,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 05-11-2026 · 18h15</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 05-11-2026 · 19h45</div>
 </body>
 </html>
