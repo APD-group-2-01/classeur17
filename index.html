@@ -15326,6 +15326,8 @@ window.JSYNC = window.JSYNC || (function () {
       c.tr.map(t => t[0] + "–" + t[1] + " % → " + String(t[2]).replace(".", ",") + " pt").join(" · ")).join("<br>");
   }
 
+  /* fille ? (sexe saisi, sinon deviné d'après le prénom) */
+  function eqFille(e) { if (e.genre === "F") return true; if (e.genreManuel) return false; try { return !!(window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F"); } catch (x) { return false; } }
   function eqCompoHTML(cl, q, eqs) {
     return `<details id="eq-compo" ${(!eqs.length || window.__eqCompoOuvert) ? "open" : ""} style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:700">Composition des équipes (${eqs.length ? eqs.join(", ") : "à faire"})</summary>
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding:6px 8px;background:#EEF5FD;border-radius:8px;font-size:.85rem">
@@ -15334,7 +15336,9 @@ window.JSYNC = window.JSYNC || (function () {
           ${EQ_NOMS.filter((n, i) => i < Math.max(eqNbEquipes(cl, q), ...eqs.map(x => EQ_NOMS.indexOf(x) + 1))).map(n => `<button class="btn btn-sm btn-primary" type="button" data-eq-mettre="${n}" style="min-width:34px">${n}</button>`).join("")}
           <button class="btn btn-sm" type="button" data-eq-mettre="" title="Retirer les élèves cochés de leur équipe">Retirer</button>
           <span id="eq-nsel" class="muted"></span></div>
+        ${eqs.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:.84rem">${eqs.map(t => { const el = cl.eleves.filter(e => q.membres[e.id] === t), nf = el.filter(eqFille).length; return `<span style="border:1px solid #DDE3EA;border-radius:999px;padding:3px 10px;background:#fff"><b>${t}</b> · ${el.length} élèves · <span style="color:#1D4ED8;font-weight:700">${el.length - nf} G</span> / <span style="color:#BE185D;font-weight:700">${nf} F</span></span>`; }).join("")}</div>` : ""}
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${cl.eleves.map(e => `<label style="display:inline-flex;align-items:center;gap:5px;border:1px solid #DDE3EA;border-radius:8px;padding:3px 6px;font-size:.85rem;cursor:pointer;background:${q.membres[e.id] ? "#fff" : "#FFF8E6"}"><input type="checkbox" data-eq-coche="${e.id}">${esc(e.nom)}
+          <button type="button" data-eq-sx="${e.id}" title="Garçon / fille (cliquer pour corriger)" style="border:0;border-radius:6px;width:22px;height:20px;font-size:.7rem;font-weight:800;color:#fff;cursor:pointer;background:${eqFille(e) ? "#DB2777" : "#2563EB"}">${eqFille(e) ? "F" : "G"}</button>
           <select data-eq-m="${e.id}" style="padding:2px 4px;border-radius:6px">${['<option value="">—</option>'].concat(EQ_NOMS.map(n => `<option ${q.membres[e.id] === n ? "selected" : ""}>${n}</option>`)).join("")}</select></label>`).join("")}</div></details>`;
   }
   function eqHTML(cl, G) {
@@ -15379,9 +15383,12 @@ window.JSYNC = window.JSYNC || (function () {
     if (auto) auto.onclick = () => {
       const n = eqNbEquipes(cl, q), a = Object.keys(q.membres).some(k => q.membres[k]);
       const faire = () => {
-        // garçons et filles répartis à tour de rôle pour des équipes équilibrées
-        const g = cl.eleves.filter(e => e.genre !== "F"), fi = cl.eleves.filter(e => e.genre === "F");
-        g.concat(fi).forEach((e, i) => { q.membres[e.id] = EQ_NOMS[i % n]; });
+        // filles puis garçons distribués à tour de rôle (ordre tiré au sort) : chaque équipe a autant de filles et de garçons
+        // que possible (au plus un d'écart), et les équipes ont la même taille (au plus un d'écart)
+        const mel = t => { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; };
+        const fi = mel(cl.eleves.filter(eqFille)), g = mel(cl.eleves.filter(e => !eqFille(e)));
+        const dec = Math.floor(Math.random() * n);
+        fi.concat(g).forEach((e, i) => { q.membres[e.id] = EQ_NOMS[(i + dec) % n]; });
         q.nb = n; save(); rafraichir(); toast("Classe répartie en " + n + " équipes" + (q.parEq ? " de " + q.parEq + " joueurs au plus" : ""));
       };
       if (a) confirmModal("Répartir la classe", "La composition actuelle des équipes sera remplacée. Les totaux déjà saisis restent attachés aux lettres d'équipe. Continuer ?", "Répartir", faire); else faire();
@@ -15402,6 +15409,7 @@ window.JSYNC = window.JSYNC || (function () {
     });
     c.querySelectorAll("[data-eq-m]").forEach(s => s.onclick = (ev) => ev.stopPropagation());
     c.querySelectorAll("[data-eq-m]").forEach(s => s.onchange = () => { if (s.value) q.membres[s.dataset.eqM] = s.value; else delete q.membres[s.dataset.eqM]; save(); rafraichir(); });
+    c.querySelectorAll("[data-eq-sx]").forEach(b => b.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); const e = cl.eleves.find(x => x.id === b.dataset.eqSx); if (!e) return; e.genre = eqFille(e) ? "M" : "F"; e.genreManuel = true; window.__eqCompoOuvert = true; save(); rafraichir(); });
     c.querySelectorAll("[data-eq-add]").forEach(b => b.onclick = () => { eqMatch(cl, b.dataset.eqAdd).ech.push({}); if (!cl.sommativeInfo.date) cl.sommativeInfo.date = new Date().toISOString().slice(0, 10); save(); rafraichir(); });
     c.querySelectorAll("[data-eq-del]").forEach(b => b.onclick = () => { const p = b.dataset.eqDel.split("|"); eqMatch(cl, p[0]).ech.splice(Number(p[1]), 1); save(); rafraichir(); });
     c.querySelectorAll("[data-eq-c]").forEach(x => x.onchange = () => { const p = x.dataset.eqC.split("|"), e = eqMatch(cl, p[0]).ech[Number(p[1])]; if (e) { if (x.checked) e[p[2]] = 1; else delete e[p[2]]; } save(); rafraichir(); });
@@ -23164,7 +23172,7 @@ window.XlsxLite = (function () {
   }
   /* élèves de la classe (application, sinon cahier journalier) et sexe */
   function seEleves(classe) {
-    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" || (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F") ? "F" : "G" }));
     const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
     const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
     Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
@@ -23282,25 +23290,16 @@ window.XlsxLite = (function () {
   function seFoule(vol, type) {
     try {
       seAudio = seAudio || new (window.AudioContext || window.webkitAudioContext)(); if (seAudio.state === "suspended") seAudio.resume();
-      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3.2 : 3.8, t0 = seAudio.currentTime + 0.02;
-      if (!seBruit) { seBruit = seAudio.createBuffer(1, sr * 4, sr); const x = seBruit.getChannelData(0); for (let i = 0; i < x.length; i++) x[i] = Math.random() * 2 - 1; }
-      if (type === "applaudir") {
+      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3 : 1.5, t0 = seAudio.currentTime + 0.02;
+      {
         const b = seAudio.createBuffer(1, Math.floor(sr * dur), sr), x = b.getChannelData(0);
-        for (let k = 0; k < 900; k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
+        for (let k = 0; k < Math.round(300 * dur); k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
           for (let j = 0; j < 700; j++) x[p + j] += (Math.random() * 2 - 1) * a * env * Math.exp(-j / 90); }
         const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain();
-        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = 0.9 * vol;
-        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0); return;
+        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = (type === "applaudir" ? 0.7 : 0.5) * vol;
+        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0);
+        if (type === "applaudir") return;
       }
-      [[450, 0.9], [1100, 1], [2600, 0.55]].forEach(([fr, a], i) => {
-        const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain(), lfo = seAudio.createOscillator(), lg = seAudio.createGain();
-        s0.buffer = seBruit; s0.loop = true; f.type = "bandpass"; f.frequency.value = fr; f.Q.value = 0.9;
-        lfo.frequency.value = 3 + i * 1.7; lg.gain.value = 0.18 * a * vol; lfo.connect(lg); lg.connect(g.gain);
-        s0.connect(f); f.connect(g); g.connect(seSortie());
-        const pk = 0.75 * a * vol;
-        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(pk, t0 + 0.35); g.gain.linearRampToValueAtTime(pk * 0.8, t0 + 1.8); g.gain.linearRampToValueAtTime(0, t0 + dur);
-        s0.start(t0); lfo.start(t0); s0.stop(t0 + dur + 0.05); lfo.stop(t0 + dur + 0.05);
-      });
       // cornes de supporters (deux notes)
       [[0.15, 466], [0.6, 523]].forEach(([dt, fq]) => { const o = seAudio.createOscillator(), g = seAudio.createGain(); o.type = "sawtooth"; o.frequency.value = fq; o.connect(g); g.connect(seSortie());
         const a = t0 + dt; g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(0.12 * vol, a + 0.04); g.gain.setValueAtTime(0.12 * vol, a + 0.35); g.gain.linearRampToValueAtTime(0, a + 0.42); o.start(a); o.stop(a + 0.45); });
@@ -23727,17 +23726,30 @@ window.XlsxLite = (function () {
         <select data-am="${i}">${["plots", "ballons", "cerceaux", "chasubles", "panier", "but", "filet", "echelle", "haies", "tapis", "temoin", "couloirs"].map(m => `<option${m === a.mat ? " selected" : ""}>${m}</option>`).join("")}</select>
         <button type="button" class="gr-btn" data-asup="${i}" ${d.ateliers.length > 1 ? "" : "disabled"}>✕</button></div>`).join("")}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button type="button" class="gr-btn" id="se-aplus" ${d.ateliers.length < 8 ? "" : "disabled"}>＋ Atelier</button><button type="button" class="gr-btn" id="se-adef">↺ Ateliers proposés pour ${esc(aps.nom)}</button><button type="button" class="gr-btn" id="se-apos">↺ Disposition par défaut</button></div></div>`;
-    // ---- temps restant : divisé par le nombre de groupes (= nombre de rotations) → même temps de jeu pour chaque groupe ----
+    // ---- temps de jeu : le professeur donne le temps restant et la durée de match voulue → programme où tous les groupes jouent autant ----
     const tp = d.cfg.temps = Object.assign({ restant: 30 }, d.cfg.temps || {});
     const nG = ids.length, Tn = Math.max(1, Math.min(+d.cfg.terrains || 1, Math.floor(nG / 2))), trS = +d.cfg.transition || 0;
-    const dureeCalc = r => Math.max(1, Math.floor(((+r || 0) * 60 - (nG - 1) * trS) / nG / 30) / 2);
-    const dmC = dureeCalc(tp.restant), nbJ = 2 * Tn;
+    const pgcd = (x, y) => y ? pgcd(y, x % y) : x, pas = nG / pgcd(nG, 2 * Tn);          // rotations pour que chaque groupe joue une fois de plus
     const fmtM = m => String(m).replace(".", ",") + " min";
+    const planPour = m => {
+      const Rf = Math.floor(((+tp.restant || 0) * 60 + trS) / (m * 60 + trS)), R = Math.floor(Rf / pas) * pas;
+      return { m, R: R >= pas ? R : 0, k: R >= pas ? R * 2 * Tn / nG : 0, libre: R >= pas ? Math.round((+tp.restant - (R * m + (R - 1) * trS / 60)) * 10) / 10 : 0 };
+    };
+    const mMax = Math.floor(((+tp.restant || 0) * 60 - (pas - 1) * trS) / pas / 30) / 2;   // durée max pour que chacun joue au moins une fois
+    // une proposition par nombre de matchs : la durée la plus longue qui tient dans le temps restant
+    const props = [];
+    for (let R = pas; R <= 40; R += pas) { const m = Math.floor(((+tp.restant || 0) * 60 - (R - 1) * trS) / R / 30) / 2; if (m < 2) break; props.push({ m, R, k: R * 2 * Tn / nG, libre: 0 }); }
+    const reco = props.filter(x => x.m >= 5).pop() || props[0] || null;   // le plus de matchs possible, avec des matchs d'au moins 5 min
+    const actif = x => +d.cfg.duree === x.m && d.rot.length === x.R;
     const tempsBox = `<div class="se-box se-temps-box"><div class="se-tps">
         <label class="se-tps-r"><b>⏳ Temps restant</b><input type="number" min="5" max="180" step="1" id="se-tp-rest" value="${tp.restant}"> min</label>
-        <div class="se-tps-cal">÷ <b>${nG} groupes</b> = <b>${nG} rotations</b> de <span class="se-tps-d">${fmtM(dmC)}</span></div>
-        <div class="se-tps-txt">Chaque groupe joue <b>${nbJ} match${nbJ > 1 ? "s" : ""}</b>, soit <b>${fmtM(dmC * nbJ)}</b> de jeu pour tous${trS ? ` · transitions de ${trS} s déduites` : ""}.${(+d.cfg.nbRot || nG) !== nG || +d.cfg.duree !== dmC ? ` <button type="button" class="gr-btn gr-tirer" id="se-tp-app">Appliquer</button>` : ` <span class="se-ok">✔ appliqué</span>`}</div>
-      </div></div>`;
+        <label class="se-tps-r"><b>⏱ Durée d'un match</b><input type="number" min="1" max="30" step="0.5" id="se-tp-match" value="${d.cfg.duree}"> min</label>
+        <div class="se-tps-txt">${nG} groupes · ${Tn} terrain${Tn > 1 ? "s" : ""}${trS ? ` · transition ${trS} s` : ""} — actuellement <b>${d.rot.length} rotations de ${fmtM(+d.cfg.duree)}</b>.</div>
+      </div>
+      <div class="se-props">${props.length ? props.map(x => `<button type="button" class="se-prop${actif(x) ? " on" : ""}${x === reco ? " reco" : ""}" data-tprop="${x.m}:${x.R}">
+          <b>${fmtM(x.m)}</b><span>${x.R} rotations</span><span>chaque groupe joue <b>${x.k} fois</b></span>${x.libre >= 1 ? `<small>${fmtM(x.libre)} libres</small>` : ""}${x === reco ? "<em>conseillé</em>" : ""}</button>`).join("")
+        : `<p class="gr-aide">Temps restant trop court pour faire jouer tous les groupes${Tn === 1 && nG >= 4 ? " : passez à 2 terrains" : ""}.</p>`}</div>
+      <p class="gr-aide">Choisissez une durée (ou tapez la vôtre) : le programme est généré pour que <b>tous les groupes jouent le même nombre de matchs</b> dans le temps restant${mMax >= 1 ? ` — au plus <b>${fmtM(mMax)}</b> par match pour que chaque groupe joue au moins une fois` : ""}.${Tn === 1 && nG >= 4 ? " Avec 2 terrains (réglage du planning), les matchs peuvent être deux fois plus longs." : ""}</p></div>`;
     z.innerHTML = tete + compo + tempsBox + (change ? `<div class="se-vide" style="margin:8px 0">Les groupes ont changé depuis la programmation (des scores sont déjà saisis). <button type="button" class="gr-btn gr-tirer" id="se-regen2">↻ Reprogrammer avec les nouveaux groupes</button></div>` : "") +
       `<div class="se-main"><div class="se-plan">${sePlanSVG(ctx, seRot)}<p class="gr-aide">Faites glisser un atelier pour changer sa disposition autour du terrain. Groupes au repos : un groupe arbitre la rencontre (à tour de rôle), les autres vont chacun dans un atelier différent ; s'il manque des ateliers, les groupes restants observent.</p></div>${lateral}</div>
       <div class="se-bas">
@@ -23798,7 +23810,8 @@ window.XlsxLite = (function () {
         d.buteurs = d.buteurs || []; d.buteurs.push({ r: seRot, i, g, nom, pts: pt, s: d.cfg.seance });
         pk.remove();
         if (d.cfg.foule !== false) seFoule(d.cfg.volume, "clameur");
-        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 650 : 0); }
+        // le commentateur parle seul, juste après la courte réaction du public (sinon les deux se couvrent)
+        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 1300 : 100); }
         sauver();
       });
     });
@@ -23807,7 +23820,7 @@ window.XlsxLite = (function () {
     z.querySelectorAll("[data-test]").forEach(b => b.onclick = () => {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
-      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 700); return; }
+      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
       if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
@@ -23817,13 +23830,17 @@ window.XlsxLite = (function () {
     if (q("se-regen2")) q("se-regen2").onclick = () => askConfirm("Reprogrammer", "Le planning est recalculé avec les groupes actuels ; les scores saisis seront effacés.", "Reprogrammer", regen);
     q("se-terr").onchange = e => { d.cfg.terrains = +e.target.value; regen(); };
     q("se-nbrot").onchange = e => { d.cfg.nbRot = +e.target.value; regen(); };
-    // temps restant → durée des matchs (appliquée tout de suite)
-    const appliquerTemps = () => {
-      const faire = () => { d.cfg.nbRot = nG; d.cfg.duree = dureeCalc(tp.restant); if (seChrono.etat === "pret") seChrono.reste = d.cfg.duree * 60; regen(); seToast(nG + " rotations de " + fmtM(d.cfg.duree) + " — chaque groupe joue le même temps", "success"); };
-      if (aScores) askConfirm("Appliquer le temps restant", "Le planning est reprogrammé (" + nG + " rotations de " + fmtM(dureeCalc(tp.restant)) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
+    // durée de match choisie → programme (tous les groupes jouent autant)
+    const appliquerDuree = function (m) {
+      const x = planPour(m);
+      if (arguments.length > 1) { x.R = arguments[1]; x.k = x.R * 2 * Tn / nG; }
+      if (!x.R) { seToast("Avec " + fmtM(m) + " par match, tous les groupes ne peuvent pas jouer" + (mMax >= 1 ? " : " + fmtM(mMax) + " au plus" : ""), "error"); renderSeance(); return; }
+      const faire = () => { d.cfg.duree = m; d.cfg.nbRot = x.R; if (seChrono.etat === "pret") seChrono.reste = m * 60; regen(); seToast(x.R + " rotations de " + fmtM(m) + " — chaque groupe joue " + x.k + " fois", "success"); };
+      if (aScores) askConfirm("Nouveau programme", "Le planning est reprogrammé (" + x.R + " rotations de " + fmtM(m) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
     };
-    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); if (seChrono.etat === "match") { renderSeance(); return; } appliquerTemps(); };
-    if (q("se-tp-app")) q("se-tp-app").onclick = appliquerTemps;
+    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); renderSeance(); };
+    q("se-tp-match").onchange = e => { const m = Math.round((+String(e.target.value).replace(",", ".") || 0) * 2) / 2; if (m < 1) { renderSeance(); return; } if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); renderSeance(); return; } appliquerDuree(m); };
+    z.querySelectorAll("[data-tprop]").forEach(b => b.onclick = () => { if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); return; } const [m, R] = b.dataset.tprop.split(":").map(Number); appliquerDuree(m, R); });
     z.querySelectorAll("[data-mt]").forEach(s => s.onchange = () => {
       const [k, i, c] = s.dataset.mt.split(":").map(Number), m = d.rot[k].m[i], autre = m[1 - c];
       if (s.value === autre) { seToast("Un groupe ne peut pas jouer contre lui-même", "error"); renderSeance(); return; }
@@ -23953,6 +23970,15 @@ window.XlsxLite = (function () {
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
+      .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+      .se-prop{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:1px;font:inherit;font-size:.8rem;text-align:left;padding:8px 12px;border-radius:12px;border:1.5px solid #DDD3F5;background:#F6F2FF;color:#3B1677;cursor:pointer;min-width:132px;}
+      .se-prop b:first-child{font-size:1.15rem;}
+      .se-prop small{color:#6B7280;}
+      .se-prop:hover{border-color:#A78BFA;background:#EDE4FF;}
+      .se-prop.reco{border-color:#16A34A;}
+      .se-prop.reco em{position:absolute;top:-9px;right:8px;background:#16A34A;color:#fff;font-style:normal;font-weight:800;font-size:.66rem;padding:1px 7px;border-radius:999px;}
+      .se-prop.on{background:linear-gradient(135deg,#5B2BB8,#8B5CF6);color:#fff;border-color:transparent;}
+      .se-prop.on small{color:#E9D5FF;}
       .se-tps{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;}
       .se-tps-r{display:flex !important;align-items:center;gap:8px;margin:0 !important;font-size:1rem;}
       .se-tps-r input{width:96px;font:inherit;font-size:1.7rem;font-weight:800;text-align:center;padding:4px;border:2px solid #8B5CF6;border-radius:10px;color:#4C1D95;}
@@ -27111,6 +27137,8 @@ window.JSYNC = window.JSYNC || (function () {
       c.tr.map(t => t[0] + "–" + t[1] + " % → " + String(t[2]).replace(".", ",") + " pt").join(" · ")).join("<br>");
   }
 
+  /* fille ? (sexe saisi, sinon deviné d'après le prénom) */
+  function eqFille(e) { if (e.genre === "F") return true; if (e.genreManuel) return false; try { return !!(window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F"); } catch (x) { return false; } }
   function eqCompoHTML(cl, q, eqs) {
     return `<details id="eq-compo" ${(!eqs.length || window.__eqCompoOuvert) ? "open" : ""} style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:700">Composition des équipes (${eqs.length ? eqs.join(", ") : "à faire"})</summary>
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding:6px 8px;background:#EEF5FD;border-radius:8px;font-size:.85rem">
@@ -27119,7 +27147,9 @@ window.JSYNC = window.JSYNC || (function () {
           ${EQ_NOMS.filter((n, i) => i < Math.max(eqNbEquipes(cl, q), ...eqs.map(x => EQ_NOMS.indexOf(x) + 1))).map(n => `<button class="btn btn-sm btn-primary" type="button" data-eq-mettre="${n}" style="min-width:34px">${n}</button>`).join("")}
           <button class="btn btn-sm" type="button" data-eq-mettre="" title="Retirer les élèves cochés de leur équipe">Retirer</button>
           <span id="eq-nsel" class="muted"></span></div>
+        ${eqs.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:.84rem">${eqs.map(t => { const el = cl.eleves.filter(e => q.membres[e.id] === t), nf = el.filter(eqFille).length; return `<span style="border:1px solid #DDE3EA;border-radius:999px;padding:3px 10px;background:#fff"><b>${t}</b> · ${el.length} élèves · <span style="color:#1D4ED8;font-weight:700">${el.length - nf} G</span> / <span style="color:#BE185D;font-weight:700">${nf} F</span></span>`; }).join("")}</div>` : ""}
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${cl.eleves.map(e => `<label style="display:inline-flex;align-items:center;gap:5px;border:1px solid #DDE3EA;border-radius:8px;padding:3px 6px;font-size:.85rem;cursor:pointer;background:${q.membres[e.id] ? "#fff" : "#FFF8E6"}"><input type="checkbox" data-eq-coche="${e.id}">${esc(e.nom)}
+          <button type="button" data-eq-sx="${e.id}" title="Garçon / fille (cliquer pour corriger)" style="border:0;border-radius:6px;width:22px;height:20px;font-size:.7rem;font-weight:800;color:#fff;cursor:pointer;background:${eqFille(e) ? "#DB2777" : "#2563EB"}">${eqFille(e) ? "F" : "G"}</button>
           <select data-eq-m="${e.id}" style="padding:2px 4px;border-radius:6px">${['<option value="">—</option>'].concat(EQ_NOMS.map(n => `<option ${q.membres[e.id] === n ? "selected" : ""}>${n}</option>`)).join("")}</select></label>`).join("")}</div></details>`;
   }
   function eqHTML(cl, G) {
@@ -27164,9 +27194,12 @@ window.JSYNC = window.JSYNC || (function () {
     if (auto) auto.onclick = () => {
       const n = eqNbEquipes(cl, q), a = Object.keys(q.membres).some(k => q.membres[k]);
       const faire = () => {
-        // garçons et filles répartis à tour de rôle pour des équipes équilibrées
-        const g = cl.eleves.filter(e => e.genre !== "F"), fi = cl.eleves.filter(e => e.genre === "F");
-        g.concat(fi).forEach((e, i) => { q.membres[e.id] = EQ_NOMS[i % n]; });
+        // filles puis garçons distribués à tour de rôle (ordre tiré au sort) : chaque équipe a autant de filles et de garçons
+        // que possible (au plus un d'écart), et les équipes ont la même taille (au plus un d'écart)
+        const mel = t => { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; };
+        const fi = mel(cl.eleves.filter(eqFille)), g = mel(cl.eleves.filter(e => !eqFille(e)));
+        const dec = Math.floor(Math.random() * n);
+        fi.concat(g).forEach((e, i) => { q.membres[e.id] = EQ_NOMS[(i + dec) % n]; });
         q.nb = n; save(); rafraichir(); toast("Classe répartie en " + n + " équipes" + (q.parEq ? " de " + q.parEq + " joueurs au plus" : ""));
       };
       if (a) confirmModal("Répartir la classe", "La composition actuelle des équipes sera remplacée. Les totaux déjà saisis restent attachés aux lettres d'équipe. Continuer ?", "Répartir", faire); else faire();
@@ -27187,6 +27220,7 @@ window.JSYNC = window.JSYNC || (function () {
     });
     c.querySelectorAll("[data-eq-m]").forEach(s => s.onclick = (ev) => ev.stopPropagation());
     c.querySelectorAll("[data-eq-m]").forEach(s => s.onchange = () => { if (s.value) q.membres[s.dataset.eqM] = s.value; else delete q.membres[s.dataset.eqM]; save(); rafraichir(); });
+    c.querySelectorAll("[data-eq-sx]").forEach(b => b.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); const e = cl.eleves.find(x => x.id === b.dataset.eqSx); if (!e) return; e.genre = eqFille(e) ? "M" : "F"; e.genreManuel = true; window.__eqCompoOuvert = true; save(); rafraichir(); });
     c.querySelectorAll("[data-eq-add]").forEach(b => b.onclick = () => { eqMatch(cl, b.dataset.eqAdd).ech.push({}); if (!cl.sommativeInfo.date) cl.sommativeInfo.date = new Date().toISOString().slice(0, 10); save(); rafraichir(); });
     c.querySelectorAll("[data-eq-del]").forEach(b => b.onclick = () => { const p = b.dataset.eqDel.split("|"); eqMatch(cl, p[0]).ech.splice(Number(p[1]), 1); save(); rafraichir(); });
     c.querySelectorAll("[data-eq-c]").forEach(x => x.onchange = () => { const p = x.dataset.eqC.split("|"), e = eqMatch(cl, p[0]).ech[Number(p[1])]; if (e) { if (x.checked) e[p[2]] = 1; else delete e[p[2]]; } save(); rafraichir(); });
@@ -34949,7 +34983,7 @@ window.XlsxLite = (function () {
   }
   /* élèves de la classe (application, sinon cahier journalier) et sexe */
   function seEleves(classe) {
-    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" || (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F") ? "F" : "G" }));
     const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
     const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
     Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
@@ -35067,25 +35101,16 @@ window.XlsxLite = (function () {
   function seFoule(vol, type) {
     try {
       seAudio = seAudio || new (window.AudioContext || window.webkitAudioContext)(); if (seAudio.state === "suspended") seAudio.resume();
-      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3.2 : 3.8, t0 = seAudio.currentTime + 0.02;
-      if (!seBruit) { seBruit = seAudio.createBuffer(1, sr * 4, sr); const x = seBruit.getChannelData(0); for (let i = 0; i < x.length; i++) x[i] = Math.random() * 2 - 1; }
-      if (type === "applaudir") {
+      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3 : 1.5, t0 = seAudio.currentTime + 0.02;
+      {
         const b = seAudio.createBuffer(1, Math.floor(sr * dur), sr), x = b.getChannelData(0);
-        for (let k = 0; k < 900; k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
+        for (let k = 0; k < Math.round(300 * dur); k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
           for (let j = 0; j < 700; j++) x[p + j] += (Math.random() * 2 - 1) * a * env * Math.exp(-j / 90); }
         const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain();
-        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = 0.9 * vol;
-        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0); return;
+        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = (type === "applaudir" ? 0.7 : 0.5) * vol;
+        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0);
+        if (type === "applaudir") return;
       }
-      [[450, 0.9], [1100, 1], [2600, 0.55]].forEach(([fr, a], i) => {
-        const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain(), lfo = seAudio.createOscillator(), lg = seAudio.createGain();
-        s0.buffer = seBruit; s0.loop = true; f.type = "bandpass"; f.frequency.value = fr; f.Q.value = 0.9;
-        lfo.frequency.value = 3 + i * 1.7; lg.gain.value = 0.18 * a * vol; lfo.connect(lg); lg.connect(g.gain);
-        s0.connect(f); f.connect(g); g.connect(seSortie());
-        const pk = 0.75 * a * vol;
-        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(pk, t0 + 0.35); g.gain.linearRampToValueAtTime(pk * 0.8, t0 + 1.8); g.gain.linearRampToValueAtTime(0, t0 + dur);
-        s0.start(t0); lfo.start(t0); s0.stop(t0 + dur + 0.05); lfo.stop(t0 + dur + 0.05);
-      });
       // cornes de supporters (deux notes)
       [[0.15, 466], [0.6, 523]].forEach(([dt, fq]) => { const o = seAudio.createOscillator(), g = seAudio.createGain(); o.type = "sawtooth"; o.frequency.value = fq; o.connect(g); g.connect(seSortie());
         const a = t0 + dt; g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(0.12 * vol, a + 0.04); g.gain.setValueAtTime(0.12 * vol, a + 0.35); g.gain.linearRampToValueAtTime(0, a + 0.42); o.start(a); o.stop(a + 0.45); });
@@ -35512,17 +35537,30 @@ window.XlsxLite = (function () {
         <select data-am="${i}">${["plots", "ballons", "cerceaux", "chasubles", "panier", "but", "filet", "echelle", "haies", "tapis", "temoin", "couloirs"].map(m => `<option${m === a.mat ? " selected" : ""}>${m}</option>`).join("")}</select>
         <button type="button" class="gr-btn" data-asup="${i}" ${d.ateliers.length > 1 ? "" : "disabled"}>✕</button></div>`).join("")}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button type="button" class="gr-btn" id="se-aplus" ${d.ateliers.length < 8 ? "" : "disabled"}>＋ Atelier</button><button type="button" class="gr-btn" id="se-adef">↺ Ateliers proposés pour ${esc(aps.nom)}</button><button type="button" class="gr-btn" id="se-apos">↺ Disposition par défaut</button></div></div>`;
-    // ---- temps restant : divisé par le nombre de groupes (= nombre de rotations) → même temps de jeu pour chaque groupe ----
+    // ---- temps de jeu : le professeur donne le temps restant et la durée de match voulue → programme où tous les groupes jouent autant ----
     const tp = d.cfg.temps = Object.assign({ restant: 30 }, d.cfg.temps || {});
     const nG = ids.length, Tn = Math.max(1, Math.min(+d.cfg.terrains || 1, Math.floor(nG / 2))), trS = +d.cfg.transition || 0;
-    const dureeCalc = r => Math.max(1, Math.floor(((+r || 0) * 60 - (nG - 1) * trS) / nG / 30) / 2);
-    const dmC = dureeCalc(tp.restant), nbJ = 2 * Tn;
+    const pgcd = (x, y) => y ? pgcd(y, x % y) : x, pas = nG / pgcd(nG, 2 * Tn);          // rotations pour que chaque groupe joue une fois de plus
     const fmtM = m => String(m).replace(".", ",") + " min";
+    const planPour = m => {
+      const Rf = Math.floor(((+tp.restant || 0) * 60 + trS) / (m * 60 + trS)), R = Math.floor(Rf / pas) * pas;
+      return { m, R: R >= pas ? R : 0, k: R >= pas ? R * 2 * Tn / nG : 0, libre: R >= pas ? Math.round((+tp.restant - (R * m + (R - 1) * trS / 60)) * 10) / 10 : 0 };
+    };
+    const mMax = Math.floor(((+tp.restant || 0) * 60 - (pas - 1) * trS) / pas / 30) / 2;   // durée max pour que chacun joue au moins une fois
+    // une proposition par nombre de matchs : la durée la plus longue qui tient dans le temps restant
+    const props = [];
+    for (let R = pas; R <= 40; R += pas) { const m = Math.floor(((+tp.restant || 0) * 60 - (R - 1) * trS) / R / 30) / 2; if (m < 2) break; props.push({ m, R, k: R * 2 * Tn / nG, libre: 0 }); }
+    const reco = props.filter(x => x.m >= 5).pop() || props[0] || null;   // le plus de matchs possible, avec des matchs d'au moins 5 min
+    const actif = x => +d.cfg.duree === x.m && d.rot.length === x.R;
     const tempsBox = `<div class="se-box se-temps-box"><div class="se-tps">
         <label class="se-tps-r"><b>⏳ Temps restant</b><input type="number" min="5" max="180" step="1" id="se-tp-rest" value="${tp.restant}"> min</label>
-        <div class="se-tps-cal">÷ <b>${nG} groupes</b> = <b>${nG} rotations</b> de <span class="se-tps-d">${fmtM(dmC)}</span></div>
-        <div class="se-tps-txt">Chaque groupe joue <b>${nbJ} match${nbJ > 1 ? "s" : ""}</b>, soit <b>${fmtM(dmC * nbJ)}</b> de jeu pour tous${trS ? ` · transitions de ${trS} s déduites` : ""}.${(+d.cfg.nbRot || nG) !== nG || +d.cfg.duree !== dmC ? ` <button type="button" class="gr-btn gr-tirer" id="se-tp-app">Appliquer</button>` : ` <span class="se-ok">✔ appliqué</span>`}</div>
-      </div></div>`;
+        <label class="se-tps-r"><b>⏱ Durée d'un match</b><input type="number" min="1" max="30" step="0.5" id="se-tp-match" value="${d.cfg.duree}"> min</label>
+        <div class="se-tps-txt">${nG} groupes · ${Tn} terrain${Tn > 1 ? "s" : ""}${trS ? ` · transition ${trS} s` : ""} — actuellement <b>${d.rot.length} rotations de ${fmtM(+d.cfg.duree)}</b>.</div>
+      </div>
+      <div class="se-props">${props.length ? props.map(x => `<button type="button" class="se-prop${actif(x) ? " on" : ""}${x === reco ? " reco" : ""}" data-tprop="${x.m}:${x.R}">
+          <b>${fmtM(x.m)}</b><span>${x.R} rotations</span><span>chaque groupe joue <b>${x.k} fois</b></span>${x.libre >= 1 ? `<small>${fmtM(x.libre)} libres</small>` : ""}${x === reco ? "<em>conseillé</em>" : ""}</button>`).join("")
+        : `<p class="gr-aide">Temps restant trop court pour faire jouer tous les groupes${Tn === 1 && nG >= 4 ? " : passez à 2 terrains" : ""}.</p>`}</div>
+      <p class="gr-aide">Choisissez une durée (ou tapez la vôtre) : le programme est généré pour que <b>tous les groupes jouent le même nombre de matchs</b> dans le temps restant${mMax >= 1 ? ` — au plus <b>${fmtM(mMax)}</b> par match pour que chaque groupe joue au moins une fois` : ""}.${Tn === 1 && nG >= 4 ? " Avec 2 terrains (réglage du planning), les matchs peuvent être deux fois plus longs." : ""}</p></div>`;
     z.innerHTML = tete + compo + tempsBox + (change ? `<div class="se-vide" style="margin:8px 0">Les groupes ont changé depuis la programmation (des scores sont déjà saisis). <button type="button" class="gr-btn gr-tirer" id="se-regen2">↻ Reprogrammer avec les nouveaux groupes</button></div>` : "") +
       `<div class="se-main"><div class="se-plan">${sePlanSVG(ctx, seRot)}<p class="gr-aide">Faites glisser un atelier pour changer sa disposition autour du terrain. Groupes au repos : un groupe arbitre la rencontre (à tour de rôle), les autres vont chacun dans un atelier différent ; s'il manque des ateliers, les groupes restants observent.</p></div>${lateral}</div>
       <div class="se-bas">
@@ -35583,7 +35621,8 @@ window.XlsxLite = (function () {
         d.buteurs = d.buteurs || []; d.buteurs.push({ r: seRot, i, g, nom, pts: pt, s: d.cfg.seance });
         pk.remove();
         if (d.cfg.foule !== false) seFoule(d.cfg.volume, "clameur");
-        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 650 : 0); }
+        // le commentateur parle seul, juste après la courte réaction du public (sinon les deux se couvrent)
+        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 1300 : 100); }
         sauver();
       });
     });
@@ -35592,7 +35631,7 @@ window.XlsxLite = (function () {
     z.querySelectorAll("[data-test]").forEach(b => b.onclick = () => {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
-      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 700); return; }
+      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
       if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
@@ -35602,13 +35641,17 @@ window.XlsxLite = (function () {
     if (q("se-regen2")) q("se-regen2").onclick = () => askConfirm("Reprogrammer", "Le planning est recalculé avec les groupes actuels ; les scores saisis seront effacés.", "Reprogrammer", regen);
     q("se-terr").onchange = e => { d.cfg.terrains = +e.target.value; regen(); };
     q("se-nbrot").onchange = e => { d.cfg.nbRot = +e.target.value; regen(); };
-    // temps restant → durée des matchs (appliquée tout de suite)
-    const appliquerTemps = () => {
-      const faire = () => { d.cfg.nbRot = nG; d.cfg.duree = dureeCalc(tp.restant); if (seChrono.etat === "pret") seChrono.reste = d.cfg.duree * 60; regen(); seToast(nG + " rotations de " + fmtM(d.cfg.duree) + " — chaque groupe joue le même temps", "success"); };
-      if (aScores) askConfirm("Appliquer le temps restant", "Le planning est reprogrammé (" + nG + " rotations de " + fmtM(dureeCalc(tp.restant)) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
+    // durée de match choisie → programme (tous les groupes jouent autant)
+    const appliquerDuree = function (m) {
+      const x = planPour(m);
+      if (arguments.length > 1) { x.R = arguments[1]; x.k = x.R * 2 * Tn / nG; }
+      if (!x.R) { seToast("Avec " + fmtM(m) + " par match, tous les groupes ne peuvent pas jouer" + (mMax >= 1 ? " : " + fmtM(mMax) + " au plus" : ""), "error"); renderSeance(); return; }
+      const faire = () => { d.cfg.duree = m; d.cfg.nbRot = x.R; if (seChrono.etat === "pret") seChrono.reste = m * 60; regen(); seToast(x.R + " rotations de " + fmtM(m) + " — chaque groupe joue " + x.k + " fois", "success"); };
+      if (aScores) askConfirm("Nouveau programme", "Le planning est reprogrammé (" + x.R + " rotations de " + fmtM(m) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
     };
-    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); if (seChrono.etat === "match") { renderSeance(); return; } appliquerTemps(); };
-    if (q("se-tp-app")) q("se-tp-app").onclick = appliquerTemps;
+    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); renderSeance(); };
+    q("se-tp-match").onchange = e => { const m = Math.round((+String(e.target.value).replace(",", ".") || 0) * 2) / 2; if (m < 1) { renderSeance(); return; } if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); renderSeance(); return; } appliquerDuree(m); };
+    z.querySelectorAll("[data-tprop]").forEach(b => b.onclick = () => { if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); return; } const [m, R] = b.dataset.tprop.split(":").map(Number); appliquerDuree(m, R); });
     z.querySelectorAll("[data-mt]").forEach(s => s.onchange = () => {
       const [k, i, c] = s.dataset.mt.split(":").map(Number), m = d.rot[k].m[i], autre = m[1 - c];
       if (s.value === autre) { seToast("Un groupe ne peut pas jouer contre lui-même", "error"); renderSeance(); return; }
@@ -35738,6 +35781,15 @@ window.XlsxLite = (function () {
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
+      .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+      .se-prop{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:1px;font:inherit;font-size:.8rem;text-align:left;padding:8px 12px;border-radius:12px;border:1.5px solid #DDD3F5;background:#F6F2FF;color:#3B1677;cursor:pointer;min-width:132px;}
+      .se-prop b:first-child{font-size:1.15rem;}
+      .se-prop small{color:#6B7280;}
+      .se-prop:hover{border-color:#A78BFA;background:#EDE4FF;}
+      .se-prop.reco{border-color:#16A34A;}
+      .se-prop.reco em{position:absolute;top:-9px;right:8px;background:#16A34A;color:#fff;font-style:normal;font-weight:800;font-size:.66rem;padding:1px 7px;border-radius:999px;}
+      .se-prop.on{background:linear-gradient(135deg,#5B2BB8,#8B5CF6);color:#fff;border-color:transparent;}
+      .se-prop.on small{color:#E9D5FF;}
       .se-tps{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;}
       .se-tps-r{display:flex !important;align-items:center;gap:8px;margin:0 !important;font-size:1rem;}
       .se-tps-r input{width:96px;font:inherit;font-size:1.7rem;font-weight:800;text-align:center;padding:4px;border:2px solid #8B5CF6;border-radius:10px;color:#4C1D95;}
@@ -38893,6 +38945,8 @@ window.JSYNC = window.JSYNC || (function () {
       c.tr.map(t => t[0] + "–" + t[1] + " % → " + String(t[2]).replace(".", ",") + " pt").join(" · ")).join("<br>");
   }
 
+  /* fille ? (sexe saisi, sinon deviné d'après le prénom) */
+  function eqFille(e) { if (e.genre === "F") return true; if (e.genreManuel) return false; try { return !!(window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F"); } catch (x) { return false; } }
   function eqCompoHTML(cl, q, eqs) {
     return `<details id="eq-compo" ${(!eqs.length || window.__eqCompoOuvert) ? "open" : ""} style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:700">Composition des équipes (${eqs.length ? eqs.join(", ") : "à faire"})</summary>
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding:6px 8px;background:#EEF5FD;border-radius:8px;font-size:.85rem">
@@ -38901,7 +38955,9 @@ window.JSYNC = window.JSYNC || (function () {
           ${EQ_NOMS.filter((n, i) => i < Math.max(eqNbEquipes(cl, q), ...eqs.map(x => EQ_NOMS.indexOf(x) + 1))).map(n => `<button class="btn btn-sm btn-primary" type="button" data-eq-mettre="${n}" style="min-width:34px">${n}</button>`).join("")}
           <button class="btn btn-sm" type="button" data-eq-mettre="" title="Retirer les élèves cochés de leur équipe">Retirer</button>
           <span id="eq-nsel" class="muted"></span></div>
+        ${eqs.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:.84rem">${eqs.map(t => { const el = cl.eleves.filter(e => q.membres[e.id] === t), nf = el.filter(eqFille).length; return `<span style="border:1px solid #DDE3EA;border-radius:999px;padding:3px 10px;background:#fff"><b>${t}</b> · ${el.length} élèves · <span style="color:#1D4ED8;font-weight:700">${el.length - nf} G</span> / <span style="color:#BE185D;font-weight:700">${nf} F</span></span>`; }).join("")}</div>` : ""}
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${cl.eleves.map(e => `<label style="display:inline-flex;align-items:center;gap:5px;border:1px solid #DDE3EA;border-radius:8px;padding:3px 6px;font-size:.85rem;cursor:pointer;background:${q.membres[e.id] ? "#fff" : "#FFF8E6"}"><input type="checkbox" data-eq-coche="${e.id}">${esc(e.nom)}
+          <button type="button" data-eq-sx="${e.id}" title="Garçon / fille (cliquer pour corriger)" style="border:0;border-radius:6px;width:22px;height:20px;font-size:.7rem;font-weight:800;color:#fff;cursor:pointer;background:${eqFille(e) ? "#DB2777" : "#2563EB"}">${eqFille(e) ? "F" : "G"}</button>
           <select data-eq-m="${e.id}" style="padding:2px 4px;border-radius:6px">${['<option value="">—</option>'].concat(EQ_NOMS.map(n => `<option ${q.membres[e.id] === n ? "selected" : ""}>${n}</option>`)).join("")}</select></label>`).join("")}</div></details>`;
   }
   function eqHTML(cl, G) {
@@ -38946,9 +39002,12 @@ window.JSYNC = window.JSYNC || (function () {
     if (auto) auto.onclick = () => {
       const n = eqNbEquipes(cl, q), a = Object.keys(q.membres).some(k => q.membres[k]);
       const faire = () => {
-        // garçons et filles répartis à tour de rôle pour des équipes équilibrées
-        const g = cl.eleves.filter(e => e.genre !== "F"), fi = cl.eleves.filter(e => e.genre === "F");
-        g.concat(fi).forEach((e, i) => { q.membres[e.id] = EQ_NOMS[i % n]; });
+        // filles puis garçons distribués à tour de rôle (ordre tiré au sort) : chaque équipe a autant de filles et de garçons
+        // que possible (au plus un d'écart), et les équipes ont la même taille (au plus un d'écart)
+        const mel = t => { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; };
+        const fi = mel(cl.eleves.filter(eqFille)), g = mel(cl.eleves.filter(e => !eqFille(e)));
+        const dec = Math.floor(Math.random() * n);
+        fi.concat(g).forEach((e, i) => { q.membres[e.id] = EQ_NOMS[(i + dec) % n]; });
         q.nb = n; save(); rafraichir(); toast("Classe répartie en " + n + " équipes" + (q.parEq ? " de " + q.parEq + " joueurs au plus" : ""));
       };
       if (a) confirmModal("Répartir la classe", "La composition actuelle des équipes sera remplacée. Les totaux déjà saisis restent attachés aux lettres d'équipe. Continuer ?", "Répartir", faire); else faire();
@@ -38969,6 +39028,7 @@ window.JSYNC = window.JSYNC || (function () {
     });
     c.querySelectorAll("[data-eq-m]").forEach(s => s.onclick = (ev) => ev.stopPropagation());
     c.querySelectorAll("[data-eq-m]").forEach(s => s.onchange = () => { if (s.value) q.membres[s.dataset.eqM] = s.value; else delete q.membres[s.dataset.eqM]; save(); rafraichir(); });
+    c.querySelectorAll("[data-eq-sx]").forEach(b => b.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); const e = cl.eleves.find(x => x.id === b.dataset.eqSx); if (!e) return; e.genre = eqFille(e) ? "M" : "F"; e.genreManuel = true; window.__eqCompoOuvert = true; save(); rafraichir(); });
     c.querySelectorAll("[data-eq-add]").forEach(b => b.onclick = () => { eqMatch(cl, b.dataset.eqAdd).ech.push({}); if (!cl.sommativeInfo.date) cl.sommativeInfo.date = new Date().toISOString().slice(0, 10); save(); rafraichir(); });
     c.querySelectorAll("[data-eq-del]").forEach(b => b.onclick = () => { const p = b.dataset.eqDel.split("|"); eqMatch(cl, p[0]).ech.splice(Number(p[1]), 1); save(); rafraichir(); });
     c.querySelectorAll("[data-eq-c]").forEach(x => x.onchange = () => { const p = x.dataset.eqC.split("|"), e = eqMatch(cl, p[0]).ech[Number(p[1])]; if (e) { if (x.checked) e[p[2]] = 1; else delete e[p[2]]; } save(); rafraichir(); });
@@ -46731,7 +46791,7 @@ window.XlsxLite = (function () {
   }
   /* élèves de la classe (application, sinon cahier journalier) et sexe */
   function seEleves(classe) {
-    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" || (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F") ? "F" : "G" }));
     const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
     const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
     Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
@@ -46849,25 +46909,16 @@ window.XlsxLite = (function () {
   function seFoule(vol, type) {
     try {
       seAudio = seAudio || new (window.AudioContext || window.webkitAudioContext)(); if (seAudio.state === "suspended") seAudio.resume();
-      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3.2 : 3.8, t0 = seAudio.currentTime + 0.02;
-      if (!seBruit) { seBruit = seAudio.createBuffer(1, sr * 4, sr); const x = seBruit.getChannelData(0); for (let i = 0; i < x.length; i++) x[i] = Math.random() * 2 - 1; }
-      if (type === "applaudir") {
+      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3 : 1.5, t0 = seAudio.currentTime + 0.02;
+      {
         const b = seAudio.createBuffer(1, Math.floor(sr * dur), sr), x = b.getChannelData(0);
-        for (let k = 0; k < 900; k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
+        for (let k = 0; k < Math.round(300 * dur); k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
           for (let j = 0; j < 700; j++) x[p + j] += (Math.random() * 2 - 1) * a * env * Math.exp(-j / 90); }
         const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain();
-        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = 0.9 * vol;
-        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0); return;
+        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = (type === "applaudir" ? 0.7 : 0.5) * vol;
+        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0);
+        if (type === "applaudir") return;
       }
-      [[450, 0.9], [1100, 1], [2600, 0.55]].forEach(([fr, a], i) => {
-        const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain(), lfo = seAudio.createOscillator(), lg = seAudio.createGain();
-        s0.buffer = seBruit; s0.loop = true; f.type = "bandpass"; f.frequency.value = fr; f.Q.value = 0.9;
-        lfo.frequency.value = 3 + i * 1.7; lg.gain.value = 0.18 * a * vol; lfo.connect(lg); lg.connect(g.gain);
-        s0.connect(f); f.connect(g); g.connect(seSortie());
-        const pk = 0.75 * a * vol;
-        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(pk, t0 + 0.35); g.gain.linearRampToValueAtTime(pk * 0.8, t0 + 1.8); g.gain.linearRampToValueAtTime(0, t0 + dur);
-        s0.start(t0); lfo.start(t0); s0.stop(t0 + dur + 0.05); lfo.stop(t0 + dur + 0.05);
-      });
       // cornes de supporters (deux notes)
       [[0.15, 466], [0.6, 523]].forEach(([dt, fq]) => { const o = seAudio.createOscillator(), g = seAudio.createGain(); o.type = "sawtooth"; o.frequency.value = fq; o.connect(g); g.connect(seSortie());
         const a = t0 + dt; g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(0.12 * vol, a + 0.04); g.gain.setValueAtTime(0.12 * vol, a + 0.35); g.gain.linearRampToValueAtTime(0, a + 0.42); o.start(a); o.stop(a + 0.45); });
@@ -47294,17 +47345,30 @@ window.XlsxLite = (function () {
         <select data-am="${i}">${["plots", "ballons", "cerceaux", "chasubles", "panier", "but", "filet", "echelle", "haies", "tapis", "temoin", "couloirs"].map(m => `<option${m === a.mat ? " selected" : ""}>${m}</option>`).join("")}</select>
         <button type="button" class="gr-btn" data-asup="${i}" ${d.ateliers.length > 1 ? "" : "disabled"}>✕</button></div>`).join("")}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button type="button" class="gr-btn" id="se-aplus" ${d.ateliers.length < 8 ? "" : "disabled"}>＋ Atelier</button><button type="button" class="gr-btn" id="se-adef">↺ Ateliers proposés pour ${esc(aps.nom)}</button><button type="button" class="gr-btn" id="se-apos">↺ Disposition par défaut</button></div></div>`;
-    // ---- temps restant : divisé par le nombre de groupes (= nombre de rotations) → même temps de jeu pour chaque groupe ----
+    // ---- temps de jeu : le professeur donne le temps restant et la durée de match voulue → programme où tous les groupes jouent autant ----
     const tp = d.cfg.temps = Object.assign({ restant: 30 }, d.cfg.temps || {});
     const nG = ids.length, Tn = Math.max(1, Math.min(+d.cfg.terrains || 1, Math.floor(nG / 2))), trS = +d.cfg.transition || 0;
-    const dureeCalc = r => Math.max(1, Math.floor(((+r || 0) * 60 - (nG - 1) * trS) / nG / 30) / 2);
-    const dmC = dureeCalc(tp.restant), nbJ = 2 * Tn;
+    const pgcd = (x, y) => y ? pgcd(y, x % y) : x, pas = nG / pgcd(nG, 2 * Tn);          // rotations pour que chaque groupe joue une fois de plus
     const fmtM = m => String(m).replace(".", ",") + " min";
+    const planPour = m => {
+      const Rf = Math.floor(((+tp.restant || 0) * 60 + trS) / (m * 60 + trS)), R = Math.floor(Rf / pas) * pas;
+      return { m, R: R >= pas ? R : 0, k: R >= pas ? R * 2 * Tn / nG : 0, libre: R >= pas ? Math.round((+tp.restant - (R * m + (R - 1) * trS / 60)) * 10) / 10 : 0 };
+    };
+    const mMax = Math.floor(((+tp.restant || 0) * 60 - (pas - 1) * trS) / pas / 30) / 2;   // durée max pour que chacun joue au moins une fois
+    // une proposition par nombre de matchs : la durée la plus longue qui tient dans le temps restant
+    const props = [];
+    for (let R = pas; R <= 40; R += pas) { const m = Math.floor(((+tp.restant || 0) * 60 - (R - 1) * trS) / R / 30) / 2; if (m < 2) break; props.push({ m, R, k: R * 2 * Tn / nG, libre: 0 }); }
+    const reco = props.filter(x => x.m >= 5).pop() || props[0] || null;   // le plus de matchs possible, avec des matchs d'au moins 5 min
+    const actif = x => +d.cfg.duree === x.m && d.rot.length === x.R;
     const tempsBox = `<div class="se-box se-temps-box"><div class="se-tps">
         <label class="se-tps-r"><b>⏳ Temps restant</b><input type="number" min="5" max="180" step="1" id="se-tp-rest" value="${tp.restant}"> min</label>
-        <div class="se-tps-cal">÷ <b>${nG} groupes</b> = <b>${nG} rotations</b> de <span class="se-tps-d">${fmtM(dmC)}</span></div>
-        <div class="se-tps-txt">Chaque groupe joue <b>${nbJ} match${nbJ > 1 ? "s" : ""}</b>, soit <b>${fmtM(dmC * nbJ)}</b> de jeu pour tous${trS ? ` · transitions de ${trS} s déduites` : ""}.${(+d.cfg.nbRot || nG) !== nG || +d.cfg.duree !== dmC ? ` <button type="button" class="gr-btn gr-tirer" id="se-tp-app">Appliquer</button>` : ` <span class="se-ok">✔ appliqué</span>`}</div>
-      </div></div>`;
+        <label class="se-tps-r"><b>⏱ Durée d'un match</b><input type="number" min="1" max="30" step="0.5" id="se-tp-match" value="${d.cfg.duree}"> min</label>
+        <div class="se-tps-txt">${nG} groupes · ${Tn} terrain${Tn > 1 ? "s" : ""}${trS ? ` · transition ${trS} s` : ""} — actuellement <b>${d.rot.length} rotations de ${fmtM(+d.cfg.duree)}</b>.</div>
+      </div>
+      <div class="se-props">${props.length ? props.map(x => `<button type="button" class="se-prop${actif(x) ? " on" : ""}${x === reco ? " reco" : ""}" data-tprop="${x.m}:${x.R}">
+          <b>${fmtM(x.m)}</b><span>${x.R} rotations</span><span>chaque groupe joue <b>${x.k} fois</b></span>${x.libre >= 1 ? `<small>${fmtM(x.libre)} libres</small>` : ""}${x === reco ? "<em>conseillé</em>" : ""}</button>`).join("")
+        : `<p class="gr-aide">Temps restant trop court pour faire jouer tous les groupes${Tn === 1 && nG >= 4 ? " : passez à 2 terrains" : ""}.</p>`}</div>
+      <p class="gr-aide">Choisissez une durée (ou tapez la vôtre) : le programme est généré pour que <b>tous les groupes jouent le même nombre de matchs</b> dans le temps restant${mMax >= 1 ? ` — au plus <b>${fmtM(mMax)}</b> par match pour que chaque groupe joue au moins une fois` : ""}.${Tn === 1 && nG >= 4 ? " Avec 2 terrains (réglage du planning), les matchs peuvent être deux fois plus longs." : ""}</p></div>`;
     z.innerHTML = tete + compo + tempsBox + (change ? `<div class="se-vide" style="margin:8px 0">Les groupes ont changé depuis la programmation (des scores sont déjà saisis). <button type="button" class="gr-btn gr-tirer" id="se-regen2">↻ Reprogrammer avec les nouveaux groupes</button></div>` : "") +
       `<div class="se-main"><div class="se-plan">${sePlanSVG(ctx, seRot)}<p class="gr-aide">Faites glisser un atelier pour changer sa disposition autour du terrain. Groupes au repos : un groupe arbitre la rencontre (à tour de rôle), les autres vont chacun dans un atelier différent ; s'il manque des ateliers, les groupes restants observent.</p></div>${lateral}</div>
       <div class="se-bas">
@@ -47365,7 +47429,8 @@ window.XlsxLite = (function () {
         d.buteurs = d.buteurs || []; d.buteurs.push({ r: seRot, i, g, nom, pts: pt, s: d.cfg.seance });
         pk.remove();
         if (d.cfg.foule !== false) seFoule(d.cfg.volume, "clameur");
-        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 650 : 0); }
+        // le commentateur parle seul, juste après la courte réaction du public (sinon les deux se couvrent)
+        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 1300 : 100); }
         sauver();
       });
     });
@@ -47374,7 +47439,7 @@ window.XlsxLite = (function () {
     z.querySelectorAll("[data-test]").forEach(b => b.onclick = () => {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
-      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 700); return; }
+      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
       if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
@@ -47384,13 +47449,17 @@ window.XlsxLite = (function () {
     if (q("se-regen2")) q("se-regen2").onclick = () => askConfirm("Reprogrammer", "Le planning est recalculé avec les groupes actuels ; les scores saisis seront effacés.", "Reprogrammer", regen);
     q("se-terr").onchange = e => { d.cfg.terrains = +e.target.value; regen(); };
     q("se-nbrot").onchange = e => { d.cfg.nbRot = +e.target.value; regen(); };
-    // temps restant → durée des matchs (appliquée tout de suite)
-    const appliquerTemps = () => {
-      const faire = () => { d.cfg.nbRot = nG; d.cfg.duree = dureeCalc(tp.restant); if (seChrono.etat === "pret") seChrono.reste = d.cfg.duree * 60; regen(); seToast(nG + " rotations de " + fmtM(d.cfg.duree) + " — chaque groupe joue le même temps", "success"); };
-      if (aScores) askConfirm("Appliquer le temps restant", "Le planning est reprogrammé (" + nG + " rotations de " + fmtM(dureeCalc(tp.restant)) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
+    // durée de match choisie → programme (tous les groupes jouent autant)
+    const appliquerDuree = function (m) {
+      const x = planPour(m);
+      if (arguments.length > 1) { x.R = arguments[1]; x.k = x.R * 2 * Tn / nG; }
+      if (!x.R) { seToast("Avec " + fmtM(m) + " par match, tous les groupes ne peuvent pas jouer" + (mMax >= 1 ? " : " + fmtM(mMax) + " au plus" : ""), "error"); renderSeance(); return; }
+      const faire = () => { d.cfg.duree = m; d.cfg.nbRot = x.R; if (seChrono.etat === "pret") seChrono.reste = m * 60; regen(); seToast(x.R + " rotations de " + fmtM(m) + " — chaque groupe joue " + x.k + " fois", "success"); };
+      if (aScores) askConfirm("Nouveau programme", "Le planning est reprogrammé (" + x.R + " rotations de " + fmtM(m) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
     };
-    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); if (seChrono.etat === "match") { renderSeance(); return; } appliquerTemps(); };
-    if (q("se-tp-app")) q("se-tp-app").onclick = appliquerTemps;
+    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); renderSeance(); };
+    q("se-tp-match").onchange = e => { const m = Math.round((+String(e.target.value).replace(",", ".") || 0) * 2) / 2; if (m < 1) { renderSeance(); return; } if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); renderSeance(); return; } appliquerDuree(m); };
+    z.querySelectorAll("[data-tprop]").forEach(b => b.onclick = () => { if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); return; } const [m, R] = b.dataset.tprop.split(":").map(Number); appliquerDuree(m, R); });
     z.querySelectorAll("[data-mt]").forEach(s => s.onchange = () => {
       const [k, i, c] = s.dataset.mt.split(":").map(Number), m = d.rot[k].m[i], autre = m[1 - c];
       if (s.value === autre) { seToast("Un groupe ne peut pas jouer contre lui-même", "error"); renderSeance(); return; }
@@ -47520,6 +47589,15 @@ window.XlsxLite = (function () {
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
+      .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+      .se-prop{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:1px;font:inherit;font-size:.8rem;text-align:left;padding:8px 12px;border-radius:12px;border:1.5px solid #DDD3F5;background:#F6F2FF;color:#3B1677;cursor:pointer;min-width:132px;}
+      .se-prop b:first-child{font-size:1.15rem;}
+      .se-prop small{color:#6B7280;}
+      .se-prop:hover{border-color:#A78BFA;background:#EDE4FF;}
+      .se-prop.reco{border-color:#16A34A;}
+      .se-prop.reco em{position:absolute;top:-9px;right:8px;background:#16A34A;color:#fff;font-style:normal;font-weight:800;font-size:.66rem;padding:1px 7px;border-radius:999px;}
+      .se-prop.on{background:linear-gradient(135deg,#5B2BB8,#8B5CF6);color:#fff;border-color:transparent;}
+      .se-prop.on small{color:#E9D5FF;}
       .se-tps{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;}
       .se-tps-r{display:flex !important;align-items:center;gap:8px;margin:0 !important;font-size:1rem;}
       .se-tps-r input{width:96px;font:inherit;font-size:1.7rem;font-weight:800;text-align:center;padding:4px;border:2px solid #8B5CF6;border-radius:10px;color:#4C1D95;}
@@ -50605,6 +50683,8 @@ window.JSYNC = window.JSYNC || (function () {
       c.tr.map(t => t[0] + "–" + t[1] + " % → " + String(t[2]).replace(".", ",") + " pt").join(" · ")).join("<br>");
   }
 
+  /* fille ? (sexe saisi, sinon deviné d'après le prénom) */
+  function eqFille(e) { if (e.genre === "F") return true; if (e.genreManuel) return false; try { return !!(window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F"); } catch (x) { return false; } }
   function eqCompoHTML(cl, q, eqs) {
     return `<details id="eq-compo" ${(!eqs.length || window.__eqCompoOuvert) ? "open" : ""} style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:700">Composition des équipes (${eqs.length ? eqs.join(", ") : "à faire"})</summary>
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding:6px 8px;background:#EEF5FD;border-radius:8px;font-size:.85rem">
@@ -50613,7 +50693,9 @@ window.JSYNC = window.JSYNC || (function () {
           ${EQ_NOMS.filter((n, i) => i < Math.max(eqNbEquipes(cl, q), ...eqs.map(x => EQ_NOMS.indexOf(x) + 1))).map(n => `<button class="btn btn-sm btn-primary" type="button" data-eq-mettre="${n}" style="min-width:34px">${n}</button>`).join("")}
           <button class="btn btn-sm" type="button" data-eq-mettre="" title="Retirer les élèves cochés de leur équipe">Retirer</button>
           <span id="eq-nsel" class="muted"></span></div>
+        ${eqs.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:.84rem">${eqs.map(t => { const el = cl.eleves.filter(e => q.membres[e.id] === t), nf = el.filter(eqFille).length; return `<span style="border:1px solid #DDE3EA;border-radius:999px;padding:3px 10px;background:#fff"><b>${t}</b> · ${el.length} élèves · <span style="color:#1D4ED8;font-weight:700">${el.length - nf} G</span> / <span style="color:#BE185D;font-weight:700">${nf} F</span></span>`; }).join("")}</div>` : ""}
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${cl.eleves.map(e => `<label style="display:inline-flex;align-items:center;gap:5px;border:1px solid #DDE3EA;border-radius:8px;padding:3px 6px;font-size:.85rem;cursor:pointer;background:${q.membres[e.id] ? "#fff" : "#FFF8E6"}"><input type="checkbox" data-eq-coche="${e.id}">${esc(e.nom)}
+          <button type="button" data-eq-sx="${e.id}" title="Garçon / fille (cliquer pour corriger)" style="border:0;border-radius:6px;width:22px;height:20px;font-size:.7rem;font-weight:800;color:#fff;cursor:pointer;background:${eqFille(e) ? "#DB2777" : "#2563EB"}">${eqFille(e) ? "F" : "G"}</button>
           <select data-eq-m="${e.id}" style="padding:2px 4px;border-radius:6px">${['<option value="">—</option>'].concat(EQ_NOMS.map(n => `<option ${q.membres[e.id] === n ? "selected" : ""}>${n}</option>`)).join("")}</select></label>`).join("")}</div></details>`;
   }
   function eqHTML(cl, G) {
@@ -50658,9 +50740,12 @@ window.JSYNC = window.JSYNC || (function () {
     if (auto) auto.onclick = () => {
       const n = eqNbEquipes(cl, q), a = Object.keys(q.membres).some(k => q.membres[k]);
       const faire = () => {
-        // garçons et filles répartis à tour de rôle pour des équipes équilibrées
-        const g = cl.eleves.filter(e => e.genre !== "F"), fi = cl.eleves.filter(e => e.genre === "F");
-        g.concat(fi).forEach((e, i) => { q.membres[e.id] = EQ_NOMS[i % n]; });
+        // filles puis garçons distribués à tour de rôle (ordre tiré au sort) : chaque équipe a autant de filles et de garçons
+        // que possible (au plus un d'écart), et les équipes ont la même taille (au plus un d'écart)
+        const mel = t => { for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = t[i]; t[i] = t[j]; t[j] = x; } return t; };
+        const fi = mel(cl.eleves.filter(eqFille)), g = mel(cl.eleves.filter(e => !eqFille(e)));
+        const dec = Math.floor(Math.random() * n);
+        fi.concat(g).forEach((e, i) => { q.membres[e.id] = EQ_NOMS[(i + dec) % n]; });
         q.nb = n; save(); rafraichir(); toast("Classe répartie en " + n + " équipes" + (q.parEq ? " de " + q.parEq + " joueurs au plus" : ""));
       };
       if (a) confirmModal("Répartir la classe", "La composition actuelle des équipes sera remplacée. Les totaux déjà saisis restent attachés aux lettres d'équipe. Continuer ?", "Répartir", faire); else faire();
@@ -50681,6 +50766,7 @@ window.JSYNC = window.JSYNC || (function () {
     });
     c.querySelectorAll("[data-eq-m]").forEach(s => s.onclick = (ev) => ev.stopPropagation());
     c.querySelectorAll("[data-eq-m]").forEach(s => s.onchange = () => { if (s.value) q.membres[s.dataset.eqM] = s.value; else delete q.membres[s.dataset.eqM]; save(); rafraichir(); });
+    c.querySelectorAll("[data-eq-sx]").forEach(b => b.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); const e = cl.eleves.find(x => x.id === b.dataset.eqSx); if (!e) return; e.genre = eqFille(e) ? "M" : "F"; e.genreManuel = true; window.__eqCompoOuvert = true; save(); rafraichir(); });
     c.querySelectorAll("[data-eq-add]").forEach(b => b.onclick = () => { eqMatch(cl, b.dataset.eqAdd).ech.push({}); if (!cl.sommativeInfo.date) cl.sommativeInfo.date = new Date().toISOString().slice(0, 10); save(); rafraichir(); });
     c.querySelectorAll("[data-eq-del]").forEach(b => b.onclick = () => { const p = b.dataset.eqDel.split("|"); eqMatch(cl, p[0]).ech.splice(Number(p[1]), 1); save(); rafraichir(); });
     c.querySelectorAll("[data-eq-c]").forEach(x => x.onchange = () => { const p = x.dataset.eqC.split("|"), e = eqMatch(cl, p[0]).ech[Number(p[1])]; if (e) { if (x.checked) e[p[2]] = 1; else delete e[p[2]]; } save(); rafraichir(); });
@@ -58359,7 +58445,7 @@ window.XlsxLite = (function () {
   }
   /* élèves de la classe (application, sinon cahier journalier) et sexe */
   function seEleves(classe) {
-    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" || (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F") ? "F" : "G" }));
     const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
     const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
     Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
@@ -58477,25 +58563,16 @@ window.XlsxLite = (function () {
   function seFoule(vol, type) {
     try {
       seAudio = seAudio || new (window.AudioContext || window.webkitAudioContext)(); if (seAudio.state === "suspended") seAudio.resume();
-      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3.2 : 3.8, t0 = seAudio.currentTime + 0.02;
-      if (!seBruit) { seBruit = seAudio.createBuffer(1, sr * 4, sr); const x = seBruit.getChannelData(0); for (let i = 0; i < x.length; i++) x[i] = Math.random() * 2 - 1; }
-      if (type === "applaudir") {
+      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3 : 1.5, t0 = seAudio.currentTime + 0.02;
+      {
         const b = seAudio.createBuffer(1, Math.floor(sr * dur), sr), x = b.getChannelData(0);
-        for (let k = 0; k < 900; k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
+        for (let k = 0; k < Math.round(300 * dur); k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
           for (let j = 0; j < 700; j++) x[p + j] += (Math.random() * 2 - 1) * a * env * Math.exp(-j / 90); }
         const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain();
-        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = 0.9 * vol;
-        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0); return;
+        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = (type === "applaudir" ? 0.7 : 0.5) * vol;
+        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0);
+        if (type === "applaudir") return;
       }
-      [[450, 0.9], [1100, 1], [2600, 0.55]].forEach(([fr, a], i) => {
-        const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain(), lfo = seAudio.createOscillator(), lg = seAudio.createGain();
-        s0.buffer = seBruit; s0.loop = true; f.type = "bandpass"; f.frequency.value = fr; f.Q.value = 0.9;
-        lfo.frequency.value = 3 + i * 1.7; lg.gain.value = 0.18 * a * vol; lfo.connect(lg); lg.connect(g.gain);
-        s0.connect(f); f.connect(g); g.connect(seSortie());
-        const pk = 0.75 * a * vol;
-        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(pk, t0 + 0.35); g.gain.linearRampToValueAtTime(pk * 0.8, t0 + 1.8); g.gain.linearRampToValueAtTime(0, t0 + dur);
-        s0.start(t0); lfo.start(t0); s0.stop(t0 + dur + 0.05); lfo.stop(t0 + dur + 0.05);
-      });
       // cornes de supporters (deux notes)
       [[0.15, 466], [0.6, 523]].forEach(([dt, fq]) => { const o = seAudio.createOscillator(), g = seAudio.createGain(); o.type = "sawtooth"; o.frequency.value = fq; o.connect(g); g.connect(seSortie());
         const a = t0 + dt; g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(0.12 * vol, a + 0.04); g.gain.setValueAtTime(0.12 * vol, a + 0.35); g.gain.linearRampToValueAtTime(0, a + 0.42); o.start(a); o.stop(a + 0.45); });
@@ -58922,17 +58999,30 @@ window.XlsxLite = (function () {
         <select data-am="${i}">${["plots", "ballons", "cerceaux", "chasubles", "panier", "but", "filet", "echelle", "haies", "tapis", "temoin", "couloirs"].map(m => `<option${m === a.mat ? " selected" : ""}>${m}</option>`).join("")}</select>
         <button type="button" class="gr-btn" data-asup="${i}" ${d.ateliers.length > 1 ? "" : "disabled"}>✕</button></div>`).join("")}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button type="button" class="gr-btn" id="se-aplus" ${d.ateliers.length < 8 ? "" : "disabled"}>＋ Atelier</button><button type="button" class="gr-btn" id="se-adef">↺ Ateliers proposés pour ${esc(aps.nom)}</button><button type="button" class="gr-btn" id="se-apos">↺ Disposition par défaut</button></div></div>`;
-    // ---- temps restant : divisé par le nombre de groupes (= nombre de rotations) → même temps de jeu pour chaque groupe ----
+    // ---- temps de jeu : le professeur donne le temps restant et la durée de match voulue → programme où tous les groupes jouent autant ----
     const tp = d.cfg.temps = Object.assign({ restant: 30 }, d.cfg.temps || {});
     const nG = ids.length, Tn = Math.max(1, Math.min(+d.cfg.terrains || 1, Math.floor(nG / 2))), trS = +d.cfg.transition || 0;
-    const dureeCalc = r => Math.max(1, Math.floor(((+r || 0) * 60 - (nG - 1) * trS) / nG / 30) / 2);
-    const dmC = dureeCalc(tp.restant), nbJ = 2 * Tn;
+    const pgcd = (x, y) => y ? pgcd(y, x % y) : x, pas = nG / pgcd(nG, 2 * Tn);          // rotations pour que chaque groupe joue une fois de plus
     const fmtM = m => String(m).replace(".", ",") + " min";
+    const planPour = m => {
+      const Rf = Math.floor(((+tp.restant || 0) * 60 + trS) / (m * 60 + trS)), R = Math.floor(Rf / pas) * pas;
+      return { m, R: R >= pas ? R : 0, k: R >= pas ? R * 2 * Tn / nG : 0, libre: R >= pas ? Math.round((+tp.restant - (R * m + (R - 1) * trS / 60)) * 10) / 10 : 0 };
+    };
+    const mMax = Math.floor(((+tp.restant || 0) * 60 - (pas - 1) * trS) / pas / 30) / 2;   // durée max pour que chacun joue au moins une fois
+    // une proposition par nombre de matchs : la durée la plus longue qui tient dans le temps restant
+    const props = [];
+    for (let R = pas; R <= 40; R += pas) { const m = Math.floor(((+tp.restant || 0) * 60 - (R - 1) * trS) / R / 30) / 2; if (m < 2) break; props.push({ m, R, k: R * 2 * Tn / nG, libre: 0 }); }
+    const reco = props.filter(x => x.m >= 5).pop() || props[0] || null;   // le plus de matchs possible, avec des matchs d'au moins 5 min
+    const actif = x => +d.cfg.duree === x.m && d.rot.length === x.R;
     const tempsBox = `<div class="se-box se-temps-box"><div class="se-tps">
         <label class="se-tps-r"><b>⏳ Temps restant</b><input type="number" min="5" max="180" step="1" id="se-tp-rest" value="${tp.restant}"> min</label>
-        <div class="se-tps-cal">÷ <b>${nG} groupes</b> = <b>${nG} rotations</b> de <span class="se-tps-d">${fmtM(dmC)}</span></div>
-        <div class="se-tps-txt">Chaque groupe joue <b>${nbJ} match${nbJ > 1 ? "s" : ""}</b>, soit <b>${fmtM(dmC * nbJ)}</b> de jeu pour tous${trS ? ` · transitions de ${trS} s déduites` : ""}.${(+d.cfg.nbRot || nG) !== nG || +d.cfg.duree !== dmC ? ` <button type="button" class="gr-btn gr-tirer" id="se-tp-app">Appliquer</button>` : ` <span class="se-ok">✔ appliqué</span>`}</div>
-      </div></div>`;
+        <label class="se-tps-r"><b>⏱ Durée d'un match</b><input type="number" min="1" max="30" step="0.5" id="se-tp-match" value="${d.cfg.duree}"> min</label>
+        <div class="se-tps-txt">${nG} groupes · ${Tn} terrain${Tn > 1 ? "s" : ""}${trS ? ` · transition ${trS} s` : ""} — actuellement <b>${d.rot.length} rotations de ${fmtM(+d.cfg.duree)}</b>.</div>
+      </div>
+      <div class="se-props">${props.length ? props.map(x => `<button type="button" class="se-prop${actif(x) ? " on" : ""}${x === reco ? " reco" : ""}" data-tprop="${x.m}:${x.R}">
+          <b>${fmtM(x.m)}</b><span>${x.R} rotations</span><span>chaque groupe joue <b>${x.k} fois</b></span>${x.libre >= 1 ? `<small>${fmtM(x.libre)} libres</small>` : ""}${x === reco ? "<em>conseillé</em>" : ""}</button>`).join("")
+        : `<p class="gr-aide">Temps restant trop court pour faire jouer tous les groupes${Tn === 1 && nG >= 4 ? " : passez à 2 terrains" : ""}.</p>`}</div>
+      <p class="gr-aide">Choisissez une durée (ou tapez la vôtre) : le programme est généré pour que <b>tous les groupes jouent le même nombre de matchs</b> dans le temps restant${mMax >= 1 ? ` — au plus <b>${fmtM(mMax)}</b> par match pour que chaque groupe joue au moins une fois` : ""}.${Tn === 1 && nG >= 4 ? " Avec 2 terrains (réglage du planning), les matchs peuvent être deux fois plus longs." : ""}</p></div>`;
     z.innerHTML = tete + compo + tempsBox + (change ? `<div class="se-vide" style="margin:8px 0">Les groupes ont changé depuis la programmation (des scores sont déjà saisis). <button type="button" class="gr-btn gr-tirer" id="se-regen2">↻ Reprogrammer avec les nouveaux groupes</button></div>` : "") +
       `<div class="se-main"><div class="se-plan">${sePlanSVG(ctx, seRot)}<p class="gr-aide">Faites glisser un atelier pour changer sa disposition autour du terrain. Groupes au repos : un groupe arbitre la rencontre (à tour de rôle), les autres vont chacun dans un atelier différent ; s'il manque des ateliers, les groupes restants observent.</p></div>${lateral}</div>
       <div class="se-bas">
@@ -58993,7 +59083,8 @@ window.XlsxLite = (function () {
         d.buteurs = d.buteurs || []; d.buteurs.push({ r: seRot, i, g, nom, pts: pt, s: d.cfg.seance });
         pk.remove();
         if (d.cfg.foule !== false) seFoule(d.cfg.volume, "clameur");
-        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 650 : 0); }
+        // le commentateur parle seul, juste après la courte réaction du public (sinon les deux se couvrent)
+        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 1300 : 100); }
         sauver();
       });
     });
@@ -59002,7 +59093,7 @@ window.XlsxLite = (function () {
     z.querySelectorAll("[data-test]").forEach(b => b.onclick = () => {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
-      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 700); return; }
+      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
       if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
@@ -59012,13 +59103,17 @@ window.XlsxLite = (function () {
     if (q("se-regen2")) q("se-regen2").onclick = () => askConfirm("Reprogrammer", "Le planning est recalculé avec les groupes actuels ; les scores saisis seront effacés.", "Reprogrammer", regen);
     q("se-terr").onchange = e => { d.cfg.terrains = +e.target.value; regen(); };
     q("se-nbrot").onchange = e => { d.cfg.nbRot = +e.target.value; regen(); };
-    // temps restant → durée des matchs (appliquée tout de suite)
-    const appliquerTemps = () => {
-      const faire = () => { d.cfg.nbRot = nG; d.cfg.duree = dureeCalc(tp.restant); if (seChrono.etat === "pret") seChrono.reste = d.cfg.duree * 60; regen(); seToast(nG + " rotations de " + fmtM(d.cfg.duree) + " — chaque groupe joue le même temps", "success"); };
-      if (aScores) askConfirm("Appliquer le temps restant", "Le planning est reprogrammé (" + nG + " rotations de " + fmtM(dureeCalc(tp.restant)) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
+    // durée de match choisie → programme (tous les groupes jouent autant)
+    const appliquerDuree = function (m) {
+      const x = planPour(m);
+      if (arguments.length > 1) { x.R = arguments[1]; x.k = x.R * 2 * Tn / nG; }
+      if (!x.R) { seToast("Avec " + fmtM(m) + " par match, tous les groupes ne peuvent pas jouer" + (mMax >= 1 ? " : " + fmtM(mMax) + " au plus" : ""), "error"); renderSeance(); return; }
+      const faire = () => { d.cfg.duree = m; d.cfg.nbRot = x.R; if (seChrono.etat === "pret") seChrono.reste = m * 60; regen(); seToast(x.R + " rotations de " + fmtM(m) + " — chaque groupe joue " + x.k + " fois", "success"); };
+      if (aScores) askConfirm("Nouveau programme", "Le planning est reprogrammé (" + x.R + " rotations de " + fmtM(m) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
     };
-    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); if (seChrono.etat === "match") { renderSeance(); return; } appliquerTemps(); };
-    if (q("se-tp-app")) q("se-tp-app").onclick = appliquerTemps;
+    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); renderSeance(); };
+    q("se-tp-match").onchange = e => { const m = Math.round((+String(e.target.value).replace(",", ".") || 0) * 2) / 2; if (m < 1) { renderSeance(); return; } if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); renderSeance(); return; } appliquerDuree(m); };
+    z.querySelectorAll("[data-tprop]").forEach(b => b.onclick = () => { if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); return; } const [m, R] = b.dataset.tprop.split(":").map(Number); appliquerDuree(m, R); });
     z.querySelectorAll("[data-mt]").forEach(s => s.onchange = () => {
       const [k, i, c] = s.dataset.mt.split(":").map(Number), m = d.rot[k].m[i], autre = m[1 - c];
       if (s.value === autre) { seToast("Un groupe ne peut pas jouer contre lui-même", "error"); renderSeance(); return; }
@@ -59148,6 +59243,15 @@ window.XlsxLite = (function () {
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
+      .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+      .se-prop{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:1px;font:inherit;font-size:.8rem;text-align:left;padding:8px 12px;border-radius:12px;border:1.5px solid #DDD3F5;background:#F6F2FF;color:#3B1677;cursor:pointer;min-width:132px;}
+      .se-prop b:first-child{font-size:1.15rem;}
+      .se-prop small{color:#6B7280;}
+      .se-prop:hover{border-color:#A78BFA;background:#EDE4FF;}
+      .se-prop.reco{border-color:#16A34A;}
+      .se-prop.reco em{position:absolute;top:-9px;right:8px;background:#16A34A;color:#fff;font-style:normal;font-weight:800;font-size:.66rem;padding:1px 7px;border-radius:999px;}
+      .se-prop.on{background:linear-gradient(135deg,#5B2BB8,#8B5CF6);color:#fff;border-color:transparent;}
+      .se-prop.on small{color:#E9D5FF;}
       .se-tps{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;}
       .se-tps-r{display:flex !important;align-items:center;gap:8px;margin:0 !important;font-size:1rem;}
       .se-tps-r input{width:96px;font:inherit;font-size:1.7rem;font-weight:800;text-align:center;padding:4px;border:2px solid #8B5CF6;border-radius:10px;color:#4C1D95;}
@@ -71198,7 +71302,7 @@ window.OMRKIT = window.OMRKIT || (function () {
   }
   /* élèves de la classe (application, sinon cahier journalier) et sexe */
   function seEleves(classe) {
-    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" || (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F") ? "F" : "G" }));
     const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
     const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
     Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
@@ -71316,25 +71420,16 @@ window.OMRKIT = window.OMRKIT || (function () {
   function seFoule(vol, type) {
     try {
       seAudio = seAudio || new (window.AudioContext || window.webkitAudioContext)(); if (seAudio.state === "suspended") seAudio.resume();
-      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3.2 : 3.8, t0 = seAudio.currentTime + 0.02;
-      if (!seBruit) { seBruit = seAudio.createBuffer(1, sr * 4, sr); const x = seBruit.getChannelData(0); for (let i = 0; i < x.length; i++) x[i] = Math.random() * 2 - 1; }
-      if (type === "applaudir") {
+      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3 : 1.5, t0 = seAudio.currentTime + 0.02;
+      {
         const b = seAudio.createBuffer(1, Math.floor(sr * dur), sr), x = b.getChannelData(0);
-        for (let k = 0; k < 900; k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
+        for (let k = 0; k < Math.round(300 * dur); k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
           for (let j = 0; j < 700; j++) x[p + j] += (Math.random() * 2 - 1) * a * env * Math.exp(-j / 90); }
         const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain();
-        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = 0.9 * vol;
-        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0); return;
+        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = (type === "applaudir" ? 0.7 : 0.5) * vol;
+        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0);
+        if (type === "applaudir") return;
       }
-      [[450, 0.9], [1100, 1], [2600, 0.55]].forEach(([fr, a], i) => {
-        const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain(), lfo = seAudio.createOscillator(), lg = seAudio.createGain();
-        s0.buffer = seBruit; s0.loop = true; f.type = "bandpass"; f.frequency.value = fr; f.Q.value = 0.9;
-        lfo.frequency.value = 3 + i * 1.7; lg.gain.value = 0.18 * a * vol; lfo.connect(lg); lg.connect(g.gain);
-        s0.connect(f); f.connect(g); g.connect(seSortie());
-        const pk = 0.75 * a * vol;
-        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(pk, t0 + 0.35); g.gain.linearRampToValueAtTime(pk * 0.8, t0 + 1.8); g.gain.linearRampToValueAtTime(0, t0 + dur);
-        s0.start(t0); lfo.start(t0); s0.stop(t0 + dur + 0.05); lfo.stop(t0 + dur + 0.05);
-      });
       // cornes de supporters (deux notes)
       [[0.15, 466], [0.6, 523]].forEach(([dt, fq]) => { const o = seAudio.createOscillator(), g = seAudio.createGain(); o.type = "sawtooth"; o.frequency.value = fq; o.connect(g); g.connect(seSortie());
         const a = t0 + dt; g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(0.12 * vol, a + 0.04); g.gain.setValueAtTime(0.12 * vol, a + 0.35); g.gain.linearRampToValueAtTime(0, a + 0.42); o.start(a); o.stop(a + 0.45); });
@@ -71761,17 +71856,30 @@ window.OMRKIT = window.OMRKIT || (function () {
         <select data-am="${i}">${["plots", "ballons", "cerceaux", "chasubles", "panier", "but", "filet", "echelle", "haies", "tapis", "temoin", "couloirs"].map(m => `<option${m === a.mat ? " selected" : ""}>${m}</option>`).join("")}</select>
         <button type="button" class="gr-btn" data-asup="${i}" ${d.ateliers.length > 1 ? "" : "disabled"}>✕</button></div>`).join("")}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button type="button" class="gr-btn" id="se-aplus" ${d.ateliers.length < 8 ? "" : "disabled"}>＋ Atelier</button><button type="button" class="gr-btn" id="se-adef">↺ Ateliers proposés pour ${esc(aps.nom)}</button><button type="button" class="gr-btn" id="se-apos">↺ Disposition par défaut</button></div></div>`;
-    // ---- temps restant : divisé par le nombre de groupes (= nombre de rotations) → même temps de jeu pour chaque groupe ----
+    // ---- temps de jeu : le professeur donne le temps restant et la durée de match voulue → programme où tous les groupes jouent autant ----
     const tp = d.cfg.temps = Object.assign({ restant: 30 }, d.cfg.temps || {});
     const nG = ids.length, Tn = Math.max(1, Math.min(+d.cfg.terrains || 1, Math.floor(nG / 2))), trS = +d.cfg.transition || 0;
-    const dureeCalc = r => Math.max(1, Math.floor(((+r || 0) * 60 - (nG - 1) * trS) / nG / 30) / 2);
-    const dmC = dureeCalc(tp.restant), nbJ = 2 * Tn;
+    const pgcd = (x, y) => y ? pgcd(y, x % y) : x, pas = nG / pgcd(nG, 2 * Tn);          // rotations pour que chaque groupe joue une fois de plus
     const fmtM = m => String(m).replace(".", ",") + " min";
+    const planPour = m => {
+      const Rf = Math.floor(((+tp.restant || 0) * 60 + trS) / (m * 60 + trS)), R = Math.floor(Rf / pas) * pas;
+      return { m, R: R >= pas ? R : 0, k: R >= pas ? R * 2 * Tn / nG : 0, libre: R >= pas ? Math.round((+tp.restant - (R * m + (R - 1) * trS / 60)) * 10) / 10 : 0 };
+    };
+    const mMax = Math.floor(((+tp.restant || 0) * 60 - (pas - 1) * trS) / pas / 30) / 2;   // durée max pour que chacun joue au moins une fois
+    // une proposition par nombre de matchs : la durée la plus longue qui tient dans le temps restant
+    const props = [];
+    for (let R = pas; R <= 40; R += pas) { const m = Math.floor(((+tp.restant || 0) * 60 - (R - 1) * trS) / R / 30) / 2; if (m < 2) break; props.push({ m, R, k: R * 2 * Tn / nG, libre: 0 }); }
+    const reco = props.filter(x => x.m >= 5).pop() || props[0] || null;   // le plus de matchs possible, avec des matchs d'au moins 5 min
+    const actif = x => +d.cfg.duree === x.m && d.rot.length === x.R;
     const tempsBox = `<div class="se-box se-temps-box"><div class="se-tps">
         <label class="se-tps-r"><b>⏳ Temps restant</b><input type="number" min="5" max="180" step="1" id="se-tp-rest" value="${tp.restant}"> min</label>
-        <div class="se-tps-cal">÷ <b>${nG} groupes</b> = <b>${nG} rotations</b> de <span class="se-tps-d">${fmtM(dmC)}</span></div>
-        <div class="se-tps-txt">Chaque groupe joue <b>${nbJ} match${nbJ > 1 ? "s" : ""}</b>, soit <b>${fmtM(dmC * nbJ)}</b> de jeu pour tous${trS ? ` · transitions de ${trS} s déduites` : ""}.${(+d.cfg.nbRot || nG) !== nG || +d.cfg.duree !== dmC ? ` <button type="button" class="gr-btn gr-tirer" id="se-tp-app">Appliquer</button>` : ` <span class="se-ok">✔ appliqué</span>`}</div>
-      </div></div>`;
+        <label class="se-tps-r"><b>⏱ Durée d'un match</b><input type="number" min="1" max="30" step="0.5" id="se-tp-match" value="${d.cfg.duree}"> min</label>
+        <div class="se-tps-txt">${nG} groupes · ${Tn} terrain${Tn > 1 ? "s" : ""}${trS ? ` · transition ${trS} s` : ""} — actuellement <b>${d.rot.length} rotations de ${fmtM(+d.cfg.duree)}</b>.</div>
+      </div>
+      <div class="se-props">${props.length ? props.map(x => `<button type="button" class="se-prop${actif(x) ? " on" : ""}${x === reco ? " reco" : ""}" data-tprop="${x.m}:${x.R}">
+          <b>${fmtM(x.m)}</b><span>${x.R} rotations</span><span>chaque groupe joue <b>${x.k} fois</b></span>${x.libre >= 1 ? `<small>${fmtM(x.libre)} libres</small>` : ""}${x === reco ? "<em>conseillé</em>" : ""}</button>`).join("")
+        : `<p class="gr-aide">Temps restant trop court pour faire jouer tous les groupes${Tn === 1 && nG >= 4 ? " : passez à 2 terrains" : ""}.</p>`}</div>
+      <p class="gr-aide">Choisissez une durée (ou tapez la vôtre) : le programme est généré pour que <b>tous les groupes jouent le même nombre de matchs</b> dans le temps restant${mMax >= 1 ? ` — au plus <b>${fmtM(mMax)}</b> par match pour que chaque groupe joue au moins une fois` : ""}.${Tn === 1 && nG >= 4 ? " Avec 2 terrains (réglage du planning), les matchs peuvent être deux fois plus longs." : ""}</p></div>`;
     z.innerHTML = tete + compo + tempsBox + (change ? `<div class="se-vide" style="margin:8px 0">Les groupes ont changé depuis la programmation (des scores sont déjà saisis). <button type="button" class="gr-btn gr-tirer" id="se-regen2">↻ Reprogrammer avec les nouveaux groupes</button></div>` : "") +
       `<div class="se-main"><div class="se-plan">${sePlanSVG(ctx, seRot)}<p class="gr-aide">Faites glisser un atelier pour changer sa disposition autour du terrain. Groupes au repos : un groupe arbitre la rencontre (à tour de rôle), les autres vont chacun dans un atelier différent ; s'il manque des ateliers, les groupes restants observent.</p></div>${lateral}</div>
       <div class="se-bas">
@@ -71832,7 +71940,8 @@ window.OMRKIT = window.OMRKIT || (function () {
         d.buteurs = d.buteurs || []; d.buteurs.push({ r: seRot, i, g, nom, pts: pt, s: d.cfg.seance });
         pk.remove();
         if (d.cfg.foule !== false) seFoule(d.cfg.volume, "clameur");
-        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 650 : 0); }
+        // le commentateur parle seul, juste après la courte réaction du public (sinon les deux se couvrent)
+        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 1300 : 100); }
         sauver();
       });
     });
@@ -71841,7 +71950,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     z.querySelectorAll("[data-test]").forEach(b => b.onclick = () => {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
-      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 700); return; }
+      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
       if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
@@ -71851,13 +71960,17 @@ window.OMRKIT = window.OMRKIT || (function () {
     if (q("se-regen2")) q("se-regen2").onclick = () => askConfirm("Reprogrammer", "Le planning est recalculé avec les groupes actuels ; les scores saisis seront effacés.", "Reprogrammer", regen);
     q("se-terr").onchange = e => { d.cfg.terrains = +e.target.value; regen(); };
     q("se-nbrot").onchange = e => { d.cfg.nbRot = +e.target.value; regen(); };
-    // temps restant → durée des matchs (appliquée tout de suite)
-    const appliquerTemps = () => {
-      const faire = () => { d.cfg.nbRot = nG; d.cfg.duree = dureeCalc(tp.restant); if (seChrono.etat === "pret") seChrono.reste = d.cfg.duree * 60; regen(); seToast(nG + " rotations de " + fmtM(d.cfg.duree) + " — chaque groupe joue le même temps", "success"); };
-      if (aScores) askConfirm("Appliquer le temps restant", "Le planning est reprogrammé (" + nG + " rotations de " + fmtM(dureeCalc(tp.restant)) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
+    // durée de match choisie → programme (tous les groupes jouent autant)
+    const appliquerDuree = function (m) {
+      const x = planPour(m);
+      if (arguments.length > 1) { x.R = arguments[1]; x.k = x.R * 2 * Tn / nG; }
+      if (!x.R) { seToast("Avec " + fmtM(m) + " par match, tous les groupes ne peuvent pas jouer" + (mMax >= 1 ? " : " + fmtM(mMax) + " au plus" : ""), "error"); renderSeance(); return; }
+      const faire = () => { d.cfg.duree = m; d.cfg.nbRot = x.R; if (seChrono.etat === "pret") seChrono.reste = m * 60; regen(); seToast(x.R + " rotations de " + fmtM(m) + " — chaque groupe joue " + x.k + " fois", "success"); };
+      if (aScores) askConfirm("Nouveau programme", "Le planning est reprogrammé (" + x.R + " rotations de " + fmtM(m) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
     };
-    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); if (seChrono.etat === "match") { renderSeance(); return; } appliquerTemps(); };
-    if (q("se-tp-app")) q("se-tp-app").onclick = appliquerTemps;
+    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); renderSeance(); };
+    q("se-tp-match").onchange = e => { const m = Math.round((+String(e.target.value).replace(",", ".") || 0) * 2) / 2; if (m < 1) { renderSeance(); return; } if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); renderSeance(); return; } appliquerDuree(m); };
+    z.querySelectorAll("[data-tprop]").forEach(b => b.onclick = () => { if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); return; } const [m, R] = b.dataset.tprop.split(":").map(Number); appliquerDuree(m, R); });
     z.querySelectorAll("[data-mt]").forEach(s => s.onchange = () => {
       const [k, i, c] = s.dataset.mt.split(":").map(Number), m = d.rot[k].m[i], autre = m[1 - c];
       if (s.value === autre) { seToast("Un groupe ne peut pas jouer contre lui-même", "error"); renderSeance(); return; }
@@ -71987,6 +72100,15 @@ window.OMRKIT = window.OMRKIT || (function () {
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
+      .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+      .se-prop{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:1px;font:inherit;font-size:.8rem;text-align:left;padding:8px 12px;border-radius:12px;border:1.5px solid #DDD3F5;background:#F6F2FF;color:#3B1677;cursor:pointer;min-width:132px;}
+      .se-prop b:first-child{font-size:1.15rem;}
+      .se-prop small{color:#6B7280;}
+      .se-prop:hover{border-color:#A78BFA;background:#EDE4FF;}
+      .se-prop.reco{border-color:#16A34A;}
+      .se-prop.reco em{position:absolute;top:-9px;right:8px;background:#16A34A;color:#fff;font-style:normal;font-weight:800;font-size:.66rem;padding:1px 7px;border-radius:999px;}
+      .se-prop.on{background:linear-gradient(135deg,#5B2BB8,#8B5CF6);color:#fff;border-color:transparent;}
+      .se-prop.on small{color:#E9D5FF;}
       .se-tps{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;}
       .se-tps-r{display:flex !important;align-items:center;gap:8px;margin:0 !important;font-size:1rem;}
       .se-tps-r input{width:96px;font:inherit;font-size:1.7rem;font-weight:800;text-align:center;padding:4px;border:2px solid #8B5CF6;border-radius:10px;color:#4C1D95;}
@@ -82173,7 +82295,7 @@ GrilleAPS({
   }
   /* élèves de la classe (application, sinon cahier journalier) et sexe */
   function seEleves(classe) {
-    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" || (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F") ? "F" : "G" }));
     const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
     const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
     Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
@@ -82291,25 +82413,16 @@ GrilleAPS({
   function seFoule(vol, type) {
     try {
       seAudio = seAudio || new (window.AudioContext || window.webkitAudioContext)(); if (seAudio.state === "suspended") seAudio.resume();
-      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3.2 : 3.8, t0 = seAudio.currentTime + 0.02;
-      if (!seBruit) { seBruit = seAudio.createBuffer(1, sr * 4, sr); const x = seBruit.getChannelData(0); for (let i = 0; i < x.length; i++) x[i] = Math.random() * 2 - 1; }
-      if (type === "applaudir") {
+      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3 : 1.5, t0 = seAudio.currentTime + 0.02;
+      {
         const b = seAudio.createBuffer(1, Math.floor(sr * dur), sr), x = b.getChannelData(0);
-        for (let k = 0; k < 900; k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
+        for (let k = 0; k < Math.round(300 * dur); k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
           for (let j = 0; j < 700; j++) x[p + j] += (Math.random() * 2 - 1) * a * env * Math.exp(-j / 90); }
         const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain();
-        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = 0.9 * vol;
-        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0); return;
+        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = (type === "applaudir" ? 0.7 : 0.5) * vol;
+        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0);
+        if (type === "applaudir") return;
       }
-      [[450, 0.9], [1100, 1], [2600, 0.55]].forEach(([fr, a], i) => {
-        const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain(), lfo = seAudio.createOscillator(), lg = seAudio.createGain();
-        s0.buffer = seBruit; s0.loop = true; f.type = "bandpass"; f.frequency.value = fr; f.Q.value = 0.9;
-        lfo.frequency.value = 3 + i * 1.7; lg.gain.value = 0.18 * a * vol; lfo.connect(lg); lg.connect(g.gain);
-        s0.connect(f); f.connect(g); g.connect(seSortie());
-        const pk = 0.75 * a * vol;
-        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(pk, t0 + 0.35); g.gain.linearRampToValueAtTime(pk * 0.8, t0 + 1.8); g.gain.linearRampToValueAtTime(0, t0 + dur);
-        s0.start(t0); lfo.start(t0); s0.stop(t0 + dur + 0.05); lfo.stop(t0 + dur + 0.05);
-      });
       // cornes de supporters (deux notes)
       [[0.15, 466], [0.6, 523]].forEach(([dt, fq]) => { const o = seAudio.createOscillator(), g = seAudio.createGain(); o.type = "sawtooth"; o.frequency.value = fq; o.connect(g); g.connect(seSortie());
         const a = t0 + dt; g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(0.12 * vol, a + 0.04); g.gain.setValueAtTime(0.12 * vol, a + 0.35); g.gain.linearRampToValueAtTime(0, a + 0.42); o.start(a); o.stop(a + 0.45); });
@@ -82736,17 +82849,30 @@ GrilleAPS({
         <select data-am="${i}">${["plots", "ballons", "cerceaux", "chasubles", "panier", "but", "filet", "echelle", "haies", "tapis", "temoin", "couloirs"].map(m => `<option${m === a.mat ? " selected" : ""}>${m}</option>`).join("")}</select>
         <button type="button" class="gr-btn" data-asup="${i}" ${d.ateliers.length > 1 ? "" : "disabled"}>✕</button></div>`).join("")}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button type="button" class="gr-btn" id="se-aplus" ${d.ateliers.length < 8 ? "" : "disabled"}>＋ Atelier</button><button type="button" class="gr-btn" id="se-adef">↺ Ateliers proposés pour ${esc(aps.nom)}</button><button type="button" class="gr-btn" id="se-apos">↺ Disposition par défaut</button></div></div>`;
-    // ---- temps restant : divisé par le nombre de groupes (= nombre de rotations) → même temps de jeu pour chaque groupe ----
+    // ---- temps de jeu : le professeur donne le temps restant et la durée de match voulue → programme où tous les groupes jouent autant ----
     const tp = d.cfg.temps = Object.assign({ restant: 30 }, d.cfg.temps || {});
     const nG = ids.length, Tn = Math.max(1, Math.min(+d.cfg.terrains || 1, Math.floor(nG / 2))), trS = +d.cfg.transition || 0;
-    const dureeCalc = r => Math.max(1, Math.floor(((+r || 0) * 60 - (nG - 1) * trS) / nG / 30) / 2);
-    const dmC = dureeCalc(tp.restant), nbJ = 2 * Tn;
+    const pgcd = (x, y) => y ? pgcd(y, x % y) : x, pas = nG / pgcd(nG, 2 * Tn);          // rotations pour que chaque groupe joue une fois de plus
     const fmtM = m => String(m).replace(".", ",") + " min";
+    const planPour = m => {
+      const Rf = Math.floor(((+tp.restant || 0) * 60 + trS) / (m * 60 + trS)), R = Math.floor(Rf / pas) * pas;
+      return { m, R: R >= pas ? R : 0, k: R >= pas ? R * 2 * Tn / nG : 0, libre: R >= pas ? Math.round((+tp.restant - (R * m + (R - 1) * trS / 60)) * 10) / 10 : 0 };
+    };
+    const mMax = Math.floor(((+tp.restant || 0) * 60 - (pas - 1) * trS) / pas / 30) / 2;   // durée max pour que chacun joue au moins une fois
+    // une proposition par nombre de matchs : la durée la plus longue qui tient dans le temps restant
+    const props = [];
+    for (let R = pas; R <= 40; R += pas) { const m = Math.floor(((+tp.restant || 0) * 60 - (R - 1) * trS) / R / 30) / 2; if (m < 2) break; props.push({ m, R, k: R * 2 * Tn / nG, libre: 0 }); }
+    const reco = props.filter(x => x.m >= 5).pop() || props[0] || null;   // le plus de matchs possible, avec des matchs d'au moins 5 min
+    const actif = x => +d.cfg.duree === x.m && d.rot.length === x.R;
     const tempsBox = `<div class="se-box se-temps-box"><div class="se-tps">
         <label class="se-tps-r"><b>⏳ Temps restant</b><input type="number" min="5" max="180" step="1" id="se-tp-rest" value="${tp.restant}"> min</label>
-        <div class="se-tps-cal">÷ <b>${nG} groupes</b> = <b>${nG} rotations</b> de <span class="se-tps-d">${fmtM(dmC)}</span></div>
-        <div class="se-tps-txt">Chaque groupe joue <b>${nbJ} match${nbJ > 1 ? "s" : ""}</b>, soit <b>${fmtM(dmC * nbJ)}</b> de jeu pour tous${trS ? ` · transitions de ${trS} s déduites` : ""}.${(+d.cfg.nbRot || nG) !== nG || +d.cfg.duree !== dmC ? ` <button type="button" class="gr-btn gr-tirer" id="se-tp-app">Appliquer</button>` : ` <span class="se-ok">✔ appliqué</span>`}</div>
-      </div></div>`;
+        <label class="se-tps-r"><b>⏱ Durée d'un match</b><input type="number" min="1" max="30" step="0.5" id="se-tp-match" value="${d.cfg.duree}"> min</label>
+        <div class="se-tps-txt">${nG} groupes · ${Tn} terrain${Tn > 1 ? "s" : ""}${trS ? ` · transition ${trS} s` : ""} — actuellement <b>${d.rot.length} rotations de ${fmtM(+d.cfg.duree)}</b>.</div>
+      </div>
+      <div class="se-props">${props.length ? props.map(x => `<button type="button" class="se-prop${actif(x) ? " on" : ""}${x === reco ? " reco" : ""}" data-tprop="${x.m}:${x.R}">
+          <b>${fmtM(x.m)}</b><span>${x.R} rotations</span><span>chaque groupe joue <b>${x.k} fois</b></span>${x.libre >= 1 ? `<small>${fmtM(x.libre)} libres</small>` : ""}${x === reco ? "<em>conseillé</em>" : ""}</button>`).join("")
+        : `<p class="gr-aide">Temps restant trop court pour faire jouer tous les groupes${Tn === 1 && nG >= 4 ? " : passez à 2 terrains" : ""}.</p>`}</div>
+      <p class="gr-aide">Choisissez une durée (ou tapez la vôtre) : le programme est généré pour que <b>tous les groupes jouent le même nombre de matchs</b> dans le temps restant${mMax >= 1 ? ` — au plus <b>${fmtM(mMax)}</b> par match pour que chaque groupe joue au moins une fois` : ""}.${Tn === 1 && nG >= 4 ? " Avec 2 terrains (réglage du planning), les matchs peuvent être deux fois plus longs." : ""}</p></div>`;
     z.innerHTML = tete + compo + tempsBox + (change ? `<div class="se-vide" style="margin:8px 0">Les groupes ont changé depuis la programmation (des scores sont déjà saisis). <button type="button" class="gr-btn gr-tirer" id="se-regen2">↻ Reprogrammer avec les nouveaux groupes</button></div>` : "") +
       `<div class="se-main"><div class="se-plan">${sePlanSVG(ctx, seRot)}<p class="gr-aide">Faites glisser un atelier pour changer sa disposition autour du terrain. Groupes au repos : un groupe arbitre la rencontre (à tour de rôle), les autres vont chacun dans un atelier différent ; s'il manque des ateliers, les groupes restants observent.</p></div>${lateral}</div>
       <div class="se-bas">
@@ -82807,7 +82933,8 @@ GrilleAPS({
         d.buteurs = d.buteurs || []; d.buteurs.push({ r: seRot, i, g, nom, pts: pt, s: d.cfg.seance });
         pk.remove();
         if (d.cfg.foule !== false) seFoule(d.cfg.volume, "clameur");
-        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 650 : 0); }
+        // le commentateur parle seul, juste après la courte réaction du public (sinon les deux se couvrent)
+        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 1300 : 100); }
         sauver();
       });
     });
@@ -82816,7 +82943,7 @@ GrilleAPS({
     z.querySelectorAll("[data-test]").forEach(b => b.onclick = () => {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
-      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 700); return; }
+      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
       if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
@@ -82826,13 +82953,17 @@ GrilleAPS({
     if (q("se-regen2")) q("se-regen2").onclick = () => askConfirm("Reprogrammer", "Le planning est recalculé avec les groupes actuels ; les scores saisis seront effacés.", "Reprogrammer", regen);
     q("se-terr").onchange = e => { d.cfg.terrains = +e.target.value; regen(); };
     q("se-nbrot").onchange = e => { d.cfg.nbRot = +e.target.value; regen(); };
-    // temps restant → durée des matchs (appliquée tout de suite)
-    const appliquerTemps = () => {
-      const faire = () => { d.cfg.nbRot = nG; d.cfg.duree = dureeCalc(tp.restant); if (seChrono.etat === "pret") seChrono.reste = d.cfg.duree * 60; regen(); seToast(nG + " rotations de " + fmtM(d.cfg.duree) + " — chaque groupe joue le même temps", "success"); };
-      if (aScores) askConfirm("Appliquer le temps restant", "Le planning est reprogrammé (" + nG + " rotations de " + fmtM(dureeCalc(tp.restant)) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
+    // durée de match choisie → programme (tous les groupes jouent autant)
+    const appliquerDuree = function (m) {
+      const x = planPour(m);
+      if (arguments.length > 1) { x.R = arguments[1]; x.k = x.R * 2 * Tn / nG; }
+      if (!x.R) { seToast("Avec " + fmtM(m) + " par match, tous les groupes ne peuvent pas jouer" + (mMax >= 1 ? " : " + fmtM(mMax) + " au plus" : ""), "error"); renderSeance(); return; }
+      const faire = () => { d.cfg.duree = m; d.cfg.nbRot = x.R; if (seChrono.etat === "pret") seChrono.reste = m * 60; regen(); seToast(x.R + " rotations de " + fmtM(m) + " — chaque groupe joue " + x.k + " fois", "success"); };
+      if (aScores) askConfirm("Nouveau programme", "Le planning est reprogrammé (" + x.R + " rotations de " + fmtM(m) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
     };
-    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); if (seChrono.etat === "match") { renderSeance(); return; } appliquerTemps(); };
-    if (q("se-tp-app")) q("se-tp-app").onclick = appliquerTemps;
+    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); renderSeance(); };
+    q("se-tp-match").onchange = e => { const m = Math.round((+String(e.target.value).replace(",", ".") || 0) * 2) / 2; if (m < 1) { renderSeance(); return; } if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); renderSeance(); return; } appliquerDuree(m); };
+    z.querySelectorAll("[data-tprop]").forEach(b => b.onclick = () => { if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); return; } const [m, R] = b.dataset.tprop.split(":").map(Number); appliquerDuree(m, R); });
     z.querySelectorAll("[data-mt]").forEach(s => s.onchange = () => {
       const [k, i, c] = s.dataset.mt.split(":").map(Number), m = d.rot[k].m[i], autre = m[1 - c];
       if (s.value === autre) { seToast("Un groupe ne peut pas jouer contre lui-même", "error"); renderSeance(); return; }
@@ -82962,6 +83093,15 @@ GrilleAPS({
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
+      .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+      .se-prop{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:1px;font:inherit;font-size:.8rem;text-align:left;padding:8px 12px;border-radius:12px;border:1.5px solid #DDD3F5;background:#F6F2FF;color:#3B1677;cursor:pointer;min-width:132px;}
+      .se-prop b:first-child{font-size:1.15rem;}
+      .se-prop small{color:#6B7280;}
+      .se-prop:hover{border-color:#A78BFA;background:#EDE4FF;}
+      .se-prop.reco{border-color:#16A34A;}
+      .se-prop.reco em{position:absolute;top:-9px;right:8px;background:#16A34A;color:#fff;font-style:normal;font-weight:800;font-size:.66rem;padding:1px 7px;border-radius:999px;}
+      .se-prop.on{background:linear-gradient(135deg,#5B2BB8,#8B5CF6);color:#fff;border-color:transparent;}
+      .se-prop.on small{color:#E9D5FF;}
       .se-tps{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;}
       .se-tps-r{display:flex !important;align-items:center;gap:8px;margin:0 !important;font-size:1rem;}
       .se-tps-r input{width:96px;font:inherit;font-size:1.7rem;font-weight:800;text-align:center;padding:4px;border:2px solid #8B5CF6;border-radius:10px;color:#4C1D95;}
@@ -93753,7 +93893,7 @@ window.DISC = {
   }
   /* élèves de la classe (application, sinon cahier journalier) et sexe */
   function seEleves(classe) {
-    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" || (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F") ? "F" : "G" }));
     const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
     const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
     Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
@@ -93871,25 +94011,16 @@ window.DISC = {
   function seFoule(vol, type) {
     try {
       seAudio = seAudio || new (window.AudioContext || window.webkitAudioContext)(); if (seAudio.state === "suspended") seAudio.resume();
-      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3.2 : 3.8, t0 = seAudio.currentTime + 0.02;
-      if (!seBruit) { seBruit = seAudio.createBuffer(1, sr * 4, sr); const x = seBruit.getChannelData(0); for (let i = 0; i < x.length; i++) x[i] = Math.random() * 2 - 1; }
-      if (type === "applaudir") {
+      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3 : 1.5, t0 = seAudio.currentTime + 0.02;
+      {
         const b = seAudio.createBuffer(1, Math.floor(sr * dur), sr), x = b.getChannelData(0);
-        for (let k = 0; k < 900; k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
+        for (let k = 0; k < Math.round(300 * dur); k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
           for (let j = 0; j < 700; j++) x[p + j] += (Math.random() * 2 - 1) * a * env * Math.exp(-j / 90); }
         const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain();
-        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = 0.9 * vol;
-        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0); return;
+        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = (type === "applaudir" ? 0.7 : 0.5) * vol;
+        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0);
+        if (type === "applaudir") return;
       }
-      [[450, 0.9], [1100, 1], [2600, 0.55]].forEach(([fr, a], i) => {
-        const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain(), lfo = seAudio.createOscillator(), lg = seAudio.createGain();
-        s0.buffer = seBruit; s0.loop = true; f.type = "bandpass"; f.frequency.value = fr; f.Q.value = 0.9;
-        lfo.frequency.value = 3 + i * 1.7; lg.gain.value = 0.18 * a * vol; lfo.connect(lg); lg.connect(g.gain);
-        s0.connect(f); f.connect(g); g.connect(seSortie());
-        const pk = 0.75 * a * vol;
-        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(pk, t0 + 0.35); g.gain.linearRampToValueAtTime(pk * 0.8, t0 + 1.8); g.gain.linearRampToValueAtTime(0, t0 + dur);
-        s0.start(t0); lfo.start(t0); s0.stop(t0 + dur + 0.05); lfo.stop(t0 + dur + 0.05);
-      });
       // cornes de supporters (deux notes)
       [[0.15, 466], [0.6, 523]].forEach(([dt, fq]) => { const o = seAudio.createOscillator(), g = seAudio.createGain(); o.type = "sawtooth"; o.frequency.value = fq; o.connect(g); g.connect(seSortie());
         const a = t0 + dt; g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(0.12 * vol, a + 0.04); g.gain.setValueAtTime(0.12 * vol, a + 0.35); g.gain.linearRampToValueAtTime(0, a + 0.42); o.start(a); o.stop(a + 0.45); });
@@ -94316,17 +94447,30 @@ window.DISC = {
         <select data-am="${i}">${["plots", "ballons", "cerceaux", "chasubles", "panier", "but", "filet", "echelle", "haies", "tapis", "temoin", "couloirs"].map(m => `<option${m === a.mat ? " selected" : ""}>${m}</option>`).join("")}</select>
         <button type="button" class="gr-btn" data-asup="${i}" ${d.ateliers.length > 1 ? "" : "disabled"}>✕</button></div>`).join("")}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button type="button" class="gr-btn" id="se-aplus" ${d.ateliers.length < 8 ? "" : "disabled"}>＋ Atelier</button><button type="button" class="gr-btn" id="se-adef">↺ Ateliers proposés pour ${esc(aps.nom)}</button><button type="button" class="gr-btn" id="se-apos">↺ Disposition par défaut</button></div></div>`;
-    // ---- temps restant : divisé par le nombre de groupes (= nombre de rotations) → même temps de jeu pour chaque groupe ----
+    // ---- temps de jeu : le professeur donne le temps restant et la durée de match voulue → programme où tous les groupes jouent autant ----
     const tp = d.cfg.temps = Object.assign({ restant: 30 }, d.cfg.temps || {});
     const nG = ids.length, Tn = Math.max(1, Math.min(+d.cfg.terrains || 1, Math.floor(nG / 2))), trS = +d.cfg.transition || 0;
-    const dureeCalc = r => Math.max(1, Math.floor(((+r || 0) * 60 - (nG - 1) * trS) / nG / 30) / 2);
-    const dmC = dureeCalc(tp.restant), nbJ = 2 * Tn;
+    const pgcd = (x, y) => y ? pgcd(y, x % y) : x, pas = nG / pgcd(nG, 2 * Tn);          // rotations pour que chaque groupe joue une fois de plus
     const fmtM = m => String(m).replace(".", ",") + " min";
+    const planPour = m => {
+      const Rf = Math.floor(((+tp.restant || 0) * 60 + trS) / (m * 60 + trS)), R = Math.floor(Rf / pas) * pas;
+      return { m, R: R >= pas ? R : 0, k: R >= pas ? R * 2 * Tn / nG : 0, libre: R >= pas ? Math.round((+tp.restant - (R * m + (R - 1) * trS / 60)) * 10) / 10 : 0 };
+    };
+    const mMax = Math.floor(((+tp.restant || 0) * 60 - (pas - 1) * trS) / pas / 30) / 2;   // durée max pour que chacun joue au moins une fois
+    // une proposition par nombre de matchs : la durée la plus longue qui tient dans le temps restant
+    const props = [];
+    for (let R = pas; R <= 40; R += pas) { const m = Math.floor(((+tp.restant || 0) * 60 - (R - 1) * trS) / R / 30) / 2; if (m < 2) break; props.push({ m, R, k: R * 2 * Tn / nG, libre: 0 }); }
+    const reco = props.filter(x => x.m >= 5).pop() || props[0] || null;   // le plus de matchs possible, avec des matchs d'au moins 5 min
+    const actif = x => +d.cfg.duree === x.m && d.rot.length === x.R;
     const tempsBox = `<div class="se-box se-temps-box"><div class="se-tps">
         <label class="se-tps-r"><b>⏳ Temps restant</b><input type="number" min="5" max="180" step="1" id="se-tp-rest" value="${tp.restant}"> min</label>
-        <div class="se-tps-cal">÷ <b>${nG} groupes</b> = <b>${nG} rotations</b> de <span class="se-tps-d">${fmtM(dmC)}</span></div>
-        <div class="se-tps-txt">Chaque groupe joue <b>${nbJ} match${nbJ > 1 ? "s" : ""}</b>, soit <b>${fmtM(dmC * nbJ)}</b> de jeu pour tous${trS ? ` · transitions de ${trS} s déduites` : ""}.${(+d.cfg.nbRot || nG) !== nG || +d.cfg.duree !== dmC ? ` <button type="button" class="gr-btn gr-tirer" id="se-tp-app">Appliquer</button>` : ` <span class="se-ok">✔ appliqué</span>`}</div>
-      </div></div>`;
+        <label class="se-tps-r"><b>⏱ Durée d'un match</b><input type="number" min="1" max="30" step="0.5" id="se-tp-match" value="${d.cfg.duree}"> min</label>
+        <div class="se-tps-txt">${nG} groupes · ${Tn} terrain${Tn > 1 ? "s" : ""}${trS ? ` · transition ${trS} s` : ""} — actuellement <b>${d.rot.length} rotations de ${fmtM(+d.cfg.duree)}</b>.</div>
+      </div>
+      <div class="se-props">${props.length ? props.map(x => `<button type="button" class="se-prop${actif(x) ? " on" : ""}${x === reco ? " reco" : ""}" data-tprop="${x.m}:${x.R}">
+          <b>${fmtM(x.m)}</b><span>${x.R} rotations</span><span>chaque groupe joue <b>${x.k} fois</b></span>${x.libre >= 1 ? `<small>${fmtM(x.libre)} libres</small>` : ""}${x === reco ? "<em>conseillé</em>" : ""}</button>`).join("")
+        : `<p class="gr-aide">Temps restant trop court pour faire jouer tous les groupes${Tn === 1 && nG >= 4 ? " : passez à 2 terrains" : ""}.</p>`}</div>
+      <p class="gr-aide">Choisissez une durée (ou tapez la vôtre) : le programme est généré pour que <b>tous les groupes jouent le même nombre de matchs</b> dans le temps restant${mMax >= 1 ? ` — au plus <b>${fmtM(mMax)}</b> par match pour que chaque groupe joue au moins une fois` : ""}.${Tn === 1 && nG >= 4 ? " Avec 2 terrains (réglage du planning), les matchs peuvent être deux fois plus longs." : ""}</p></div>`;
     z.innerHTML = tete + compo + tempsBox + (change ? `<div class="se-vide" style="margin:8px 0">Les groupes ont changé depuis la programmation (des scores sont déjà saisis). <button type="button" class="gr-btn gr-tirer" id="se-regen2">↻ Reprogrammer avec les nouveaux groupes</button></div>` : "") +
       `<div class="se-main"><div class="se-plan">${sePlanSVG(ctx, seRot)}<p class="gr-aide">Faites glisser un atelier pour changer sa disposition autour du terrain. Groupes au repos : un groupe arbitre la rencontre (à tour de rôle), les autres vont chacun dans un atelier différent ; s'il manque des ateliers, les groupes restants observent.</p></div>${lateral}</div>
       <div class="se-bas">
@@ -94387,7 +94531,8 @@ window.DISC = {
         d.buteurs = d.buteurs || []; d.buteurs.push({ r: seRot, i, g, nom, pts: pt, s: d.cfg.seance });
         pk.remove();
         if (d.cfg.foule !== false) seFoule(d.cfg.volume, "clameur");
-        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 650 : 0); }
+        // le commentateur parle seul, juste après la courte réaction du public (sinon les deux se couvrent)
+        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 1300 : 100); }
         sauver();
       });
     });
@@ -94396,7 +94541,7 @@ window.DISC = {
     z.querySelectorAll("[data-test]").forEach(b => b.onclick = () => {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
-      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 700); return; }
+      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
       if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
@@ -94406,13 +94551,17 @@ window.DISC = {
     if (q("se-regen2")) q("se-regen2").onclick = () => askConfirm("Reprogrammer", "Le planning est recalculé avec les groupes actuels ; les scores saisis seront effacés.", "Reprogrammer", regen);
     q("se-terr").onchange = e => { d.cfg.terrains = +e.target.value; regen(); };
     q("se-nbrot").onchange = e => { d.cfg.nbRot = +e.target.value; regen(); };
-    // temps restant → durée des matchs (appliquée tout de suite)
-    const appliquerTemps = () => {
-      const faire = () => { d.cfg.nbRot = nG; d.cfg.duree = dureeCalc(tp.restant); if (seChrono.etat === "pret") seChrono.reste = d.cfg.duree * 60; regen(); seToast(nG + " rotations de " + fmtM(d.cfg.duree) + " — chaque groupe joue le même temps", "success"); };
-      if (aScores) askConfirm("Appliquer le temps restant", "Le planning est reprogrammé (" + nG + " rotations de " + fmtM(dureeCalc(tp.restant)) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
+    // durée de match choisie → programme (tous les groupes jouent autant)
+    const appliquerDuree = function (m) {
+      const x = planPour(m);
+      if (arguments.length > 1) { x.R = arguments[1]; x.k = x.R * 2 * Tn / nG; }
+      if (!x.R) { seToast("Avec " + fmtM(m) + " par match, tous les groupes ne peuvent pas jouer" + (mMax >= 1 ? " : " + fmtM(mMax) + " au plus" : ""), "error"); renderSeance(); return; }
+      const faire = () => { d.cfg.duree = m; d.cfg.nbRot = x.R; if (seChrono.etat === "pret") seChrono.reste = m * 60; regen(); seToast(x.R + " rotations de " + fmtM(m) + " — chaque groupe joue " + x.k + " fois", "success"); };
+      if (aScores) askConfirm("Nouveau programme", "Le planning est reprogrammé (" + x.R + " rotations de " + fmtM(m) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
     };
-    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); if (seChrono.etat === "match") { renderSeance(); return; } appliquerTemps(); };
-    if (q("se-tp-app")) q("se-tp-app").onclick = appliquerTemps;
+    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); renderSeance(); };
+    q("se-tp-match").onchange = e => { const m = Math.round((+String(e.target.value).replace(",", ".") || 0) * 2) / 2; if (m < 1) { renderSeance(); return; } if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); renderSeance(); return; } appliquerDuree(m); };
+    z.querySelectorAll("[data-tprop]").forEach(b => b.onclick = () => { if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); return; } const [m, R] = b.dataset.tprop.split(":").map(Number); appliquerDuree(m, R); });
     z.querySelectorAll("[data-mt]").forEach(s => s.onchange = () => {
       const [k, i, c] = s.dataset.mt.split(":").map(Number), m = d.rot[k].m[i], autre = m[1 - c];
       if (s.value === autre) { seToast("Un groupe ne peut pas jouer contre lui-même", "error"); renderSeance(); return; }
@@ -94542,6 +94691,15 @@ window.DISC = {
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
+      .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+      .se-prop{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:1px;font:inherit;font-size:.8rem;text-align:left;padding:8px 12px;border-radius:12px;border:1.5px solid #DDD3F5;background:#F6F2FF;color:#3B1677;cursor:pointer;min-width:132px;}
+      .se-prop b:first-child{font-size:1.15rem;}
+      .se-prop small{color:#6B7280;}
+      .se-prop:hover{border-color:#A78BFA;background:#EDE4FF;}
+      .se-prop.reco{border-color:#16A34A;}
+      .se-prop.reco em{position:absolute;top:-9px;right:8px;background:#16A34A;color:#fff;font-style:normal;font-weight:800;font-size:.66rem;padding:1px 7px;border-radius:999px;}
+      .se-prop.on{background:linear-gradient(135deg,#5B2BB8,#8B5CF6);color:#fff;border-color:transparent;}
+      .se-prop.on small{color:#E9D5FF;}
       .se-tps{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;}
       .se-tps-r{display:flex !important;align-items:center;gap:8px;margin:0 !important;font-size:1rem;}
       .se-tps-r input{width:96px;font:inherit;font-size:1.7rem;font-weight:800;text-align:center;padding:4px;border:2px solid #8B5CF6;border-radius:10px;color:#4C1D95;}
@@ -98280,7 +98438,7 @@ window.DISC = {
   }
   /* élèves de la classe (application, sinon cahier journalier) et sexe */
   function seEleves(classe) {
-    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" || (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F") ? "F" : "G" }));
     const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
     const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
     Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
@@ -98398,25 +98556,16 @@ window.DISC = {
   function seFoule(vol, type) {
     try {
       seAudio = seAudio || new (window.AudioContext || window.webkitAudioContext)(); if (seAudio.state === "suspended") seAudio.resume();
-      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3.2 : 3.8, t0 = seAudio.currentTime + 0.02;
-      if (!seBruit) { seBruit = seAudio.createBuffer(1, sr * 4, sr); const x = seBruit.getChannelData(0); for (let i = 0; i < x.length; i++) x[i] = Math.random() * 2 - 1; }
-      if (type === "applaudir") {
+      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3 : 1.5, t0 = seAudio.currentTime + 0.02;
+      {
         const b = seAudio.createBuffer(1, Math.floor(sr * dur), sr), x = b.getChannelData(0);
-        for (let k = 0; k < 900; k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
+        for (let k = 0; k < Math.round(300 * dur); k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
           for (let j = 0; j < 700; j++) x[p + j] += (Math.random() * 2 - 1) * a * env * Math.exp(-j / 90); }
         const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain();
-        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = 0.9 * vol;
-        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0); return;
+        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = (type === "applaudir" ? 0.7 : 0.5) * vol;
+        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0);
+        if (type === "applaudir") return;
       }
-      [[450, 0.9], [1100, 1], [2600, 0.55]].forEach(([fr, a], i) => {
-        const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain(), lfo = seAudio.createOscillator(), lg = seAudio.createGain();
-        s0.buffer = seBruit; s0.loop = true; f.type = "bandpass"; f.frequency.value = fr; f.Q.value = 0.9;
-        lfo.frequency.value = 3 + i * 1.7; lg.gain.value = 0.18 * a * vol; lfo.connect(lg); lg.connect(g.gain);
-        s0.connect(f); f.connect(g); g.connect(seSortie());
-        const pk = 0.75 * a * vol;
-        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(pk, t0 + 0.35); g.gain.linearRampToValueAtTime(pk * 0.8, t0 + 1.8); g.gain.linearRampToValueAtTime(0, t0 + dur);
-        s0.start(t0); lfo.start(t0); s0.stop(t0 + dur + 0.05); lfo.stop(t0 + dur + 0.05);
-      });
       // cornes de supporters (deux notes)
       [[0.15, 466], [0.6, 523]].forEach(([dt, fq]) => { const o = seAudio.createOscillator(), g = seAudio.createGain(); o.type = "sawtooth"; o.frequency.value = fq; o.connect(g); g.connect(seSortie());
         const a = t0 + dt; g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(0.12 * vol, a + 0.04); g.gain.setValueAtTime(0.12 * vol, a + 0.35); g.gain.linearRampToValueAtTime(0, a + 0.42); o.start(a); o.stop(a + 0.45); });
@@ -98843,17 +98992,30 @@ window.DISC = {
         <select data-am="${i}">${["plots", "ballons", "cerceaux", "chasubles", "panier", "but", "filet", "echelle", "haies", "tapis", "temoin", "couloirs"].map(m => `<option${m === a.mat ? " selected" : ""}>${m}</option>`).join("")}</select>
         <button type="button" class="gr-btn" data-asup="${i}" ${d.ateliers.length > 1 ? "" : "disabled"}>✕</button></div>`).join("")}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button type="button" class="gr-btn" id="se-aplus" ${d.ateliers.length < 8 ? "" : "disabled"}>＋ Atelier</button><button type="button" class="gr-btn" id="se-adef">↺ Ateliers proposés pour ${esc(aps.nom)}</button><button type="button" class="gr-btn" id="se-apos">↺ Disposition par défaut</button></div></div>`;
-    // ---- temps restant : divisé par le nombre de groupes (= nombre de rotations) → même temps de jeu pour chaque groupe ----
+    // ---- temps de jeu : le professeur donne le temps restant et la durée de match voulue → programme où tous les groupes jouent autant ----
     const tp = d.cfg.temps = Object.assign({ restant: 30 }, d.cfg.temps || {});
     const nG = ids.length, Tn = Math.max(1, Math.min(+d.cfg.terrains || 1, Math.floor(nG / 2))), trS = +d.cfg.transition || 0;
-    const dureeCalc = r => Math.max(1, Math.floor(((+r || 0) * 60 - (nG - 1) * trS) / nG / 30) / 2);
-    const dmC = dureeCalc(tp.restant), nbJ = 2 * Tn;
+    const pgcd = (x, y) => y ? pgcd(y, x % y) : x, pas = nG / pgcd(nG, 2 * Tn);          // rotations pour que chaque groupe joue une fois de plus
     const fmtM = m => String(m).replace(".", ",") + " min";
+    const planPour = m => {
+      const Rf = Math.floor(((+tp.restant || 0) * 60 + trS) / (m * 60 + trS)), R = Math.floor(Rf / pas) * pas;
+      return { m, R: R >= pas ? R : 0, k: R >= pas ? R * 2 * Tn / nG : 0, libre: R >= pas ? Math.round((+tp.restant - (R * m + (R - 1) * trS / 60)) * 10) / 10 : 0 };
+    };
+    const mMax = Math.floor(((+tp.restant || 0) * 60 - (pas - 1) * trS) / pas / 30) / 2;   // durée max pour que chacun joue au moins une fois
+    // une proposition par nombre de matchs : la durée la plus longue qui tient dans le temps restant
+    const props = [];
+    for (let R = pas; R <= 40; R += pas) { const m = Math.floor(((+tp.restant || 0) * 60 - (R - 1) * trS) / R / 30) / 2; if (m < 2) break; props.push({ m, R, k: R * 2 * Tn / nG, libre: 0 }); }
+    const reco = props.filter(x => x.m >= 5).pop() || props[0] || null;   // le plus de matchs possible, avec des matchs d'au moins 5 min
+    const actif = x => +d.cfg.duree === x.m && d.rot.length === x.R;
     const tempsBox = `<div class="se-box se-temps-box"><div class="se-tps">
         <label class="se-tps-r"><b>⏳ Temps restant</b><input type="number" min="5" max="180" step="1" id="se-tp-rest" value="${tp.restant}"> min</label>
-        <div class="se-tps-cal">÷ <b>${nG} groupes</b> = <b>${nG} rotations</b> de <span class="se-tps-d">${fmtM(dmC)}</span></div>
-        <div class="se-tps-txt">Chaque groupe joue <b>${nbJ} match${nbJ > 1 ? "s" : ""}</b>, soit <b>${fmtM(dmC * nbJ)}</b> de jeu pour tous${trS ? ` · transitions de ${trS} s déduites` : ""}.${(+d.cfg.nbRot || nG) !== nG || +d.cfg.duree !== dmC ? ` <button type="button" class="gr-btn gr-tirer" id="se-tp-app">Appliquer</button>` : ` <span class="se-ok">✔ appliqué</span>`}</div>
-      </div></div>`;
+        <label class="se-tps-r"><b>⏱ Durée d'un match</b><input type="number" min="1" max="30" step="0.5" id="se-tp-match" value="${d.cfg.duree}"> min</label>
+        <div class="se-tps-txt">${nG} groupes · ${Tn} terrain${Tn > 1 ? "s" : ""}${trS ? ` · transition ${trS} s` : ""} — actuellement <b>${d.rot.length} rotations de ${fmtM(+d.cfg.duree)}</b>.</div>
+      </div>
+      <div class="se-props">${props.length ? props.map(x => `<button type="button" class="se-prop${actif(x) ? " on" : ""}${x === reco ? " reco" : ""}" data-tprop="${x.m}:${x.R}">
+          <b>${fmtM(x.m)}</b><span>${x.R} rotations</span><span>chaque groupe joue <b>${x.k} fois</b></span>${x.libre >= 1 ? `<small>${fmtM(x.libre)} libres</small>` : ""}${x === reco ? "<em>conseillé</em>" : ""}</button>`).join("")
+        : `<p class="gr-aide">Temps restant trop court pour faire jouer tous les groupes${Tn === 1 && nG >= 4 ? " : passez à 2 terrains" : ""}.</p>`}</div>
+      <p class="gr-aide">Choisissez une durée (ou tapez la vôtre) : le programme est généré pour que <b>tous les groupes jouent le même nombre de matchs</b> dans le temps restant${mMax >= 1 ? ` — au plus <b>${fmtM(mMax)}</b> par match pour que chaque groupe joue au moins une fois` : ""}.${Tn === 1 && nG >= 4 ? " Avec 2 terrains (réglage du planning), les matchs peuvent être deux fois plus longs." : ""}</p></div>`;
     z.innerHTML = tete + compo + tempsBox + (change ? `<div class="se-vide" style="margin:8px 0">Les groupes ont changé depuis la programmation (des scores sont déjà saisis). <button type="button" class="gr-btn gr-tirer" id="se-regen2">↻ Reprogrammer avec les nouveaux groupes</button></div>` : "") +
       `<div class="se-main"><div class="se-plan">${sePlanSVG(ctx, seRot)}<p class="gr-aide">Faites glisser un atelier pour changer sa disposition autour du terrain. Groupes au repos : un groupe arbitre la rencontre (à tour de rôle), les autres vont chacun dans un atelier différent ; s'il manque des ateliers, les groupes restants observent.</p></div>${lateral}</div>
       <div class="se-bas">
@@ -98914,7 +99076,8 @@ window.DISC = {
         d.buteurs = d.buteurs || []; d.buteurs.push({ r: seRot, i, g, nom, pts: pt, s: d.cfg.seance });
         pk.remove();
         if (d.cfg.foule !== false) seFoule(d.cfg.volume, "clameur");
-        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 650 : 0); }
+        // le commentateur parle seul, juste après la courte réaction du public (sinon les deux se couvrent)
+        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 1300 : 100); }
         sauver();
       });
     });
@@ -98923,7 +99086,7 @@ window.DISC = {
     z.querySelectorAll("[data-test]").forEach(b => b.onclick = () => {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
-      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 700); return; }
+      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
       if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
@@ -98933,13 +99096,17 @@ window.DISC = {
     if (q("se-regen2")) q("se-regen2").onclick = () => askConfirm("Reprogrammer", "Le planning est recalculé avec les groupes actuels ; les scores saisis seront effacés.", "Reprogrammer", regen);
     q("se-terr").onchange = e => { d.cfg.terrains = +e.target.value; regen(); };
     q("se-nbrot").onchange = e => { d.cfg.nbRot = +e.target.value; regen(); };
-    // temps restant → durée des matchs (appliquée tout de suite)
-    const appliquerTemps = () => {
-      const faire = () => { d.cfg.nbRot = nG; d.cfg.duree = dureeCalc(tp.restant); if (seChrono.etat === "pret") seChrono.reste = d.cfg.duree * 60; regen(); seToast(nG + " rotations de " + fmtM(d.cfg.duree) + " — chaque groupe joue le même temps", "success"); };
-      if (aScores) askConfirm("Appliquer le temps restant", "Le planning est reprogrammé (" + nG + " rotations de " + fmtM(dureeCalc(tp.restant)) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
+    // durée de match choisie → programme (tous les groupes jouent autant)
+    const appliquerDuree = function (m) {
+      const x = planPour(m);
+      if (arguments.length > 1) { x.R = arguments[1]; x.k = x.R * 2 * Tn / nG; }
+      if (!x.R) { seToast("Avec " + fmtM(m) + " par match, tous les groupes ne peuvent pas jouer" + (mMax >= 1 ? " : " + fmtM(mMax) + " au plus" : ""), "error"); renderSeance(); return; }
+      const faire = () => { d.cfg.duree = m; d.cfg.nbRot = x.R; if (seChrono.etat === "pret") seChrono.reste = m * 60; regen(); seToast(x.R + " rotations de " + fmtM(m) + " — chaque groupe joue " + x.k + " fois", "success"); };
+      if (aScores) askConfirm("Nouveau programme", "Le planning est reprogrammé (" + x.R + " rotations de " + fmtM(m) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
     };
-    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); if (seChrono.etat === "match") { renderSeance(); return; } appliquerTemps(); };
-    if (q("se-tp-app")) q("se-tp-app").onclick = appliquerTemps;
+    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); renderSeance(); };
+    q("se-tp-match").onchange = e => { const m = Math.round((+String(e.target.value).replace(",", ".") || 0) * 2) / 2; if (m < 1) { renderSeance(); return; } if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); renderSeance(); return; } appliquerDuree(m); };
+    z.querySelectorAll("[data-tprop]").forEach(b => b.onclick = () => { if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); return; } const [m, R] = b.dataset.tprop.split(":").map(Number); appliquerDuree(m, R); });
     z.querySelectorAll("[data-mt]").forEach(s => s.onchange = () => {
       const [k, i, c] = s.dataset.mt.split(":").map(Number), m = d.rot[k].m[i], autre = m[1 - c];
       if (s.value === autre) { seToast("Un groupe ne peut pas jouer contre lui-même", "error"); renderSeance(); return; }
@@ -99069,6 +99236,15 @@ window.DISC = {
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
+      .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+      .se-prop{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:1px;font:inherit;font-size:.8rem;text-align:left;padding:8px 12px;border-radius:12px;border:1.5px solid #DDD3F5;background:#F6F2FF;color:#3B1677;cursor:pointer;min-width:132px;}
+      .se-prop b:first-child{font-size:1.15rem;}
+      .se-prop small{color:#6B7280;}
+      .se-prop:hover{border-color:#A78BFA;background:#EDE4FF;}
+      .se-prop.reco{border-color:#16A34A;}
+      .se-prop.reco em{position:absolute;top:-9px;right:8px;background:#16A34A;color:#fff;font-style:normal;font-weight:800;font-size:.66rem;padding:1px 7px;border-radius:999px;}
+      .se-prop.on{background:linear-gradient(135deg,#5B2BB8,#8B5CF6);color:#fff;border-color:transparent;}
+      .se-prop.on small{color:#E9D5FF;}
       .se-tps{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;}
       .se-tps-r{display:flex !important;align-items:center;gap:8px;margin:0 !important;font-size:1rem;}
       .se-tps-r input{width:96px;font:inherit;font-size:1.7rem;font-weight:800;text-align:center;padding:4px;border:2px solid #8B5CF6;border-radius:10px;color:#4C1D95;}
@@ -102631,7 +102807,7 @@ window.DISC = {
   }
   /* élèves de la classe (application, sinon cahier journalier) et sexe */
   function seEleves(classe) {
-    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" ? "F" : "G" }));
+    if (SE.ctxCl && seCle(SE.ctxCl) === seCle(classe) && SE.ctxEl && SE.ctxEl.length) return SE.ctxEl.map(e => ({ nom: e.nom, sexe: e.sexe === "F" || (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(e.nom) === "F") ? "F" : "G" }));
     const J = seJournal(), nd = J && seNiveauDe(J, classe); if (!nd) return [];
     const vus = {}, out = [], cyc = (nd.cycles || {})[nd.__cl] || {}, sx = (nd.grSexes || {})[nd.__cl] || {};
     Object.keys(cyc).forEach(k => ((cyc[k] || {}).rows || []).forEach(r => { const n = String((r && r.nom) || "").trim(), c = n.toLowerCase().replace(/\s+/g, " "); if (n && !vus[c]) { vus[c] = 1; out.push({ nom: n, sexe: sx[c] === "F" || sx[c] === "G" ? sx[c] : (window.XlsxLite && XlsxLite.devinerSexe && XlsxLite.devinerSexe(n) === "F" ? "F" : "G") }); } }));
@@ -102749,25 +102925,16 @@ window.DISC = {
   function seFoule(vol, type) {
     try {
       seAudio = seAudio || new (window.AudioContext || window.webkitAudioContext)(); if (seAudio.state === "suspended") seAudio.resume();
-      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3.2 : 3.8, t0 = seAudio.currentTime + 0.02;
-      if (!seBruit) { seBruit = seAudio.createBuffer(1, sr * 4, sr); const x = seBruit.getChannelData(0); for (let i = 0; i < x.length; i++) x[i] = Math.random() * 2 - 1; }
-      if (type === "applaudir") {
+      const sr = seAudio.sampleRate, dur = type === "applaudir" ? 3 : 1.5, t0 = seAudio.currentTime + 0.02;
+      {
         const b = seAudio.createBuffer(1, Math.floor(sr * dur), sr), x = b.getChannelData(0);
-        for (let k = 0; k < 900; k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
+        for (let k = 0; k < Math.round(300 * dur); k++) { const p = Math.floor(Math.random() * (x.length - 900)), a = 0.4 + Math.random() * 0.6, env = Math.min(1, (p / x.length) * 6) * Math.max(0, 1 - p / x.length * 0.85);
           for (let j = 0; j < 700; j++) x[p + j] += (Math.random() * 2 - 1) * a * env * Math.exp(-j / 90); }
         const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain();
-        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = 0.9 * vol;
-        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0); return;
+        s0.buffer = b; f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 0.6; g.gain.value = (type === "applaudir" ? 0.7 : 0.5) * vol;
+        s0.connect(f); f.connect(g); g.connect(seSortie()); s0.start(t0);
+        if (type === "applaudir") return;
       }
-      [[450, 0.9], [1100, 1], [2600, 0.55]].forEach(([fr, a], i) => {
-        const s0 = seAudio.createBufferSource(), f = seAudio.createBiquadFilter(), g = seAudio.createGain(), lfo = seAudio.createOscillator(), lg = seAudio.createGain();
-        s0.buffer = seBruit; s0.loop = true; f.type = "bandpass"; f.frequency.value = fr; f.Q.value = 0.9;
-        lfo.frequency.value = 3 + i * 1.7; lg.gain.value = 0.18 * a * vol; lfo.connect(lg); lg.connect(g.gain);
-        s0.connect(f); f.connect(g); g.connect(seSortie());
-        const pk = 0.75 * a * vol;
-        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(pk, t0 + 0.35); g.gain.linearRampToValueAtTime(pk * 0.8, t0 + 1.8); g.gain.linearRampToValueAtTime(0, t0 + dur);
-        s0.start(t0); lfo.start(t0); s0.stop(t0 + dur + 0.05); lfo.stop(t0 + dur + 0.05);
-      });
       // cornes de supporters (deux notes)
       [[0.15, 466], [0.6, 523]].forEach(([dt, fq]) => { const o = seAudio.createOscillator(), g = seAudio.createGain(); o.type = "sawtooth"; o.frequency.value = fq; o.connect(g); g.connect(seSortie());
         const a = t0 + dt; g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(0.12 * vol, a + 0.04); g.gain.setValueAtTime(0.12 * vol, a + 0.35); g.gain.linearRampToValueAtTime(0, a + 0.42); o.start(a); o.stop(a + 0.45); });
@@ -103194,17 +103361,30 @@ window.DISC = {
         <select data-am="${i}">${["plots", "ballons", "cerceaux", "chasubles", "panier", "but", "filet", "echelle", "haies", "tapis", "temoin", "couloirs"].map(m => `<option${m === a.mat ? " selected" : ""}>${m}</option>`).join("")}</select>
         <button type="button" class="gr-btn" data-asup="${i}" ${d.ateliers.length > 1 ? "" : "disabled"}>✕</button></div>`).join("")}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button type="button" class="gr-btn" id="se-aplus" ${d.ateliers.length < 8 ? "" : "disabled"}>＋ Atelier</button><button type="button" class="gr-btn" id="se-adef">↺ Ateliers proposés pour ${esc(aps.nom)}</button><button type="button" class="gr-btn" id="se-apos">↺ Disposition par défaut</button></div></div>`;
-    // ---- temps restant : divisé par le nombre de groupes (= nombre de rotations) → même temps de jeu pour chaque groupe ----
+    // ---- temps de jeu : le professeur donne le temps restant et la durée de match voulue → programme où tous les groupes jouent autant ----
     const tp = d.cfg.temps = Object.assign({ restant: 30 }, d.cfg.temps || {});
     const nG = ids.length, Tn = Math.max(1, Math.min(+d.cfg.terrains || 1, Math.floor(nG / 2))), trS = +d.cfg.transition || 0;
-    const dureeCalc = r => Math.max(1, Math.floor(((+r || 0) * 60 - (nG - 1) * trS) / nG / 30) / 2);
-    const dmC = dureeCalc(tp.restant), nbJ = 2 * Tn;
+    const pgcd = (x, y) => y ? pgcd(y, x % y) : x, pas = nG / pgcd(nG, 2 * Tn);          // rotations pour que chaque groupe joue une fois de plus
     const fmtM = m => String(m).replace(".", ",") + " min";
+    const planPour = m => {
+      const Rf = Math.floor(((+tp.restant || 0) * 60 + trS) / (m * 60 + trS)), R = Math.floor(Rf / pas) * pas;
+      return { m, R: R >= pas ? R : 0, k: R >= pas ? R * 2 * Tn / nG : 0, libre: R >= pas ? Math.round((+tp.restant - (R * m + (R - 1) * trS / 60)) * 10) / 10 : 0 };
+    };
+    const mMax = Math.floor(((+tp.restant || 0) * 60 - (pas - 1) * trS) / pas / 30) / 2;   // durée max pour que chacun joue au moins une fois
+    // une proposition par nombre de matchs : la durée la plus longue qui tient dans le temps restant
+    const props = [];
+    for (let R = pas; R <= 40; R += pas) { const m = Math.floor(((+tp.restant || 0) * 60 - (R - 1) * trS) / R / 30) / 2; if (m < 2) break; props.push({ m, R, k: R * 2 * Tn / nG, libre: 0 }); }
+    const reco = props.filter(x => x.m >= 5).pop() || props[0] || null;   // le plus de matchs possible, avec des matchs d'au moins 5 min
+    const actif = x => +d.cfg.duree === x.m && d.rot.length === x.R;
     const tempsBox = `<div class="se-box se-temps-box"><div class="se-tps">
         <label class="se-tps-r"><b>⏳ Temps restant</b><input type="number" min="5" max="180" step="1" id="se-tp-rest" value="${tp.restant}"> min</label>
-        <div class="se-tps-cal">÷ <b>${nG} groupes</b> = <b>${nG} rotations</b> de <span class="se-tps-d">${fmtM(dmC)}</span></div>
-        <div class="se-tps-txt">Chaque groupe joue <b>${nbJ} match${nbJ > 1 ? "s" : ""}</b>, soit <b>${fmtM(dmC * nbJ)}</b> de jeu pour tous${trS ? ` · transitions de ${trS} s déduites` : ""}.${(+d.cfg.nbRot || nG) !== nG || +d.cfg.duree !== dmC ? ` <button type="button" class="gr-btn gr-tirer" id="se-tp-app">Appliquer</button>` : ` <span class="se-ok">✔ appliqué</span>`}</div>
-      </div></div>`;
+        <label class="se-tps-r"><b>⏱ Durée d'un match</b><input type="number" min="1" max="30" step="0.5" id="se-tp-match" value="${d.cfg.duree}"> min</label>
+        <div class="se-tps-txt">${nG} groupes · ${Tn} terrain${Tn > 1 ? "s" : ""}${trS ? ` · transition ${trS} s` : ""} — actuellement <b>${d.rot.length} rotations de ${fmtM(+d.cfg.duree)}</b>.</div>
+      </div>
+      <div class="se-props">${props.length ? props.map(x => `<button type="button" class="se-prop${actif(x) ? " on" : ""}${x === reco ? " reco" : ""}" data-tprop="${x.m}:${x.R}">
+          <b>${fmtM(x.m)}</b><span>${x.R} rotations</span><span>chaque groupe joue <b>${x.k} fois</b></span>${x.libre >= 1 ? `<small>${fmtM(x.libre)} libres</small>` : ""}${x === reco ? "<em>conseillé</em>" : ""}</button>`).join("")
+        : `<p class="gr-aide">Temps restant trop court pour faire jouer tous les groupes${Tn === 1 && nG >= 4 ? " : passez à 2 terrains" : ""}.</p>`}</div>
+      <p class="gr-aide">Choisissez une durée (ou tapez la vôtre) : le programme est généré pour que <b>tous les groupes jouent le même nombre de matchs</b> dans le temps restant${mMax >= 1 ? ` — au plus <b>${fmtM(mMax)}</b> par match pour que chaque groupe joue au moins une fois` : ""}.${Tn === 1 && nG >= 4 ? " Avec 2 terrains (réglage du planning), les matchs peuvent être deux fois plus longs." : ""}</p></div>`;
     z.innerHTML = tete + compo + tempsBox + (change ? `<div class="se-vide" style="margin:8px 0">Les groupes ont changé depuis la programmation (des scores sont déjà saisis). <button type="button" class="gr-btn gr-tirer" id="se-regen2">↻ Reprogrammer avec les nouveaux groupes</button></div>` : "") +
       `<div class="se-main"><div class="se-plan">${sePlanSVG(ctx, seRot)}<p class="gr-aide">Faites glisser un atelier pour changer sa disposition autour du terrain. Groupes au repos : un groupe arbitre la rencontre (à tour de rôle), les autres vont chacun dans un atelier différent ; s'il manque des ateliers, les groupes restants observent.</p></div>${lateral}</div>
       <div class="se-bas">
@@ -103265,7 +103445,8 @@ window.DISC = {
         d.buteurs = d.buteurs || []; d.buteurs.push({ r: seRot, i, g, nom, pts: pt, s: d.cfg.seance });
         pk.remove();
         if (d.cfg.foule !== false) seFoule(d.cfg.volume, "clameur");
-        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 650 : 0); }
+        // le commentateur parle seul, juste après la courte réaction du public (sinon les deux se couvrent)
+        if (d.cfg.comm !== false) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => seDire(d, seCommentaire(f, g, nom, pt, +R.a || 0, +R.b || 0, m)), d.cfg.foule !== false ? 1300 : 100); }
         sauver();
       });
     });
@@ -103274,7 +103455,7 @@ window.DISC = {
     z.querySelectorAll("[data-test]").forEach(b => b.onclick = () => {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
-      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 700); return; }
+      if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
       if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
@@ -103284,13 +103465,17 @@ window.DISC = {
     if (q("se-regen2")) q("se-regen2").onclick = () => askConfirm("Reprogrammer", "Le planning est recalculé avec les groupes actuels ; les scores saisis seront effacés.", "Reprogrammer", regen);
     q("se-terr").onchange = e => { d.cfg.terrains = +e.target.value; regen(); };
     q("se-nbrot").onchange = e => { d.cfg.nbRot = +e.target.value; regen(); };
-    // temps restant → durée des matchs (appliquée tout de suite)
-    const appliquerTemps = () => {
-      const faire = () => { d.cfg.nbRot = nG; d.cfg.duree = dureeCalc(tp.restant); if (seChrono.etat === "pret") seChrono.reste = d.cfg.duree * 60; regen(); seToast(nG + " rotations de " + fmtM(d.cfg.duree) + " — chaque groupe joue le même temps", "success"); };
-      if (aScores) askConfirm("Appliquer le temps restant", "Le planning est reprogrammé (" + nG + " rotations de " + fmtM(dureeCalc(tp.restant)) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
+    // durée de match choisie → programme (tous les groupes jouent autant)
+    const appliquerDuree = function (m) {
+      const x = planPour(m);
+      if (arguments.length > 1) { x.R = arguments[1]; x.k = x.R * 2 * Tn / nG; }
+      if (!x.R) { seToast("Avec " + fmtM(m) + " par match, tous les groupes ne peuvent pas jouer" + (mMax >= 1 ? " : " + fmtM(mMax) + " au plus" : ""), "error"); renderSeance(); return; }
+      const faire = () => { d.cfg.duree = m; d.cfg.nbRot = x.R; if (seChrono.etat === "pret") seChrono.reste = m * 60; regen(); seToast(x.R + " rotations de " + fmtM(m) + " — chaque groupe joue " + x.k + " fois", "success"); };
+      if (aScores) askConfirm("Nouveau programme", "Le planning est reprogrammé (" + x.R + " rotations de " + fmtM(m) + ") ; les scores déjà saisis seront effacés.", "Appliquer", faire); else faire();
     };
-    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); if (seChrono.etat === "match") { renderSeance(); return; } appliquerTemps(); };
-    if (q("se-tp-app")) q("se-tp-app").onclick = appliquerTemps;
+    q("se-tp-rest").onchange = e => { tp.restant = Math.max(1, +e.target.value || 0); seSave(); renderSeance(); };
+    q("se-tp-match").onchange = e => { const m = Math.round((+String(e.target.value).replace(",", ".") || 0) * 2) / 2; if (m < 1) { renderSeance(); return; } if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); renderSeance(); return; } appliquerDuree(m); };
+    z.querySelectorAll("[data-tprop]").forEach(b => b.onclick = () => { if (seChrono.etat === "match") { seToast("Un match est en cours", "error"); return; } const [m, R] = b.dataset.tprop.split(":").map(Number); appliquerDuree(m, R); });
     z.querySelectorAll("[data-mt]").forEach(s => s.onchange = () => {
       const [k, i, c] = s.dataset.mt.split(":").map(Number), m = d.rot[k].m[i], autre = m[1 - c];
       if (s.value === autre) { seToast("Un groupe ne peut pas jouer contre lui-même", "error"); renderSeance(); return; }
@@ -103420,6 +103605,15 @@ window.DISC = {
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
+      .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+      .se-prop{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:1px;font:inherit;font-size:.8rem;text-align:left;padding:8px 12px;border-radius:12px;border:1.5px solid #DDD3F5;background:#F6F2FF;color:#3B1677;cursor:pointer;min-width:132px;}
+      .se-prop b:first-child{font-size:1.15rem;}
+      .se-prop small{color:#6B7280;}
+      .se-prop:hover{border-color:#A78BFA;background:#EDE4FF;}
+      .se-prop.reco{border-color:#16A34A;}
+      .se-prop.reco em{position:absolute;top:-9px;right:8px;background:#16A34A;color:#fff;font-style:normal;font-weight:800;font-size:.66rem;padding:1px 7px;border-radius:999px;}
+      .se-prop.on{background:linear-gradient(135deg,#5B2BB8,#8B5CF6);color:#fff;border-color:transparent;}
+      .se-prop.on small{color:#E9D5FF;}
       .se-tps{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;}
       .se-tps-r{display:flex !important;align-items:center;gap:8px;margin:0 !important;font-size:1rem;}
       .se-tps-r input{width:96px;font:inherit;font-size:1.7rem;font-weight:800;text-align:center;padding:4px;border:2px solid #8B5CF6;border-radius:10px;color:#4C1D95;}
@@ -104933,6 +105127,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 05-11-2026 · 20h45</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 05-11-2026 · 21h30</div>
 </body>
 </html>
