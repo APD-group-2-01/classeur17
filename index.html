@@ -15459,7 +15459,8 @@ window.JSYNC = window.JSYNC || (function () {
       .concat(sansEq.length ? [{ t: "—", coul: "#ddd", el: sansEq, sans: true }] : []);
     const en = (typeof entete === "function") ? entete(cl) : {};
     const nb = cl.eleves.length + groupes.length;
-    const h = Math.max(4.6, Math.min(9, ((paysage ? 148 : 215) / Math.max(nb, 1)))).toFixed(1);
+    const h = Math.max(4.4, Math.min(12, ((paysage ? 142 : 244) / Math.max(nb, 1)))).toFixed(1);
+    const logoEl = document.querySelector(".credit-mb img, img.credit-logo"), logo = logoEl && logoEl.src ? logoEl.src : "";
     const html = `<div class="smp eqg${paysage ? " pay" : ""}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
         <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:13pt;font-weight:700;font-style:italic;color:#8B2E3C">${diag ? "Grille de diagnostic collectif" : "Grille d'évaluation sommative"} ${esc(n)} — ${esc(PV_CFG.aps)}</div>
@@ -15475,7 +15476,12 @@ window.JSYNC = window.JSYNC || (function () {
       </table>
       ${KI.some(k => k.off) ? `<p style="font-size:7pt;margin:2mm 0 0;line-height:1.35">${KI.filter(k => k.off).map(k => "<b>" + esc(k.nom) + "</b> — " + k.niv.map((t, i) => "N" + (i + 1) + " : " + esc(t)).join(" · ")).join("<br>")}</p>` : ""}
       <p style="font-size:7.5pt;margin:2mm 0 0"><b>Calcul :</b> ${B.map(c => "<b>" + esc(c.lib) + "</b> = " + c.num.toUpperCase() + " ÷ " + (c.den || "bj").toUpperCase() + " × 100" + (diag ? "" : " → " + c.tr.map(t => t[0] + "–" + t[1] + " % : " + String(t[2]).replace(".", ",")).join(" · ") + " pt")).join(" — ")}. Reporter ensuite les totaux dans le classeur : ${diag ? "les pourcentages se calculent tout seuls" : "la note se calcule toute seule"}.</p>
+      <div class="eqg-pied">${logo ? `<img src="${logo}" alt="">` : ""}<span><b>Prepa-1st</b> · Classeur numérique EPS</span><span class="eqg-pied-d">${diag ? "Diagnostic collectif" : "Évaluation sommative"} · ${esc(cl.nom)}</span></div>
       <style>
+        #sm-print .eqg{box-sizing:border-box;min-height:${paysage ? 209 : 296}mm;display:flex;flex-direction:column}
+        #sm-print .eqg-pied{margin-top:auto;padding-top:2.5mm;border-top:.4mm solid #8B2E3C;display:flex;align-items:center;gap:3mm;font-size:8pt;color:#444}
+        #sm-print .eqg-pied img{height:10mm;width:auto}
+        #sm-print .eqg-pied .eqg-pied-d{margin-left:auto;color:#8B2E3C;font-weight:700}
         #sm-print .eqg-t th.gi{background:#D9EAD3 !important} #sm-print .eqg-t th.gc{background:#F4CCCC !important}
         #sm-print .eqg{padding:6mm 7mm} #sm-print .eqg-t td,#sm-print .eqg-t th{padding:.3mm .8mm;line-height:1.15} #sm-print .eqg-t thead th{font-size:6.6pt;letter-spacing:0 !important;overflow-wrap:anywhere;word-break:break-word;hyphens:auto;overflow:hidden} #sm-print .eqg-t th.niv{width:${paysage ? 5.5 : 7}mm}
         #sm-print .eqg-t td.eqc{font-weight:800;font-size:11pt;color:#1F2D3D;width:7mm} #sm-print .eqg-t td.pts{background:#FBF3F3 !important}
@@ -27238,7 +27244,8 @@ window.JSYNC = window.JSYNC || (function () {
       .concat(sansEq.length ? [{ t: "—", coul: "#ddd", el: sansEq, sans: true }] : []);
     const en = (typeof entete === "function") ? entete(cl) : {};
     const nb = cl.eleves.length + groupes.length;
-    const h = Math.max(4.6, Math.min(9, ((paysage ? 148 : 215) / Math.max(nb, 1)))).toFixed(1);
+    const h = Math.max(4.4, Math.min(12, ((paysage ? 142 : 244) / Math.max(nb, 1)))).toFixed(1);
+    const logoEl = document.querySelector(".credit-mb img, img.credit-logo"), logo = logoEl && logoEl.src ? logoEl.src : "";
     const html = `<div class="smp eqg${paysage ? " pay" : ""}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
         <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:13pt;font-weight:700;font-style:italic;color:#8B2E3C">${diag ? "Grille de diagnostic collectif" : "Grille d'évaluation sommative"} ${esc(n)} — ${esc(PV_CFG.aps)}</div>
@@ -27254,7 +27261,12 @@ window.JSYNC = window.JSYNC || (function () {
       </table>
       ${KI.some(k => k.off) ? `<p style="font-size:7pt;margin:2mm 0 0;line-height:1.35">${KI.filter(k => k.off).map(k => "<b>" + esc(k.nom) + "</b> — " + k.niv.map((t, i) => "N" + (i + 1) + " : " + esc(t)).join(" · ")).join("<br>")}</p>` : ""}
       <p style="font-size:7.5pt;margin:2mm 0 0"><b>Calcul :</b> ${B.map(c => "<b>" + esc(c.lib) + "</b> = " + c.num.toUpperCase() + " ÷ " + (c.den || "bj").toUpperCase() + " × 100" + (diag ? "" : " → " + c.tr.map(t => t[0] + "–" + t[1] + " % : " + String(t[2]).replace(".", ",")).join(" · ") + " pt")).join(" — ")}. Reporter ensuite les totaux dans le classeur : ${diag ? "les pourcentages se calculent tout seuls" : "la note se calcule toute seule"}.</p>
+      <div class="eqg-pied">${logo ? `<img src="${logo}" alt="">` : ""}<span><b>Prepa-1st</b> · Classeur numérique EPS</span><span class="eqg-pied-d">${diag ? "Diagnostic collectif" : "Évaluation sommative"} · ${esc(cl.nom)}</span></div>
       <style>
+        #sm-print .eqg{box-sizing:border-box;min-height:${paysage ? 209 : 296}mm;display:flex;flex-direction:column}
+        #sm-print .eqg-pied{margin-top:auto;padding-top:2.5mm;border-top:.4mm solid #8B2E3C;display:flex;align-items:center;gap:3mm;font-size:8pt;color:#444}
+        #sm-print .eqg-pied img{height:10mm;width:auto}
+        #sm-print .eqg-pied .eqg-pied-d{margin-left:auto;color:#8B2E3C;font-weight:700}
         #sm-print .eqg-t th.gi{background:#D9EAD3 !important} #sm-print .eqg-t th.gc{background:#F4CCCC !important}
         #sm-print .eqg{padding:6mm 7mm} #sm-print .eqg-t td,#sm-print .eqg-t th{padding:.3mm .8mm;line-height:1.15} #sm-print .eqg-t thead th{font-size:6.6pt;letter-spacing:0 !important;overflow-wrap:anywhere;word-break:break-word;hyphens:auto;overflow:hidden} #sm-print .eqg-t th.niv{width:${paysage ? 5.5 : 7}mm}
         #sm-print .eqg-t td.eqc{font-weight:800;font-size:11pt;color:#1F2D3D;width:7mm} #sm-print .eqg-t td.pts{background:#FBF3F3 !important}
@@ -39014,7 +39026,8 @@ window.JSYNC = window.JSYNC || (function () {
       .concat(sansEq.length ? [{ t: "—", coul: "#ddd", el: sansEq, sans: true }] : []);
     const en = (typeof entete === "function") ? entete(cl) : {};
     const nb = cl.eleves.length + groupes.length;
-    const h = Math.max(4.6, Math.min(9, ((paysage ? 148 : 215) / Math.max(nb, 1)))).toFixed(1);
+    const h = Math.max(4.4, Math.min(12, ((paysage ? 142 : 244) / Math.max(nb, 1)))).toFixed(1);
+    const logoEl = document.querySelector(".credit-mb img, img.credit-logo"), logo = logoEl && logoEl.src ? logoEl.src : "";
     const html = `<div class="smp eqg${paysage ? " pay" : ""}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
         <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:13pt;font-weight:700;font-style:italic;color:#8B2E3C">${diag ? "Grille de diagnostic collectif" : "Grille d'évaluation sommative"} ${esc(n)} — ${esc(PV_CFG.aps)}</div>
@@ -39030,7 +39043,12 @@ window.JSYNC = window.JSYNC || (function () {
       </table>
       ${KI.some(k => k.off) ? `<p style="font-size:7pt;margin:2mm 0 0;line-height:1.35">${KI.filter(k => k.off).map(k => "<b>" + esc(k.nom) + "</b> — " + k.niv.map((t, i) => "N" + (i + 1) + " : " + esc(t)).join(" · ")).join("<br>")}</p>` : ""}
       <p style="font-size:7.5pt;margin:2mm 0 0"><b>Calcul :</b> ${B.map(c => "<b>" + esc(c.lib) + "</b> = " + c.num.toUpperCase() + " ÷ " + (c.den || "bj").toUpperCase() + " × 100" + (diag ? "" : " → " + c.tr.map(t => t[0] + "–" + t[1] + " % : " + String(t[2]).replace(".", ",")).join(" · ") + " pt")).join(" — ")}. Reporter ensuite les totaux dans le classeur : ${diag ? "les pourcentages se calculent tout seuls" : "la note se calcule toute seule"}.</p>
+      <div class="eqg-pied">${logo ? `<img src="${logo}" alt="">` : ""}<span><b>Prepa-1st</b> · Classeur numérique EPS</span><span class="eqg-pied-d">${diag ? "Diagnostic collectif" : "Évaluation sommative"} · ${esc(cl.nom)}</span></div>
       <style>
+        #sm-print .eqg{box-sizing:border-box;min-height:${paysage ? 209 : 296}mm;display:flex;flex-direction:column}
+        #sm-print .eqg-pied{margin-top:auto;padding-top:2.5mm;border-top:.4mm solid #8B2E3C;display:flex;align-items:center;gap:3mm;font-size:8pt;color:#444}
+        #sm-print .eqg-pied img{height:10mm;width:auto}
+        #sm-print .eqg-pied .eqg-pied-d{margin-left:auto;color:#8B2E3C;font-weight:700}
         #sm-print .eqg-t th.gi{background:#D9EAD3 !important} #sm-print .eqg-t th.gc{background:#F4CCCC !important}
         #sm-print .eqg{padding:6mm 7mm} #sm-print .eqg-t td,#sm-print .eqg-t th{padding:.3mm .8mm;line-height:1.15} #sm-print .eqg-t thead th{font-size:6.6pt;letter-spacing:0 !important;overflow-wrap:anywhere;word-break:break-word;hyphens:auto;overflow:hidden} #sm-print .eqg-t th.niv{width:${paysage ? 5.5 : 7}mm}
         #sm-print .eqg-t td.eqc{font-weight:800;font-size:11pt;color:#1F2D3D;width:7mm} #sm-print .eqg-t td.pts{background:#FBF3F3 !important}
@@ -50720,7 +50738,8 @@ window.JSYNC = window.JSYNC || (function () {
       .concat(sansEq.length ? [{ t: "—", coul: "#ddd", el: sansEq, sans: true }] : []);
     const en = (typeof entete === "function") ? entete(cl) : {};
     const nb = cl.eleves.length + groupes.length;
-    const h = Math.max(4.6, Math.min(9, ((paysage ? 148 : 215) / Math.max(nb, 1)))).toFixed(1);
+    const h = Math.max(4.4, Math.min(12, ((paysage ? 142 : 244) / Math.max(nb, 1)))).toFixed(1);
+    const logoEl = document.querySelector(".credit-mb img, img.credit-logo"), logo = logoEl && logoEl.src ? logoEl.src : "";
     const html = `<div class="smp eqg${paysage ? " pay" : ""}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
         <div style="border:.5mm solid #8B2E3C;border-radius:2mm;padding:1.5mm 5mm;font-size:13pt;font-weight:700;font-style:italic;color:#8B2E3C">${diag ? "Grille de diagnostic collectif" : "Grille d'évaluation sommative"} ${esc(n)} — ${esc(PV_CFG.aps)}</div>
@@ -50736,7 +50755,12 @@ window.JSYNC = window.JSYNC || (function () {
       </table>
       ${KI.some(k => k.off) ? `<p style="font-size:7pt;margin:2mm 0 0;line-height:1.35">${KI.filter(k => k.off).map(k => "<b>" + esc(k.nom) + "</b> — " + k.niv.map((t, i) => "N" + (i + 1) + " : " + esc(t)).join(" · ")).join("<br>")}</p>` : ""}
       <p style="font-size:7.5pt;margin:2mm 0 0"><b>Calcul :</b> ${B.map(c => "<b>" + esc(c.lib) + "</b> = " + c.num.toUpperCase() + " ÷ " + (c.den || "bj").toUpperCase() + " × 100" + (diag ? "" : " → " + c.tr.map(t => t[0] + "–" + t[1] + " % : " + String(t[2]).replace(".", ",")).join(" · ") + " pt")).join(" — ")}. Reporter ensuite les totaux dans le classeur : ${diag ? "les pourcentages se calculent tout seuls" : "la note se calcule toute seule"}.</p>
+      <div class="eqg-pied">${logo ? `<img src="${logo}" alt="">` : ""}<span><b>Prepa-1st</b> · Classeur numérique EPS</span><span class="eqg-pied-d">${diag ? "Diagnostic collectif" : "Évaluation sommative"} · ${esc(cl.nom)}</span></div>
       <style>
+        #sm-print .eqg{box-sizing:border-box;min-height:${paysage ? 209 : 296}mm;display:flex;flex-direction:column}
+        #sm-print .eqg-pied{margin-top:auto;padding-top:2.5mm;border-top:.4mm solid #8B2E3C;display:flex;align-items:center;gap:3mm;font-size:8pt;color:#444}
+        #sm-print .eqg-pied img{height:10mm;width:auto}
+        #sm-print .eqg-pied .eqg-pied-d{margin-left:auto;color:#8B2E3C;font-weight:700}
         #sm-print .eqg-t th.gi{background:#D9EAD3 !important} #sm-print .eqg-t th.gc{background:#F4CCCC !important}
         #sm-print .eqg{padding:6mm 7mm} #sm-print .eqg-t td,#sm-print .eqg-t th{padding:.3mm .8mm;line-height:1.15} #sm-print .eqg-t thead th{font-size:6.6pt;letter-spacing:0 !important;overflow-wrap:anywhere;word-break:break-word;hyphens:auto;overflow:hidden} #sm-print .eqg-t th.niv{width:${paysage ? 5.5 : 7}mm}
         #sm-print .eqg-t td.eqc{font-weight:800;font-size:11pt;color:#1F2D3D;width:7mm} #sm-print .eqg-t td.pts{background:#FBF3F3 !important}
@@ -104909,6 +104933,6 @@ var QICONS = {
   } catch(e){}
 })();
 </script>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 05-11-2026 · 20h30</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 05-11-2026 · 20h45</div>
 </body>
 </html>
