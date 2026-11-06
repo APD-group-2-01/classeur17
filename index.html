@@ -23381,6 +23381,8 @@ window.XlsxLite = (function () {
   const seTonIntegre = () => { const c = SE_COMM.find(x => x[0] === seVoixChoisie); return c ? c[2] : 1; };
   function seVoixAr() {
     if (/^__(integree|google)/.test(seVoixChoisie)) return null;
+    // voix choisie par l'enseignant parmi TOUTES les voix de l'appareil (même non arabe)
+    try { const T = speechSynthesis.getVoices() || []; const ch = seVoixChoisie && T.find(v => v.name === seVoixChoisie); if (ch) return ch; } catch (e) {}
     const L = seVoixListe(); if (!L.length) return null;
     return L.find(v => v.name === seVoixChoisie) || L.find(v => /^ar-MA/i.test(v.lang)) || L.find(v => /google/i.test(v.name)) || L.find(v => /^ar-SA/i.test(v.lang)) || L[0];
   }
@@ -23833,7 +23835,8 @@ window.XlsxLite = (function () {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
+    seCapDe = capDe; seDcour = d;
+    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -23875,7 +23878,7 @@ window.XlsxLite = (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -23983,7 +23986,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -24266,6 +24269,7 @@ window.XlsxLite = (function () {
       .se-score{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;}
       .se-score input{width:62px;font-size:1.3rem;font-weight:800;text-align:center;padding:6px;}
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
+      #se-voixsel{max-width:100%;min-width:0;flex:1;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
       .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
@@ -35561,6 +35565,8 @@ window.XlsxLite = (function () {
   const seTonIntegre = () => { const c = SE_COMM.find(x => x[0] === seVoixChoisie); return c ? c[2] : 1; };
   function seVoixAr() {
     if (/^__(integree|google)/.test(seVoixChoisie)) return null;
+    // voix choisie par l'enseignant parmi TOUTES les voix de l'appareil (même non arabe)
+    try { const T = speechSynthesis.getVoices() || []; const ch = seVoixChoisie && T.find(v => v.name === seVoixChoisie); if (ch) return ch; } catch (e) {}
     const L = seVoixListe(); if (!L.length) return null;
     return L.find(v => v.name === seVoixChoisie) || L.find(v => /^ar-MA/i.test(v.lang)) || L.find(v => /google/i.test(v.name)) || L.find(v => /^ar-SA/i.test(v.lang)) || L[0];
   }
@@ -36013,7 +36019,8 @@ window.XlsxLite = (function () {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
+    seCapDe = capDe; seDcour = d;
+    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -36055,7 +36062,7 @@ window.XlsxLite = (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -36163,7 +36170,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -36446,6 +36453,7 @@ window.XlsxLite = (function () {
       .se-score{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;}
       .se-score input{width:62px;font-size:1.3rem;font-weight:800;text-align:center;padding:6px;}
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
+      #se-voixsel{max-width:100%;min-width:0;flex:1;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
       .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
@@ -47738,6 +47746,8 @@ window.XlsxLite = (function () {
   const seTonIntegre = () => { const c = SE_COMM.find(x => x[0] === seVoixChoisie); return c ? c[2] : 1; };
   function seVoixAr() {
     if (/^__(integree|google)/.test(seVoixChoisie)) return null;
+    // voix choisie par l'enseignant parmi TOUTES les voix de l'appareil (même non arabe)
+    try { const T = speechSynthesis.getVoices() || []; const ch = seVoixChoisie && T.find(v => v.name === seVoixChoisie); if (ch) return ch; } catch (e) {}
     const L = seVoixListe(); if (!L.length) return null;
     return L.find(v => v.name === seVoixChoisie) || L.find(v => /^ar-MA/i.test(v.lang)) || L.find(v => /google/i.test(v.name)) || L.find(v => /^ar-SA/i.test(v.lang)) || L[0];
   }
@@ -48190,7 +48200,8 @@ window.XlsxLite = (function () {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
+    seCapDe = capDe; seDcour = d;
+    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -48232,7 +48243,7 @@ window.XlsxLite = (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -48340,7 +48351,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -48623,6 +48634,7 @@ window.XlsxLite = (function () {
       .se-score{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;}
       .se-score input{width:62px;font-size:1.3rem;font-weight:800;text-align:center;padding:6px;}
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
+      #se-voixsel{max-width:100%;min-width:0;flex:1;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
       .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
@@ -59761,6 +59773,8 @@ window.XlsxLite = (function () {
   const seTonIntegre = () => { const c = SE_COMM.find(x => x[0] === seVoixChoisie); return c ? c[2] : 1; };
   function seVoixAr() {
     if (/^__(integree|google)/.test(seVoixChoisie)) return null;
+    // voix choisie par l'enseignant parmi TOUTES les voix de l'appareil (même non arabe)
+    try { const T = speechSynthesis.getVoices() || []; const ch = seVoixChoisie && T.find(v => v.name === seVoixChoisie); if (ch) return ch; } catch (e) {}
     const L = seVoixListe(); if (!L.length) return null;
     return L.find(v => v.name === seVoixChoisie) || L.find(v => /^ar-MA/i.test(v.lang)) || L.find(v => /google/i.test(v.name)) || L.find(v => /^ar-SA/i.test(v.lang)) || L[0];
   }
@@ -60213,7 +60227,8 @@ window.XlsxLite = (function () {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
+    seCapDe = capDe; seDcour = d;
+    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -60255,7 +60270,7 @@ window.XlsxLite = (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -60363,7 +60378,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -60646,6 +60661,7 @@ window.XlsxLite = (function () {
       .se-score{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;}
       .se-score input{width:62px;font-size:1.3rem;font-weight:800;text-align:center;padding:6px;}
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
+      #se-voixsel{max-width:100%;min-width:0;flex:1;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
       .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
@@ -72977,6 +72993,8 @@ window.OMRKIT = window.OMRKIT || (function () {
   const seTonIntegre = () => { const c = SE_COMM.find(x => x[0] === seVoixChoisie); return c ? c[2] : 1; };
   function seVoixAr() {
     if (/^__(integree|google)/.test(seVoixChoisie)) return null;
+    // voix choisie par l'enseignant parmi TOUTES les voix de l'appareil (même non arabe)
+    try { const T = speechSynthesis.getVoices() || []; const ch = seVoixChoisie && T.find(v => v.name === seVoixChoisie); if (ch) return ch; } catch (e) {}
     const L = seVoixListe(); if (!L.length) return null;
     return L.find(v => v.name === seVoixChoisie) || L.find(v => /^ar-MA/i.test(v.lang)) || L.find(v => /google/i.test(v.name)) || L.find(v => /^ar-SA/i.test(v.lang)) || L[0];
   }
@@ -73429,7 +73447,8 @@ window.OMRKIT = window.OMRKIT || (function () {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
+    seCapDe = capDe; seDcour = d;
+    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -73471,7 +73490,7 @@ window.OMRKIT = window.OMRKIT || (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -73579,7 +73598,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -73862,6 +73881,7 @@ window.OMRKIT = window.OMRKIT || (function () {
       .se-score{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;}
       .se-score input{width:62px;font-size:1.3rem;font-weight:800;text-align:center;padding:6px;}
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
+      #se-voixsel{max-width:100%;min-width:0;flex:1;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
       .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
@@ -84329,6 +84349,8 @@ GrilleAPS({
   const seTonIntegre = () => { const c = SE_COMM.find(x => x[0] === seVoixChoisie); return c ? c[2] : 1; };
   function seVoixAr() {
     if (/^__(integree|google)/.test(seVoixChoisie)) return null;
+    // voix choisie par l'enseignant parmi TOUTES les voix de l'appareil (même non arabe)
+    try { const T = speechSynthesis.getVoices() || []; const ch = seVoixChoisie && T.find(v => v.name === seVoixChoisie); if (ch) return ch; } catch (e) {}
     const L = seVoixListe(); if (!L.length) return null;
     return L.find(v => v.name === seVoixChoisie) || L.find(v => /^ar-MA/i.test(v.lang)) || L.find(v => /google/i.test(v.name)) || L.find(v => /^ar-SA/i.test(v.lang)) || L[0];
   }
@@ -84781,7 +84803,8 @@ GrilleAPS({
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
+    seCapDe = capDe; seDcour = d;
+    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -84823,7 +84846,7 @@ GrilleAPS({
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -84931,7 +84954,7 @@ GrilleAPS({
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -85214,6 +85237,7 @@ GrilleAPS({
       .se-score{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;}
       .se-score input{width:62px;font-size:1.3rem;font-weight:800;text-align:center;padding:6px;}
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
+      #se-voixsel{max-width:100%;min-width:0;flex:1;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
       .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
@@ -96452,6 +96476,8 @@ window.DISC = {
   const seTonIntegre = () => { const c = SE_COMM.find(x => x[0] === seVoixChoisie); return c ? c[2] : 1; };
   function seVoixAr() {
     if (/^__(integree|google)/.test(seVoixChoisie)) return null;
+    // voix choisie par l'enseignant parmi TOUTES les voix de l'appareil (même non arabe)
+    try { const T = speechSynthesis.getVoices() || []; const ch = seVoixChoisie && T.find(v => v.name === seVoixChoisie); if (ch) return ch; } catch (e) {}
     const L = seVoixListe(); if (!L.length) return null;
     return L.find(v => v.name === seVoixChoisie) || L.find(v => /^ar-MA/i.test(v.lang)) || L.find(v => /google/i.test(v.name)) || L.find(v => /^ar-SA/i.test(v.lang)) || L[0];
   }
@@ -96904,7 +96930,8 @@ window.DISC = {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
+    seCapDe = capDe; seDcour = d;
+    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -96946,7 +96973,7 @@ window.DISC = {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -97054,7 +97081,7 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -97337,6 +97364,7 @@ window.DISC = {
       .se-score{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;}
       .se-score input{width:62px;font-size:1.3rem;font-weight:800;text-align:center;padding:6px;}
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
+      #se-voixsel{max-width:100%;min-width:0;flex:1;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
       .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
@@ -101430,6 +101458,8 @@ window.DISC = {
   const seTonIntegre = () => { const c = SE_COMM.find(x => x[0] === seVoixChoisie); return c ? c[2] : 1; };
   function seVoixAr() {
     if (/^__(integree|google)/.test(seVoixChoisie)) return null;
+    // voix choisie par l'enseignant parmi TOUTES les voix de l'appareil (même non arabe)
+    try { const T = speechSynthesis.getVoices() || []; const ch = seVoixChoisie && T.find(v => v.name === seVoixChoisie); if (ch) return ch; } catch (e) {}
     const L = seVoixListe(); if (!L.length) return null;
     return L.find(v => v.name === seVoixChoisie) || L.find(v => /^ar-MA/i.test(v.lang)) || L.find(v => /google/i.test(v.name)) || L.find(v => /^ar-SA/i.test(v.lang)) || L[0];
   }
@@ -101882,7 +101912,8 @@ window.DISC = {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
+    seCapDe = capDe; seDcour = d;
+    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -101924,7 +101955,7 @@ window.DISC = {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -102032,7 +102063,7 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -102315,6 +102346,7 @@ window.DISC = {
       .se-score{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;}
       .se-score input{width:62px;font-size:1.3rem;font-weight:800;text-align:center;padding:6px;}
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
+      #se-voixsel{max-width:100%;min-width:0;flex:1;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
       .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
@@ -106232,6 +106264,8 @@ window.DISC = {
   const seTonIntegre = () => { const c = SE_COMM.find(x => x[0] === seVoixChoisie); return c ? c[2] : 1; };
   function seVoixAr() {
     if (/^__(integree|google)/.test(seVoixChoisie)) return null;
+    // voix choisie par l'enseignant parmi TOUTES les voix de l'appareil (même non arabe)
+    try { const T = speechSynthesis.getVoices() || []; const ch = seVoixChoisie && T.find(v => v.name === seVoixChoisie); if (ch) return ch; } catch (e) {}
     const L = seVoixListe(); if (!L.length) return null;
     return L.find(v => v.name === seVoixChoisie) || L.find(v => /^ar-MA/i.test(v.lang)) || L.find(v => /google/i.test(v.name)) || L.find(v => /^ar-SA/i.test(v.lang)) || L[0];
   }
@@ -106684,7 +106718,8 @@ window.DISC = {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d; if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom;
+    seCapDe = capDe; seDcour = d;
+    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -106726,7 +106761,7 @@ window.DISC = {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -106834,7 +106869,7 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -107117,6 +107152,7 @@ window.DISC = {
       .se-score{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;}
       .se-score input{width:62px;font-size:1.3rem;font-weight:800;text-align:center;padding:6px;}
       .se-score small{flex-basis:100%;color:#15803D;font-weight:700;}
+      #se-voixsel{max-width:100%;min-width:0;flex:1;}
       .se-tests{display:flex;flex-wrap:wrap;gap:5px;} .se-tests .gr-btn{padding:5px 8px;font-size:.78rem;}
       .se-temps-box{margin-top:10px;}
       .se-props{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
@@ -108849,6 +108885,6 @@ var QICONS = {
 })();
 
 @@SCRIPTCLOSE7f3a@@>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 06-11-2026 · 09h15</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 06-11-2026 · 12h00</div>
 </body>
 </html>
