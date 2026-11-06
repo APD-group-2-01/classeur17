@@ -23437,7 +23437,9 @@ window.XlsxLite = (function () {
   /* ===== voix intégrée en ligne : quand l'appareil n'a aucune voix arabe, les annonces sont lues
      par la synthèse vocale arabe de Google (fichier audio, connexion Internet nécessaire), phrase par phrase ===== */
   let seFile = [], seAudioCour = null;
-  const seEnLigne = d => (d.cfg.voixNom === "__google" || (!seVoixAr() && d.cfg.voixEnLigne !== false)) && navigator.onLine !== false;
+  const seEnLigne = d => d.cfg.voixNom === "__google" && navigator.onLine !== false;
+  /* voix arabe du navigateur (en ligne) : si le navigateur la refuse, bascule automatique sur la voix intégrée */
+  let seNavKO = false;
   function seMorceaux(t) {
     // phrases regroupées jusqu'à 180 caractères (moins de coupures, voix plus fluide)
     const out = []; let cur = "";
@@ -23528,7 +23530,7 @@ window.XlsxLite = (function () {
     seOccupe = false;
   }
   function seParlerIntegre(d, txt, fin) { const items = seDecouper(txt); if (!items) { if (fin) fin(); return false; } seFileC.push({ items, d, fin }); seTraiterFile(); return true; }
-  const seVoixIntegree = d => d.cfg.voixNom !== "__google" && !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || !seVoixAr());
+  const seVoixIntegree = d => !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || (seNavKO && !seVoixAr() && d.cfg.voixNom !== "__google") || (!window.speechSynthesis && d.cfg.voixNom !== "__google"));
   function seStopAudio() { seFile = []; seFileC = []; seGen++; if (seSrc) { try { seSrc.stop(); } catch (e) {} seSrc = null; } if (seAudioCour) { try { seAudioCour.pause(); } catch (e) {} seAudioCour = null; } }
   function seCancel() { try { speechSynthesis.cancel(); } catch (e) {} seStopAudio(); }
   function seDire(d, txt, fin) {
@@ -23540,7 +23542,8 @@ window.XlsxLite = (function () {
     try {
       const u = new SpeechSynthesisUtterance(txt), v = seVoixAr();
       u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = +d.cfg.debit || 0.9; u.pitch = 1;
-      u.onend = ok; u.onerror = ok;
+      u.onend = ok;
+      u.onerror = e => { const er = e && e.error; if (!v && /language-unavailable|voice-unavailable|synthesis-unavailable|synthesis-failed|not-allowed/.test(er || "") && seVoixData() && !seNavKO) { seNavKO = true; if (!seParlerIntegre(d, txt, ok)) ok(); return; } ok(); };
       try { speechSynthesis.resume(); } catch (e) {}
       speechSynthesis.speak(u);
       // certains téléphones ne signalent jamais la fin de la phrase : on n'attend pas plus que sa durée estimée
@@ -23569,7 +23572,21 @@ window.XlsxLite = (function () {
     if (seVoixIntegree(d)) { seStopAudio(); seParlerIntegre(d, typeof n === "number" ? (SE_NB[n] || String(n)) : n); return; }
     if (seEnLigne(d)) { seStopAudio(); seFile.push({ t: typeof n === "number" ? (SE_NB[n] || String(n)) : n, v: 1 }); seJouer(); return; }
     if (!window.speechSynthesis) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; speechSynthesis.speak(u); } catch (e) {}
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; }; speechSynthesis.speak(u); } catch (e) {}
+  }
+  /* chiffre du départ prononcé en phase avec l'affichage : le chiffre et le bip apparaissent quand la voix commence, le suivant attend la fin du mot */
+  let seLat = 0;   // délai mesuré entre la demande et le début réel de la voix (voix en ligne)
+  function seDireNombreSync(d, n, debut, fin) {
+    let a = false, b = false; const t0 = Date.now(); const go = () => { if (!a) { a = true; seLat = Math.min(800, Date.now() - t0); debut(); } }, ok = () => { if (!b) { b = true; go(); fin(); } };
+    const txt = typeof n === "number" ? (SE_NB[n] || String(n)) : n;
+    if (!d.cfg.voix) { go(); setTimeout(ok, 0); return; }
+    setTimeout(go, 1200); setTimeout(ok, 2600);           // filets de sécurité si la voix ne signale rien
+    if (seVoixIntegree(d)) { go(); if (!seParlerIntegre(d, txt, ok)) ok(); return; }
+    if (seEnLigne(d)) { go(); seFile.push({ t: txt, v: 1, cb: ok }); seJouer(); return; }
+    if (!window.speechSynthesis) { go(); ok(); return; }
+    try { const u = new SpeechSynthesisUtterance(txt), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1;
+      u.onstart = go; u.onend = ok; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; ok(); };
+      try { speechSynthesis.resume(); } catch (e) {} speechSynthesis.speak(u); } catch (e) { ok(); }
   }
   const seAr = {
     appel: m => "نداء إلى " + m.map(x => seCap(x[0]) + "، و " + seCap(x[1])).join("، ثم ") + ". المرجو من القائدين الالتحاق بوسط الملعب رفقة فريقيهما.",
@@ -23651,11 +23668,12 @@ window.XlsxLite = (function () {
     const pas = () => {
       if (seChrono.etat !== "compte") { seAfficherCompte(null); return; }
       if (n === 0) { seAfficherCompte(null); seLancer(ctx); return; }
-      seAfficherCompte(n); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = n;
-      seBip(ctx.d.cfg.volume, 880, 0.18); seDireNombre(ctx.d, n); n--; seChrono.cpt = setTimeout(pas, 1000);
+      const k = n; n--; let t1 = Date.now();
+      seDireNombreSync(ctx.d, k, () => { if (seChrono.etat !== "compte") return; t1 = Date.now(); seAfficherCompte(k); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = k; seBip(ctx.d.cfg.volume, 880, 0.18); },
+        () => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0))); });
     };
     // la voix en cours (appel, noms lus en ligne…) doit être terminée avant « استعدوا » et les chiffres
-    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") pas(); }, 6000)); }, 15000);
+    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, 150); }, 4000)); }, 15000);
   }
   /* attend la fin de toute parole (voix de l'appareil, voix en ligne, voix intégrée), au plus « max » ms */
   function seApresSilence(fn, max) { const t0 = Date.now(); let calme = 0; (function v() { if (!seParle()) calme++; else calme = 0; if (calme >= 2 || Date.now() - t0 > max) return fn(); setTimeout(v, 150); })(); }
@@ -23663,7 +23681,7 @@ window.XlsxLite = (function () {
     clearTimeout(seChrono.cpt); seAfficherCompte(null);
     seChrono.etat = "match"; seChrono.minute = false; seChrono.dernier = null; seChrono.fin = Date.now() + ctx.d.cfg.duree * 60 * 1000;
     seSifflet(ctx.d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700);
-    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, 900);
+    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, Math.max(350, 850 - seLat));
     seBoucle(ctx); renderSeance();
   }
   function sePause() { if (seChrono.etat !== "match" && seChrono.etat !== "transition") return; seChrono.avant = seChrono.etat; seChrono.reste = (seChrono.fin - Date.now()) / 1000; seChrono.etat = "pause"; clearInterval(seChrono.tick); renderSeance(); }
@@ -23836,7 +23854,7 @@ window.XlsxLite = (function () {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d;
-    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -23878,7 +23896,7 @@ window.XlsxLite = (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — voix arabe du navigateur (comme avant)"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne du navigateur (ar-SA)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -23986,7 +24004,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -35621,7 +35639,9 @@ window.XlsxLite = (function () {
   /* ===== voix intégrée en ligne : quand l'appareil n'a aucune voix arabe, les annonces sont lues
      par la synthèse vocale arabe de Google (fichier audio, connexion Internet nécessaire), phrase par phrase ===== */
   let seFile = [], seAudioCour = null;
-  const seEnLigne = d => (d.cfg.voixNom === "__google" || (!seVoixAr() && d.cfg.voixEnLigne !== false)) && navigator.onLine !== false;
+  const seEnLigne = d => d.cfg.voixNom === "__google" && navigator.onLine !== false;
+  /* voix arabe du navigateur (en ligne) : si le navigateur la refuse, bascule automatique sur la voix intégrée */
+  let seNavKO = false;
   function seMorceaux(t) {
     // phrases regroupées jusqu'à 180 caractères (moins de coupures, voix plus fluide)
     const out = []; let cur = "";
@@ -35712,7 +35732,7 @@ window.XlsxLite = (function () {
     seOccupe = false;
   }
   function seParlerIntegre(d, txt, fin) { const items = seDecouper(txt); if (!items) { if (fin) fin(); return false; } seFileC.push({ items, d, fin }); seTraiterFile(); return true; }
-  const seVoixIntegree = d => d.cfg.voixNom !== "__google" && !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || !seVoixAr());
+  const seVoixIntegree = d => !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || (seNavKO && !seVoixAr() && d.cfg.voixNom !== "__google") || (!window.speechSynthesis && d.cfg.voixNom !== "__google"));
   function seStopAudio() { seFile = []; seFileC = []; seGen++; if (seSrc) { try { seSrc.stop(); } catch (e) {} seSrc = null; } if (seAudioCour) { try { seAudioCour.pause(); } catch (e) {} seAudioCour = null; } }
   function seCancel() { try { speechSynthesis.cancel(); } catch (e) {} seStopAudio(); }
   function seDire(d, txt, fin) {
@@ -35724,7 +35744,8 @@ window.XlsxLite = (function () {
     try {
       const u = new SpeechSynthesisUtterance(txt), v = seVoixAr();
       u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = +d.cfg.debit || 0.9; u.pitch = 1;
-      u.onend = ok; u.onerror = ok;
+      u.onend = ok;
+      u.onerror = e => { const er = e && e.error; if (!v && /language-unavailable|voice-unavailable|synthesis-unavailable|synthesis-failed|not-allowed/.test(er || "") && seVoixData() && !seNavKO) { seNavKO = true; if (!seParlerIntegre(d, txt, ok)) ok(); return; } ok(); };
       try { speechSynthesis.resume(); } catch (e) {}
       speechSynthesis.speak(u);
       // certains téléphones ne signalent jamais la fin de la phrase : on n'attend pas plus que sa durée estimée
@@ -35753,7 +35774,21 @@ window.XlsxLite = (function () {
     if (seVoixIntegree(d)) { seStopAudio(); seParlerIntegre(d, typeof n === "number" ? (SE_NB[n] || String(n)) : n); return; }
     if (seEnLigne(d)) { seStopAudio(); seFile.push({ t: typeof n === "number" ? (SE_NB[n] || String(n)) : n, v: 1 }); seJouer(); return; }
     if (!window.speechSynthesis) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; speechSynthesis.speak(u); } catch (e) {}
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; }; speechSynthesis.speak(u); } catch (e) {}
+  }
+  /* chiffre du départ prononcé en phase avec l'affichage : le chiffre et le bip apparaissent quand la voix commence, le suivant attend la fin du mot */
+  let seLat = 0;   // délai mesuré entre la demande et le début réel de la voix (voix en ligne)
+  function seDireNombreSync(d, n, debut, fin) {
+    let a = false, b = false; const t0 = Date.now(); const go = () => { if (!a) { a = true; seLat = Math.min(800, Date.now() - t0); debut(); } }, ok = () => { if (!b) { b = true; go(); fin(); } };
+    const txt = typeof n === "number" ? (SE_NB[n] || String(n)) : n;
+    if (!d.cfg.voix) { go(); setTimeout(ok, 0); return; }
+    setTimeout(go, 1200); setTimeout(ok, 2600);           // filets de sécurité si la voix ne signale rien
+    if (seVoixIntegree(d)) { go(); if (!seParlerIntegre(d, txt, ok)) ok(); return; }
+    if (seEnLigne(d)) { go(); seFile.push({ t: txt, v: 1, cb: ok }); seJouer(); return; }
+    if (!window.speechSynthesis) { go(); ok(); return; }
+    try { const u = new SpeechSynthesisUtterance(txt), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1;
+      u.onstart = go; u.onend = ok; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; ok(); };
+      try { speechSynthesis.resume(); } catch (e) {} speechSynthesis.speak(u); } catch (e) { ok(); }
   }
   const seAr = {
     appel: m => "نداء إلى " + m.map(x => seCap(x[0]) + "، و " + seCap(x[1])).join("، ثم ") + ". المرجو من القائدين الالتحاق بوسط الملعب رفقة فريقيهما.",
@@ -35835,11 +35870,12 @@ window.XlsxLite = (function () {
     const pas = () => {
       if (seChrono.etat !== "compte") { seAfficherCompte(null); return; }
       if (n === 0) { seAfficherCompte(null); seLancer(ctx); return; }
-      seAfficherCompte(n); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = n;
-      seBip(ctx.d.cfg.volume, 880, 0.18); seDireNombre(ctx.d, n); n--; seChrono.cpt = setTimeout(pas, 1000);
+      const k = n; n--; let t1 = Date.now();
+      seDireNombreSync(ctx.d, k, () => { if (seChrono.etat !== "compte") return; t1 = Date.now(); seAfficherCompte(k); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = k; seBip(ctx.d.cfg.volume, 880, 0.18); },
+        () => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0))); });
     };
     // la voix en cours (appel, noms lus en ligne…) doit être terminée avant « استعدوا » et les chiffres
-    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") pas(); }, 6000)); }, 15000);
+    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, 150); }, 4000)); }, 15000);
   }
   /* attend la fin de toute parole (voix de l'appareil, voix en ligne, voix intégrée), au plus « max » ms */
   function seApresSilence(fn, max) { const t0 = Date.now(); let calme = 0; (function v() { if (!seParle()) calme++; else calme = 0; if (calme >= 2 || Date.now() - t0 > max) return fn(); setTimeout(v, 150); })(); }
@@ -35847,7 +35883,7 @@ window.XlsxLite = (function () {
     clearTimeout(seChrono.cpt); seAfficherCompte(null);
     seChrono.etat = "match"; seChrono.minute = false; seChrono.dernier = null; seChrono.fin = Date.now() + ctx.d.cfg.duree * 60 * 1000;
     seSifflet(ctx.d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700);
-    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, 900);
+    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, Math.max(350, 850 - seLat));
     seBoucle(ctx); renderSeance();
   }
   function sePause() { if (seChrono.etat !== "match" && seChrono.etat !== "transition") return; seChrono.avant = seChrono.etat; seChrono.reste = (seChrono.fin - Date.now()) / 1000; seChrono.etat = "pause"; clearInterval(seChrono.tick); renderSeance(); }
@@ -36020,7 +36056,7 @@ window.XlsxLite = (function () {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d;
-    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -36062,7 +36098,7 @@ window.XlsxLite = (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — voix arabe du navigateur (comme avant)"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne du navigateur (ar-SA)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -36170,7 +36206,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -47802,7 +47838,9 @@ window.XlsxLite = (function () {
   /* ===== voix intégrée en ligne : quand l'appareil n'a aucune voix arabe, les annonces sont lues
      par la synthèse vocale arabe de Google (fichier audio, connexion Internet nécessaire), phrase par phrase ===== */
   let seFile = [], seAudioCour = null;
-  const seEnLigne = d => (d.cfg.voixNom === "__google" || (!seVoixAr() && d.cfg.voixEnLigne !== false)) && navigator.onLine !== false;
+  const seEnLigne = d => d.cfg.voixNom === "__google" && navigator.onLine !== false;
+  /* voix arabe du navigateur (en ligne) : si le navigateur la refuse, bascule automatique sur la voix intégrée */
+  let seNavKO = false;
   function seMorceaux(t) {
     // phrases regroupées jusqu'à 180 caractères (moins de coupures, voix plus fluide)
     const out = []; let cur = "";
@@ -47893,7 +47931,7 @@ window.XlsxLite = (function () {
     seOccupe = false;
   }
   function seParlerIntegre(d, txt, fin) { const items = seDecouper(txt); if (!items) { if (fin) fin(); return false; } seFileC.push({ items, d, fin }); seTraiterFile(); return true; }
-  const seVoixIntegree = d => d.cfg.voixNom !== "__google" && !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || !seVoixAr());
+  const seVoixIntegree = d => !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || (seNavKO && !seVoixAr() && d.cfg.voixNom !== "__google") || (!window.speechSynthesis && d.cfg.voixNom !== "__google"));
   function seStopAudio() { seFile = []; seFileC = []; seGen++; if (seSrc) { try { seSrc.stop(); } catch (e) {} seSrc = null; } if (seAudioCour) { try { seAudioCour.pause(); } catch (e) {} seAudioCour = null; } }
   function seCancel() { try { speechSynthesis.cancel(); } catch (e) {} seStopAudio(); }
   function seDire(d, txt, fin) {
@@ -47905,7 +47943,8 @@ window.XlsxLite = (function () {
     try {
       const u = new SpeechSynthesisUtterance(txt), v = seVoixAr();
       u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = +d.cfg.debit || 0.9; u.pitch = 1;
-      u.onend = ok; u.onerror = ok;
+      u.onend = ok;
+      u.onerror = e => { const er = e && e.error; if (!v && /language-unavailable|voice-unavailable|synthesis-unavailable|synthesis-failed|not-allowed/.test(er || "") && seVoixData() && !seNavKO) { seNavKO = true; if (!seParlerIntegre(d, txt, ok)) ok(); return; } ok(); };
       try { speechSynthesis.resume(); } catch (e) {}
       speechSynthesis.speak(u);
       // certains téléphones ne signalent jamais la fin de la phrase : on n'attend pas plus que sa durée estimée
@@ -47934,7 +47973,21 @@ window.XlsxLite = (function () {
     if (seVoixIntegree(d)) { seStopAudio(); seParlerIntegre(d, typeof n === "number" ? (SE_NB[n] || String(n)) : n); return; }
     if (seEnLigne(d)) { seStopAudio(); seFile.push({ t: typeof n === "number" ? (SE_NB[n] || String(n)) : n, v: 1 }); seJouer(); return; }
     if (!window.speechSynthesis) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; speechSynthesis.speak(u); } catch (e) {}
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; }; speechSynthesis.speak(u); } catch (e) {}
+  }
+  /* chiffre du départ prononcé en phase avec l'affichage : le chiffre et le bip apparaissent quand la voix commence, le suivant attend la fin du mot */
+  let seLat = 0;   // délai mesuré entre la demande et le début réel de la voix (voix en ligne)
+  function seDireNombreSync(d, n, debut, fin) {
+    let a = false, b = false; const t0 = Date.now(); const go = () => { if (!a) { a = true; seLat = Math.min(800, Date.now() - t0); debut(); } }, ok = () => { if (!b) { b = true; go(); fin(); } };
+    const txt = typeof n === "number" ? (SE_NB[n] || String(n)) : n;
+    if (!d.cfg.voix) { go(); setTimeout(ok, 0); return; }
+    setTimeout(go, 1200); setTimeout(ok, 2600);           // filets de sécurité si la voix ne signale rien
+    if (seVoixIntegree(d)) { go(); if (!seParlerIntegre(d, txt, ok)) ok(); return; }
+    if (seEnLigne(d)) { go(); seFile.push({ t: txt, v: 1, cb: ok }); seJouer(); return; }
+    if (!window.speechSynthesis) { go(); ok(); return; }
+    try { const u = new SpeechSynthesisUtterance(txt), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1;
+      u.onstart = go; u.onend = ok; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; ok(); };
+      try { speechSynthesis.resume(); } catch (e) {} speechSynthesis.speak(u); } catch (e) { ok(); }
   }
   const seAr = {
     appel: m => "نداء إلى " + m.map(x => seCap(x[0]) + "، و " + seCap(x[1])).join("، ثم ") + ". المرجو من القائدين الالتحاق بوسط الملعب رفقة فريقيهما.",
@@ -48016,11 +48069,12 @@ window.XlsxLite = (function () {
     const pas = () => {
       if (seChrono.etat !== "compte") { seAfficherCompte(null); return; }
       if (n === 0) { seAfficherCompte(null); seLancer(ctx); return; }
-      seAfficherCompte(n); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = n;
-      seBip(ctx.d.cfg.volume, 880, 0.18); seDireNombre(ctx.d, n); n--; seChrono.cpt = setTimeout(pas, 1000);
+      const k = n; n--; let t1 = Date.now();
+      seDireNombreSync(ctx.d, k, () => { if (seChrono.etat !== "compte") return; t1 = Date.now(); seAfficherCompte(k); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = k; seBip(ctx.d.cfg.volume, 880, 0.18); },
+        () => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0))); });
     };
     // la voix en cours (appel, noms lus en ligne…) doit être terminée avant « استعدوا » et les chiffres
-    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") pas(); }, 6000)); }, 15000);
+    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, 150); }, 4000)); }, 15000);
   }
   /* attend la fin de toute parole (voix de l'appareil, voix en ligne, voix intégrée), au plus « max » ms */
   function seApresSilence(fn, max) { const t0 = Date.now(); let calme = 0; (function v() { if (!seParle()) calme++; else calme = 0; if (calme >= 2 || Date.now() - t0 > max) return fn(); setTimeout(v, 150); })(); }
@@ -48028,7 +48082,7 @@ window.XlsxLite = (function () {
     clearTimeout(seChrono.cpt); seAfficherCompte(null);
     seChrono.etat = "match"; seChrono.minute = false; seChrono.dernier = null; seChrono.fin = Date.now() + ctx.d.cfg.duree * 60 * 1000;
     seSifflet(ctx.d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700);
-    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, 900);
+    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, Math.max(350, 850 - seLat));
     seBoucle(ctx); renderSeance();
   }
   function sePause() { if (seChrono.etat !== "match" && seChrono.etat !== "transition") return; seChrono.avant = seChrono.etat; seChrono.reste = (seChrono.fin - Date.now()) / 1000; seChrono.etat = "pause"; clearInterval(seChrono.tick); renderSeance(); }
@@ -48201,7 +48255,7 @@ window.XlsxLite = (function () {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d;
-    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -48243,7 +48297,7 @@ window.XlsxLite = (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — voix arabe du navigateur (comme avant)"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne du navigateur (ar-SA)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -48351,7 +48405,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -59829,7 +59883,9 @@ window.XlsxLite = (function () {
   /* ===== voix intégrée en ligne : quand l'appareil n'a aucune voix arabe, les annonces sont lues
      par la synthèse vocale arabe de Google (fichier audio, connexion Internet nécessaire), phrase par phrase ===== */
   let seFile = [], seAudioCour = null;
-  const seEnLigne = d => (d.cfg.voixNom === "__google" || (!seVoixAr() && d.cfg.voixEnLigne !== false)) && navigator.onLine !== false;
+  const seEnLigne = d => d.cfg.voixNom === "__google" && navigator.onLine !== false;
+  /* voix arabe du navigateur (en ligne) : si le navigateur la refuse, bascule automatique sur la voix intégrée */
+  let seNavKO = false;
   function seMorceaux(t) {
     // phrases regroupées jusqu'à 180 caractères (moins de coupures, voix plus fluide)
     const out = []; let cur = "";
@@ -59920,7 +59976,7 @@ window.XlsxLite = (function () {
     seOccupe = false;
   }
   function seParlerIntegre(d, txt, fin) { const items = seDecouper(txt); if (!items) { if (fin) fin(); return false; } seFileC.push({ items, d, fin }); seTraiterFile(); return true; }
-  const seVoixIntegree = d => d.cfg.voixNom !== "__google" && !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || !seVoixAr());
+  const seVoixIntegree = d => !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || (seNavKO && !seVoixAr() && d.cfg.voixNom !== "__google") || (!window.speechSynthesis && d.cfg.voixNom !== "__google"));
   function seStopAudio() { seFile = []; seFileC = []; seGen++; if (seSrc) { try { seSrc.stop(); } catch (e) {} seSrc = null; } if (seAudioCour) { try { seAudioCour.pause(); } catch (e) {} seAudioCour = null; } }
   function seCancel() { try { speechSynthesis.cancel(); } catch (e) {} seStopAudio(); }
   function seDire(d, txt, fin) {
@@ -59932,7 +59988,8 @@ window.XlsxLite = (function () {
     try {
       const u = new SpeechSynthesisUtterance(txt), v = seVoixAr();
       u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = +d.cfg.debit || 0.9; u.pitch = 1;
-      u.onend = ok; u.onerror = ok;
+      u.onend = ok;
+      u.onerror = e => { const er = e && e.error; if (!v && /language-unavailable|voice-unavailable|synthesis-unavailable|synthesis-failed|not-allowed/.test(er || "") && seVoixData() && !seNavKO) { seNavKO = true; if (!seParlerIntegre(d, txt, ok)) ok(); return; } ok(); };
       try { speechSynthesis.resume(); } catch (e) {}
       speechSynthesis.speak(u);
       // certains téléphones ne signalent jamais la fin de la phrase : on n'attend pas plus que sa durée estimée
@@ -59961,7 +60018,21 @@ window.XlsxLite = (function () {
     if (seVoixIntegree(d)) { seStopAudio(); seParlerIntegre(d, typeof n === "number" ? (SE_NB[n] || String(n)) : n); return; }
     if (seEnLigne(d)) { seStopAudio(); seFile.push({ t: typeof n === "number" ? (SE_NB[n] || String(n)) : n, v: 1 }); seJouer(); return; }
     if (!window.speechSynthesis) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; speechSynthesis.speak(u); } catch (e) {}
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; }; speechSynthesis.speak(u); } catch (e) {}
+  }
+  /* chiffre du départ prononcé en phase avec l'affichage : le chiffre et le bip apparaissent quand la voix commence, le suivant attend la fin du mot */
+  let seLat = 0;   // délai mesuré entre la demande et le début réel de la voix (voix en ligne)
+  function seDireNombreSync(d, n, debut, fin) {
+    let a = false, b = false; const t0 = Date.now(); const go = () => { if (!a) { a = true; seLat = Math.min(800, Date.now() - t0); debut(); } }, ok = () => { if (!b) { b = true; go(); fin(); } };
+    const txt = typeof n === "number" ? (SE_NB[n] || String(n)) : n;
+    if (!d.cfg.voix) { go(); setTimeout(ok, 0); return; }
+    setTimeout(go, 1200); setTimeout(ok, 2600);           // filets de sécurité si la voix ne signale rien
+    if (seVoixIntegree(d)) { go(); if (!seParlerIntegre(d, txt, ok)) ok(); return; }
+    if (seEnLigne(d)) { go(); seFile.push({ t: txt, v: 1, cb: ok }); seJouer(); return; }
+    if (!window.speechSynthesis) { go(); ok(); return; }
+    try { const u = new SpeechSynthesisUtterance(txt), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1;
+      u.onstart = go; u.onend = ok; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; ok(); };
+      try { speechSynthesis.resume(); } catch (e) {} speechSynthesis.speak(u); } catch (e) { ok(); }
   }
   const seAr = {
     appel: m => "نداء إلى " + m.map(x => seCap(x[0]) + "، و " + seCap(x[1])).join("، ثم ") + ". المرجو من القائدين الالتحاق بوسط الملعب رفقة فريقيهما.",
@@ -60043,11 +60114,12 @@ window.XlsxLite = (function () {
     const pas = () => {
       if (seChrono.etat !== "compte") { seAfficherCompte(null); return; }
       if (n === 0) { seAfficherCompte(null); seLancer(ctx); return; }
-      seAfficherCompte(n); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = n;
-      seBip(ctx.d.cfg.volume, 880, 0.18); seDireNombre(ctx.d, n); n--; seChrono.cpt = setTimeout(pas, 1000);
+      const k = n; n--; let t1 = Date.now();
+      seDireNombreSync(ctx.d, k, () => { if (seChrono.etat !== "compte") return; t1 = Date.now(); seAfficherCompte(k); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = k; seBip(ctx.d.cfg.volume, 880, 0.18); },
+        () => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0))); });
     };
     // la voix en cours (appel, noms lus en ligne…) doit être terminée avant « استعدوا » et les chiffres
-    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") pas(); }, 6000)); }, 15000);
+    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, 150); }, 4000)); }, 15000);
   }
   /* attend la fin de toute parole (voix de l'appareil, voix en ligne, voix intégrée), au plus « max » ms */
   function seApresSilence(fn, max) { const t0 = Date.now(); let calme = 0; (function v() { if (!seParle()) calme++; else calme = 0; if (calme >= 2 || Date.now() - t0 > max) return fn(); setTimeout(v, 150); })(); }
@@ -60055,7 +60127,7 @@ window.XlsxLite = (function () {
     clearTimeout(seChrono.cpt); seAfficherCompte(null);
     seChrono.etat = "match"; seChrono.minute = false; seChrono.dernier = null; seChrono.fin = Date.now() + ctx.d.cfg.duree * 60 * 1000;
     seSifflet(ctx.d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700);
-    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, 900);
+    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, Math.max(350, 850 - seLat));
     seBoucle(ctx); renderSeance();
   }
   function sePause() { if (seChrono.etat !== "match" && seChrono.etat !== "transition") return; seChrono.avant = seChrono.etat; seChrono.reste = (seChrono.fin - Date.now()) / 1000; seChrono.etat = "pause"; clearInterval(seChrono.tick); renderSeance(); }
@@ -60228,7 +60300,7 @@ window.XlsxLite = (function () {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d;
-    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -60270,7 +60342,7 @@ window.XlsxLite = (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — voix arabe du navigateur (comme avant)"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne du navigateur (ar-SA)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -60378,7 +60450,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -73049,7 +73121,9 @@ window.OMRKIT = window.OMRKIT || (function () {
   /* ===== voix intégrée en ligne : quand l'appareil n'a aucune voix arabe, les annonces sont lues
      par la synthèse vocale arabe de Google (fichier audio, connexion Internet nécessaire), phrase par phrase ===== */
   let seFile = [], seAudioCour = null;
-  const seEnLigne = d => (d.cfg.voixNom === "__google" || (!seVoixAr() && d.cfg.voixEnLigne !== false)) && navigator.onLine !== false;
+  const seEnLigne = d => d.cfg.voixNom === "__google" && navigator.onLine !== false;
+  /* voix arabe du navigateur (en ligne) : si le navigateur la refuse, bascule automatique sur la voix intégrée */
+  let seNavKO = false;
   function seMorceaux(t) {
     // phrases regroupées jusqu'à 180 caractères (moins de coupures, voix plus fluide)
     const out = []; let cur = "";
@@ -73140,7 +73214,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     seOccupe = false;
   }
   function seParlerIntegre(d, txt, fin) { const items = seDecouper(txt); if (!items) { if (fin) fin(); return false; } seFileC.push({ items, d, fin }); seTraiterFile(); return true; }
-  const seVoixIntegree = d => d.cfg.voixNom !== "__google" && !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || !seVoixAr());
+  const seVoixIntegree = d => !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || (seNavKO && !seVoixAr() && d.cfg.voixNom !== "__google") || (!window.speechSynthesis && d.cfg.voixNom !== "__google"));
   function seStopAudio() { seFile = []; seFileC = []; seGen++; if (seSrc) { try { seSrc.stop(); } catch (e) {} seSrc = null; } if (seAudioCour) { try { seAudioCour.pause(); } catch (e) {} seAudioCour = null; } }
   function seCancel() { try { speechSynthesis.cancel(); } catch (e) {} seStopAudio(); }
   function seDire(d, txt, fin) {
@@ -73152,7 +73226,8 @@ window.OMRKIT = window.OMRKIT || (function () {
     try {
       const u = new SpeechSynthesisUtterance(txt), v = seVoixAr();
       u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = +d.cfg.debit || 0.9; u.pitch = 1;
-      u.onend = ok; u.onerror = ok;
+      u.onend = ok;
+      u.onerror = e => { const er = e && e.error; if (!v && /language-unavailable|voice-unavailable|synthesis-unavailable|synthesis-failed|not-allowed/.test(er || "") && seVoixData() && !seNavKO) { seNavKO = true; if (!seParlerIntegre(d, txt, ok)) ok(); return; } ok(); };
       try { speechSynthesis.resume(); } catch (e) {}
       speechSynthesis.speak(u);
       // certains téléphones ne signalent jamais la fin de la phrase : on n'attend pas plus que sa durée estimée
@@ -73181,7 +73256,21 @@ window.OMRKIT = window.OMRKIT || (function () {
     if (seVoixIntegree(d)) { seStopAudio(); seParlerIntegre(d, typeof n === "number" ? (SE_NB[n] || String(n)) : n); return; }
     if (seEnLigne(d)) { seStopAudio(); seFile.push({ t: typeof n === "number" ? (SE_NB[n] || String(n)) : n, v: 1 }); seJouer(); return; }
     if (!window.speechSynthesis) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; speechSynthesis.speak(u); } catch (e) {}
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; }; speechSynthesis.speak(u); } catch (e) {}
+  }
+  /* chiffre du départ prononcé en phase avec l'affichage : le chiffre et le bip apparaissent quand la voix commence, le suivant attend la fin du mot */
+  let seLat = 0;   // délai mesuré entre la demande et le début réel de la voix (voix en ligne)
+  function seDireNombreSync(d, n, debut, fin) {
+    let a = false, b = false; const t0 = Date.now(); const go = () => { if (!a) { a = true; seLat = Math.min(800, Date.now() - t0); debut(); } }, ok = () => { if (!b) { b = true; go(); fin(); } };
+    const txt = typeof n === "number" ? (SE_NB[n] || String(n)) : n;
+    if (!d.cfg.voix) { go(); setTimeout(ok, 0); return; }
+    setTimeout(go, 1200); setTimeout(ok, 2600);           // filets de sécurité si la voix ne signale rien
+    if (seVoixIntegree(d)) { go(); if (!seParlerIntegre(d, txt, ok)) ok(); return; }
+    if (seEnLigne(d)) { go(); seFile.push({ t: txt, v: 1, cb: ok }); seJouer(); return; }
+    if (!window.speechSynthesis) { go(); ok(); return; }
+    try { const u = new SpeechSynthesisUtterance(txt), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1;
+      u.onstart = go; u.onend = ok; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; ok(); };
+      try { speechSynthesis.resume(); } catch (e) {} speechSynthesis.speak(u); } catch (e) { ok(); }
   }
   const seAr = {
     appel: m => "نداء إلى " + m.map(x => seCap(x[0]) + "، و " + seCap(x[1])).join("، ثم ") + ". المرجو من القائدين الالتحاق بوسط الملعب رفقة فريقيهما.",
@@ -73263,11 +73352,12 @@ window.OMRKIT = window.OMRKIT || (function () {
     const pas = () => {
       if (seChrono.etat !== "compte") { seAfficherCompte(null); return; }
       if (n === 0) { seAfficherCompte(null); seLancer(ctx); return; }
-      seAfficherCompte(n); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = n;
-      seBip(ctx.d.cfg.volume, 880, 0.18); seDireNombre(ctx.d, n); n--; seChrono.cpt = setTimeout(pas, 1000);
+      const k = n; n--; let t1 = Date.now();
+      seDireNombreSync(ctx.d, k, () => { if (seChrono.etat !== "compte") return; t1 = Date.now(); seAfficherCompte(k); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = k; seBip(ctx.d.cfg.volume, 880, 0.18); },
+        () => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0))); });
     };
     // la voix en cours (appel, noms lus en ligne…) doit être terminée avant « استعدوا » et les chiffres
-    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") pas(); }, 6000)); }, 15000);
+    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, 150); }, 4000)); }, 15000);
   }
   /* attend la fin de toute parole (voix de l'appareil, voix en ligne, voix intégrée), au plus « max » ms */
   function seApresSilence(fn, max) { const t0 = Date.now(); let calme = 0; (function v() { if (!seParle()) calme++; else calme = 0; if (calme >= 2 || Date.now() - t0 > max) return fn(); setTimeout(v, 150); })(); }
@@ -73275,7 +73365,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     clearTimeout(seChrono.cpt); seAfficherCompte(null);
     seChrono.etat = "match"; seChrono.minute = false; seChrono.dernier = null; seChrono.fin = Date.now() + ctx.d.cfg.duree * 60 * 1000;
     seSifflet(ctx.d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700);
-    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, 900);
+    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, Math.max(350, 850 - seLat));
     seBoucle(ctx); renderSeance();
   }
   function sePause() { if (seChrono.etat !== "match" && seChrono.etat !== "transition") return; seChrono.avant = seChrono.etat; seChrono.reste = (seChrono.fin - Date.now()) / 1000; seChrono.etat = "pause"; clearInterval(seChrono.tick); renderSeance(); }
@@ -73448,7 +73538,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d;
-    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -73490,7 +73580,7 @@ window.OMRKIT = window.OMRKIT || (function () {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — voix arabe du navigateur (comme avant)"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne du navigateur (ar-SA)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -73598,7 +73688,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -84405,7 +84495,9 @@ GrilleAPS({
   /* ===== voix intégrée en ligne : quand l'appareil n'a aucune voix arabe, les annonces sont lues
      par la synthèse vocale arabe de Google (fichier audio, connexion Internet nécessaire), phrase par phrase ===== */
   let seFile = [], seAudioCour = null;
-  const seEnLigne = d => (d.cfg.voixNom === "__google" || (!seVoixAr() && d.cfg.voixEnLigne !== false)) && navigator.onLine !== false;
+  const seEnLigne = d => d.cfg.voixNom === "__google" && navigator.onLine !== false;
+  /* voix arabe du navigateur (en ligne) : si le navigateur la refuse, bascule automatique sur la voix intégrée */
+  let seNavKO = false;
   function seMorceaux(t) {
     // phrases regroupées jusqu'à 180 caractères (moins de coupures, voix plus fluide)
     const out = []; let cur = "";
@@ -84496,7 +84588,7 @@ GrilleAPS({
     seOccupe = false;
   }
   function seParlerIntegre(d, txt, fin) { const items = seDecouper(txt); if (!items) { if (fin) fin(); return false; } seFileC.push({ items, d, fin }); seTraiterFile(); return true; }
-  const seVoixIntegree = d => d.cfg.voixNom !== "__google" && !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || !seVoixAr());
+  const seVoixIntegree = d => !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || (seNavKO && !seVoixAr() && d.cfg.voixNom !== "__google") || (!window.speechSynthesis && d.cfg.voixNom !== "__google"));
   function seStopAudio() { seFile = []; seFileC = []; seGen++; if (seSrc) { try { seSrc.stop(); } catch (e) {} seSrc = null; } if (seAudioCour) { try { seAudioCour.pause(); } catch (e) {} seAudioCour = null; } }
   function seCancel() { try { speechSynthesis.cancel(); } catch (e) {} seStopAudio(); }
   function seDire(d, txt, fin) {
@@ -84508,7 +84600,8 @@ GrilleAPS({
     try {
       const u = new SpeechSynthesisUtterance(txt), v = seVoixAr();
       u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = +d.cfg.debit || 0.9; u.pitch = 1;
-      u.onend = ok; u.onerror = ok;
+      u.onend = ok;
+      u.onerror = e => { const er = e && e.error; if (!v && /language-unavailable|voice-unavailable|synthesis-unavailable|synthesis-failed|not-allowed/.test(er || "") && seVoixData() && !seNavKO) { seNavKO = true; if (!seParlerIntegre(d, txt, ok)) ok(); return; } ok(); };
       try { speechSynthesis.resume(); } catch (e) {}
       speechSynthesis.speak(u);
       // certains téléphones ne signalent jamais la fin de la phrase : on n'attend pas plus que sa durée estimée
@@ -84537,7 +84630,21 @@ GrilleAPS({
     if (seVoixIntegree(d)) { seStopAudio(); seParlerIntegre(d, typeof n === "number" ? (SE_NB[n] || String(n)) : n); return; }
     if (seEnLigne(d)) { seStopAudio(); seFile.push({ t: typeof n === "number" ? (SE_NB[n] || String(n)) : n, v: 1 }); seJouer(); return; }
     if (!window.speechSynthesis) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; speechSynthesis.speak(u); } catch (e) {}
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; }; speechSynthesis.speak(u); } catch (e) {}
+  }
+  /* chiffre du départ prononcé en phase avec l'affichage : le chiffre et le bip apparaissent quand la voix commence, le suivant attend la fin du mot */
+  let seLat = 0;   // délai mesuré entre la demande et le début réel de la voix (voix en ligne)
+  function seDireNombreSync(d, n, debut, fin) {
+    let a = false, b = false; const t0 = Date.now(); const go = () => { if (!a) { a = true; seLat = Math.min(800, Date.now() - t0); debut(); } }, ok = () => { if (!b) { b = true; go(); fin(); } };
+    const txt = typeof n === "number" ? (SE_NB[n] || String(n)) : n;
+    if (!d.cfg.voix) { go(); setTimeout(ok, 0); return; }
+    setTimeout(go, 1200); setTimeout(ok, 2600);           // filets de sécurité si la voix ne signale rien
+    if (seVoixIntegree(d)) { go(); if (!seParlerIntegre(d, txt, ok)) ok(); return; }
+    if (seEnLigne(d)) { go(); seFile.push({ t: txt, v: 1, cb: ok }); seJouer(); return; }
+    if (!window.speechSynthesis) { go(); ok(); return; }
+    try { const u = new SpeechSynthesisUtterance(txt), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1;
+      u.onstart = go; u.onend = ok; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; ok(); };
+      try { speechSynthesis.resume(); } catch (e) {} speechSynthesis.speak(u); } catch (e) { ok(); }
   }
   const seAr = {
     appel: m => "نداء إلى " + m.map(x => seCap(x[0]) + "، و " + seCap(x[1])).join("، ثم ") + ". المرجو من القائدين الالتحاق بوسط الملعب رفقة فريقيهما.",
@@ -84619,11 +84726,12 @@ GrilleAPS({
     const pas = () => {
       if (seChrono.etat !== "compte") { seAfficherCompte(null); return; }
       if (n === 0) { seAfficherCompte(null); seLancer(ctx); return; }
-      seAfficherCompte(n); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = n;
-      seBip(ctx.d.cfg.volume, 880, 0.18); seDireNombre(ctx.d, n); n--; seChrono.cpt = setTimeout(pas, 1000);
+      const k = n; n--; let t1 = Date.now();
+      seDireNombreSync(ctx.d, k, () => { if (seChrono.etat !== "compte") return; t1 = Date.now(); seAfficherCompte(k); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = k; seBip(ctx.d.cfg.volume, 880, 0.18); },
+        () => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0))); });
     };
     // la voix en cours (appel, noms lus en ligne…) doit être terminée avant « استعدوا » et les chiffres
-    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") pas(); }, 6000)); }, 15000);
+    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, 150); }, 4000)); }, 15000);
   }
   /* attend la fin de toute parole (voix de l'appareil, voix en ligne, voix intégrée), au plus « max » ms */
   function seApresSilence(fn, max) { const t0 = Date.now(); let calme = 0; (function v() { if (!seParle()) calme++; else calme = 0; if (calme >= 2 || Date.now() - t0 > max) return fn(); setTimeout(v, 150); })(); }
@@ -84631,7 +84739,7 @@ GrilleAPS({
     clearTimeout(seChrono.cpt); seAfficherCompte(null);
     seChrono.etat = "match"; seChrono.minute = false; seChrono.dernier = null; seChrono.fin = Date.now() + ctx.d.cfg.duree * 60 * 1000;
     seSifflet(ctx.d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700);
-    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, 900);
+    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, Math.max(350, 850 - seLat));
     seBoucle(ctx); renderSeance();
   }
   function sePause() { if (seChrono.etat !== "match" && seChrono.etat !== "transition") return; seChrono.avant = seChrono.etat; seChrono.reste = (seChrono.fin - Date.now()) / 1000; seChrono.etat = "pause"; clearInterval(seChrono.tick); renderSeance(); }
@@ -84804,7 +84912,7 @@ GrilleAPS({
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d;
-    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -84846,7 +84954,7 @@ GrilleAPS({
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — voix arabe du navigateur (comme avant)"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne du navigateur (ar-SA)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -84954,7 +85062,7 @@ GrilleAPS({
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -96532,7 +96640,9 @@ window.DISC = {
   /* ===== voix intégrée en ligne : quand l'appareil n'a aucune voix arabe, les annonces sont lues
      par la synthèse vocale arabe de Google (fichier audio, connexion Internet nécessaire), phrase par phrase ===== */
   let seFile = [], seAudioCour = null;
-  const seEnLigne = d => (d.cfg.voixNom === "__google" || (!seVoixAr() && d.cfg.voixEnLigne !== false)) && navigator.onLine !== false;
+  const seEnLigne = d => d.cfg.voixNom === "__google" && navigator.onLine !== false;
+  /* voix arabe du navigateur (en ligne) : si le navigateur la refuse, bascule automatique sur la voix intégrée */
+  let seNavKO = false;
   function seMorceaux(t) {
     // phrases regroupées jusqu'à 180 caractères (moins de coupures, voix plus fluide)
     const out = []; let cur = "";
@@ -96623,7 +96733,7 @@ window.DISC = {
     seOccupe = false;
   }
   function seParlerIntegre(d, txt, fin) { const items = seDecouper(txt); if (!items) { if (fin) fin(); return false; } seFileC.push({ items, d, fin }); seTraiterFile(); return true; }
-  const seVoixIntegree = d => d.cfg.voixNom !== "__google" && !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || !seVoixAr());
+  const seVoixIntegree = d => !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || (seNavKO && !seVoixAr() && d.cfg.voixNom !== "__google") || (!window.speechSynthesis && d.cfg.voixNom !== "__google"));
   function seStopAudio() { seFile = []; seFileC = []; seGen++; if (seSrc) { try { seSrc.stop(); } catch (e) {} seSrc = null; } if (seAudioCour) { try { seAudioCour.pause(); } catch (e) {} seAudioCour = null; } }
   function seCancel() { try { speechSynthesis.cancel(); } catch (e) {} seStopAudio(); }
   function seDire(d, txt, fin) {
@@ -96635,7 +96745,8 @@ window.DISC = {
     try {
       const u = new SpeechSynthesisUtterance(txt), v = seVoixAr();
       u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = +d.cfg.debit || 0.9; u.pitch = 1;
-      u.onend = ok; u.onerror = ok;
+      u.onend = ok;
+      u.onerror = e => { const er = e && e.error; if (!v && /language-unavailable|voice-unavailable|synthesis-unavailable|synthesis-failed|not-allowed/.test(er || "") && seVoixData() && !seNavKO) { seNavKO = true; if (!seParlerIntegre(d, txt, ok)) ok(); return; } ok(); };
       try { speechSynthesis.resume(); } catch (e) {}
       speechSynthesis.speak(u);
       // certains téléphones ne signalent jamais la fin de la phrase : on n'attend pas plus que sa durée estimée
@@ -96664,7 +96775,21 @@ window.DISC = {
     if (seVoixIntegree(d)) { seStopAudio(); seParlerIntegre(d, typeof n === "number" ? (SE_NB[n] || String(n)) : n); return; }
     if (seEnLigne(d)) { seStopAudio(); seFile.push({ t: typeof n === "number" ? (SE_NB[n] || String(n)) : n, v: 1 }); seJouer(); return; }
     if (!window.speechSynthesis) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; speechSynthesis.speak(u); } catch (e) {}
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; }; speechSynthesis.speak(u); } catch (e) {}
+  }
+  /* chiffre du départ prononcé en phase avec l'affichage : le chiffre et le bip apparaissent quand la voix commence, le suivant attend la fin du mot */
+  let seLat = 0;   // délai mesuré entre la demande et le début réel de la voix (voix en ligne)
+  function seDireNombreSync(d, n, debut, fin) {
+    let a = false, b = false; const t0 = Date.now(); const go = () => { if (!a) { a = true; seLat = Math.min(800, Date.now() - t0); debut(); } }, ok = () => { if (!b) { b = true; go(); fin(); } };
+    const txt = typeof n === "number" ? (SE_NB[n] || String(n)) : n;
+    if (!d.cfg.voix) { go(); setTimeout(ok, 0); return; }
+    setTimeout(go, 1200); setTimeout(ok, 2600);           // filets de sécurité si la voix ne signale rien
+    if (seVoixIntegree(d)) { go(); if (!seParlerIntegre(d, txt, ok)) ok(); return; }
+    if (seEnLigne(d)) { go(); seFile.push({ t: txt, v: 1, cb: ok }); seJouer(); return; }
+    if (!window.speechSynthesis) { go(); ok(); return; }
+    try { const u = new SpeechSynthesisUtterance(txt), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1;
+      u.onstart = go; u.onend = ok; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; ok(); };
+      try { speechSynthesis.resume(); } catch (e) {} speechSynthesis.speak(u); } catch (e) { ok(); }
   }
   const seAr = {
     appel: m => "نداء إلى " + m.map(x => seCap(x[0]) + "، و " + seCap(x[1])).join("، ثم ") + ". المرجو من القائدين الالتحاق بوسط الملعب رفقة فريقيهما.",
@@ -96746,11 +96871,12 @@ window.DISC = {
     const pas = () => {
       if (seChrono.etat !== "compte") { seAfficherCompte(null); return; }
       if (n === 0) { seAfficherCompte(null); seLancer(ctx); return; }
-      seAfficherCompte(n); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = n;
-      seBip(ctx.d.cfg.volume, 880, 0.18); seDireNombre(ctx.d, n); n--; seChrono.cpt = setTimeout(pas, 1000);
+      const k = n; n--; let t1 = Date.now();
+      seDireNombreSync(ctx.d, k, () => { if (seChrono.etat !== "compte") return; t1 = Date.now(); seAfficherCompte(k); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = k; seBip(ctx.d.cfg.volume, 880, 0.18); },
+        () => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0))); });
     };
     // la voix en cours (appel, noms lus en ligne…) doit être terminée avant « استعدوا » et les chiffres
-    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") pas(); }, 6000)); }, 15000);
+    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, 150); }, 4000)); }, 15000);
   }
   /* attend la fin de toute parole (voix de l'appareil, voix en ligne, voix intégrée), au plus « max » ms */
   function seApresSilence(fn, max) { const t0 = Date.now(); let calme = 0; (function v() { if (!seParle()) calme++; else calme = 0; if (calme >= 2 || Date.now() - t0 > max) return fn(); setTimeout(v, 150); })(); }
@@ -96758,7 +96884,7 @@ window.DISC = {
     clearTimeout(seChrono.cpt); seAfficherCompte(null);
     seChrono.etat = "match"; seChrono.minute = false; seChrono.dernier = null; seChrono.fin = Date.now() + ctx.d.cfg.duree * 60 * 1000;
     seSifflet(ctx.d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700);
-    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, 900);
+    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, Math.max(350, 850 - seLat));
     seBoucle(ctx); renderSeance();
   }
   function sePause() { if (seChrono.etat !== "match" && seChrono.etat !== "transition") return; seChrono.avant = seChrono.etat; seChrono.reste = (seChrono.fin - Date.now()) / 1000; seChrono.etat = "pause"; clearInterval(seChrono.tick); renderSeance(); }
@@ -96931,7 +97057,7 @@ window.DISC = {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d;
-    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -96973,7 +97099,7 @@ window.DISC = {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — voix arabe du navigateur (comme avant)"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne du navigateur (ar-SA)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -97081,7 +97207,7 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -101514,7 +101640,9 @@ window.DISC = {
   /* ===== voix intégrée en ligne : quand l'appareil n'a aucune voix arabe, les annonces sont lues
      par la synthèse vocale arabe de Google (fichier audio, connexion Internet nécessaire), phrase par phrase ===== */
   let seFile = [], seAudioCour = null;
-  const seEnLigne = d => (d.cfg.voixNom === "__google" || (!seVoixAr() && d.cfg.voixEnLigne !== false)) && navigator.onLine !== false;
+  const seEnLigne = d => d.cfg.voixNom === "__google" && navigator.onLine !== false;
+  /* voix arabe du navigateur (en ligne) : si le navigateur la refuse, bascule automatique sur la voix intégrée */
+  let seNavKO = false;
   function seMorceaux(t) {
     // phrases regroupées jusqu'à 180 caractères (moins de coupures, voix plus fluide)
     const out = []; let cur = "";
@@ -101605,7 +101733,7 @@ window.DISC = {
     seOccupe = false;
   }
   function seParlerIntegre(d, txt, fin) { const items = seDecouper(txt); if (!items) { if (fin) fin(); return false; } seFileC.push({ items, d, fin }); seTraiterFile(); return true; }
-  const seVoixIntegree = d => d.cfg.voixNom !== "__google" && !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || !seVoixAr());
+  const seVoixIntegree = d => !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || (seNavKO && !seVoixAr() && d.cfg.voixNom !== "__google") || (!window.speechSynthesis && d.cfg.voixNom !== "__google"));
   function seStopAudio() { seFile = []; seFileC = []; seGen++; if (seSrc) { try { seSrc.stop(); } catch (e) {} seSrc = null; } if (seAudioCour) { try { seAudioCour.pause(); } catch (e) {} seAudioCour = null; } }
   function seCancel() { try { speechSynthesis.cancel(); } catch (e) {} seStopAudio(); }
   function seDire(d, txt, fin) {
@@ -101617,7 +101745,8 @@ window.DISC = {
     try {
       const u = new SpeechSynthesisUtterance(txt), v = seVoixAr();
       u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = +d.cfg.debit || 0.9; u.pitch = 1;
-      u.onend = ok; u.onerror = ok;
+      u.onend = ok;
+      u.onerror = e => { const er = e && e.error; if (!v && /language-unavailable|voice-unavailable|synthesis-unavailable|synthesis-failed|not-allowed/.test(er || "") && seVoixData() && !seNavKO) { seNavKO = true; if (!seParlerIntegre(d, txt, ok)) ok(); return; } ok(); };
       try { speechSynthesis.resume(); } catch (e) {}
       speechSynthesis.speak(u);
       // certains téléphones ne signalent jamais la fin de la phrase : on n'attend pas plus que sa durée estimée
@@ -101646,7 +101775,21 @@ window.DISC = {
     if (seVoixIntegree(d)) { seStopAudio(); seParlerIntegre(d, typeof n === "number" ? (SE_NB[n] || String(n)) : n); return; }
     if (seEnLigne(d)) { seStopAudio(); seFile.push({ t: typeof n === "number" ? (SE_NB[n] || String(n)) : n, v: 1 }); seJouer(); return; }
     if (!window.speechSynthesis) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; speechSynthesis.speak(u); } catch (e) {}
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; }; speechSynthesis.speak(u); } catch (e) {}
+  }
+  /* chiffre du départ prononcé en phase avec l'affichage : le chiffre et le bip apparaissent quand la voix commence, le suivant attend la fin du mot */
+  let seLat = 0;   // délai mesuré entre la demande et le début réel de la voix (voix en ligne)
+  function seDireNombreSync(d, n, debut, fin) {
+    let a = false, b = false; const t0 = Date.now(); const go = () => { if (!a) { a = true; seLat = Math.min(800, Date.now() - t0); debut(); } }, ok = () => { if (!b) { b = true; go(); fin(); } };
+    const txt = typeof n === "number" ? (SE_NB[n] || String(n)) : n;
+    if (!d.cfg.voix) { go(); setTimeout(ok, 0); return; }
+    setTimeout(go, 1200); setTimeout(ok, 2600);           // filets de sécurité si la voix ne signale rien
+    if (seVoixIntegree(d)) { go(); if (!seParlerIntegre(d, txt, ok)) ok(); return; }
+    if (seEnLigne(d)) { go(); seFile.push({ t: txt, v: 1, cb: ok }); seJouer(); return; }
+    if (!window.speechSynthesis) { go(); ok(); return; }
+    try { const u = new SpeechSynthesisUtterance(txt), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1;
+      u.onstart = go; u.onend = ok; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; ok(); };
+      try { speechSynthesis.resume(); } catch (e) {} speechSynthesis.speak(u); } catch (e) { ok(); }
   }
   const seAr = {
     appel: m => "نداء إلى " + m.map(x => seCap(x[0]) + "، و " + seCap(x[1])).join("، ثم ") + ". المرجو من القائدين الالتحاق بوسط الملعب رفقة فريقيهما.",
@@ -101728,11 +101871,12 @@ window.DISC = {
     const pas = () => {
       if (seChrono.etat !== "compte") { seAfficherCompte(null); return; }
       if (n === 0) { seAfficherCompte(null); seLancer(ctx); return; }
-      seAfficherCompte(n); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = n;
-      seBip(ctx.d.cfg.volume, 880, 0.18); seDireNombre(ctx.d, n); n--; seChrono.cpt = setTimeout(pas, 1000);
+      const k = n; n--; let t1 = Date.now();
+      seDireNombreSync(ctx.d, k, () => { if (seChrono.etat !== "compte") return; t1 = Date.now(); seAfficherCompte(k); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = k; seBip(ctx.d.cfg.volume, 880, 0.18); },
+        () => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0))); });
     };
     // la voix en cours (appel, noms lus en ligne…) doit être terminée avant « استعدوا » et les chiffres
-    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") pas(); }, 6000)); }, 15000);
+    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, 150); }, 4000)); }, 15000);
   }
   /* attend la fin de toute parole (voix de l'appareil, voix en ligne, voix intégrée), au plus « max » ms */
   function seApresSilence(fn, max) { const t0 = Date.now(); let calme = 0; (function v() { if (!seParle()) calme++; else calme = 0; if (calme >= 2 || Date.now() - t0 > max) return fn(); setTimeout(v, 150); })(); }
@@ -101740,7 +101884,7 @@ window.DISC = {
     clearTimeout(seChrono.cpt); seAfficherCompte(null);
     seChrono.etat = "match"; seChrono.minute = false; seChrono.dernier = null; seChrono.fin = Date.now() + ctx.d.cfg.duree * 60 * 1000;
     seSifflet(ctx.d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700);
-    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, 900);
+    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, Math.max(350, 850 - seLat));
     seBoucle(ctx); renderSeance();
   }
   function sePause() { if (seChrono.etat !== "match" && seChrono.etat !== "transition") return; seChrono.avant = seChrono.etat; seChrono.reste = (seChrono.fin - Date.now()) / 1000; seChrono.etat = "pause"; clearInterval(seChrono.tick); renderSeance(); }
@@ -101913,7 +102057,7 @@ window.DISC = {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d;
-    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -101955,7 +102099,7 @@ window.DISC = {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — voix arabe du navigateur (comme avant)"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne du navigateur (ar-SA)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -102063,7 +102207,7 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -106320,7 +106464,9 @@ window.DISC = {
   /* ===== voix intégrée en ligne : quand l'appareil n'a aucune voix arabe, les annonces sont lues
      par la synthèse vocale arabe de Google (fichier audio, connexion Internet nécessaire), phrase par phrase ===== */
   let seFile = [], seAudioCour = null;
-  const seEnLigne = d => (d.cfg.voixNom === "__google" || (!seVoixAr() && d.cfg.voixEnLigne !== false)) && navigator.onLine !== false;
+  const seEnLigne = d => d.cfg.voixNom === "__google" && navigator.onLine !== false;
+  /* voix arabe du navigateur (en ligne) : si le navigateur la refuse, bascule automatique sur la voix intégrée */
+  let seNavKO = false;
   function seMorceaux(t) {
     // phrases regroupées jusqu'à 180 caractères (moins de coupures, voix plus fluide)
     const out = []; let cur = "";
@@ -106411,7 +106557,7 @@ window.DISC = {
     seOccupe = false;
   }
   function seParlerIntegre(d, txt, fin) { const items = seDecouper(txt); if (!items) { if (fin) fin(); return false; } seFileC.push({ items, d, fin }); seTraiterFile(); return true; }
-  const seVoixIntegree = d => d.cfg.voixNom !== "__google" && !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || !seVoixAr());
+  const seVoixIntegree = d => !!seVoixData() && (/^__integree/.test(d.cfg.voixNom || "") || (seNavKO && !seVoixAr() && d.cfg.voixNom !== "__google") || (!window.speechSynthesis && d.cfg.voixNom !== "__google"));
   function seStopAudio() { seFile = []; seFileC = []; seGen++; if (seSrc) { try { seSrc.stop(); } catch (e) {} seSrc = null; } if (seAudioCour) { try { seAudioCour.pause(); } catch (e) {} seAudioCour = null; } }
   function seCancel() { try { speechSynthesis.cancel(); } catch (e) {} seStopAudio(); }
   function seDire(d, txt, fin) {
@@ -106423,7 +106569,8 @@ window.DISC = {
     try {
       const u = new SpeechSynthesisUtterance(txt), v = seVoixAr();
       u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = +d.cfg.debit || 0.9; u.pitch = 1;
-      u.onend = ok; u.onerror = ok;
+      u.onend = ok;
+      u.onerror = e => { const er = e && e.error; if (!v && /language-unavailable|voice-unavailable|synthesis-unavailable|synthesis-failed|not-allowed/.test(er || "") && seVoixData() && !seNavKO) { seNavKO = true; if (!seParlerIntegre(d, txt, ok)) ok(); return; } ok(); };
       try { speechSynthesis.resume(); } catch (e) {}
       speechSynthesis.speak(u);
       // certains téléphones ne signalent jamais la fin de la phrase : on n'attend pas plus que sa durée estimée
@@ -106452,7 +106599,21 @@ window.DISC = {
     if (seVoixIntegree(d)) { seStopAudio(); seParlerIntegre(d, typeof n === "number" ? (SE_NB[n] || String(n)) : n); return; }
     if (seEnLigne(d)) { seStopAudio(); seFile.push({ t: typeof n === "number" ? (SE_NB[n] || String(n)) : n, v: 1 }); seJouer(); return; }
     if (!window.speechSynthesis) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; speechSynthesis.speak(u); } catch (e) {}
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(typeof n === "number" ? (SE_NB[n] || String(n)) : n), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; }; speechSynthesis.speak(u); } catch (e) {}
+  }
+  /* chiffre du départ prononcé en phase avec l'affichage : le chiffre et le bip apparaissent quand la voix commence, le suivant attend la fin du mot */
+  let seLat = 0;   // délai mesuré entre la demande et le début réel de la voix (voix en ligne)
+  function seDireNombreSync(d, n, debut, fin) {
+    let a = false, b = false; const t0 = Date.now(); const go = () => { if (!a) { a = true; seLat = Math.min(800, Date.now() - t0); debut(); } }, ok = () => { if (!b) { b = true; go(); fin(); } };
+    const txt = typeof n === "number" ? (SE_NB[n] || String(n)) : n;
+    if (!d.cfg.voix) { go(); setTimeout(ok, 0); return; }
+    setTimeout(go, 1200); setTimeout(ok, 2600);           // filets de sécurité si la voix ne signale rien
+    if (seVoixIntegree(d)) { go(); if (!seParlerIntegre(d, txt, ok)) ok(); return; }
+    if (seEnLigne(d)) { go(); seFile.push({ t: txt, v: 1, cb: ok }); seJouer(); return; }
+    if (!window.speechSynthesis) { go(); ok(); return; }
+    try { const u = new SpeechSynthesisUtterance(txt), v = seVoixAr(); u.lang = v ? v.lang : "ar-SA"; if (v) u.voice = v; u.volume = 1; u.rate = 1.1;
+      u.onstart = go; u.onend = ok; u.onerror = e => { if (!v && /unavailable|synthesis-failed/.test((e && e.error) || "") && seVoixData()) seNavKO = true; ok(); };
+      try { speechSynthesis.resume(); } catch (e) {} speechSynthesis.speak(u); } catch (e) { ok(); }
   }
   const seAr = {
     appel: m => "نداء إلى " + m.map(x => seCap(x[0]) + "، و " + seCap(x[1])).join("، ثم ") + ". المرجو من القائدين الالتحاق بوسط الملعب رفقة فريقيهما.",
@@ -106534,11 +106695,12 @@ window.DISC = {
     const pas = () => {
       if (seChrono.etat !== "compte") { seAfficherCompte(null); return; }
       if (n === 0) { seAfficherCompte(null); seLancer(ctx); return; }
-      seAfficherCompte(n); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = n;
-      seBip(ctx.d.cfg.volume, 880, 0.18); seDireNombre(ctx.d, n); n--; seChrono.cpt = setTimeout(pas, 1000);
+      const k = n; n--; let t1 = Date.now();
+      seDireNombreSync(ctx.d, k, () => { if (seChrono.etat !== "compte") return; t1 = Date.now(); seAfficherCompte(k); const tz = document.getElementById("se-temps"); if (tz) tz.textContent = k; seBip(ctx.d.cfg.volume, 880, 0.18); },
+        () => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0))); });
     };
     // la voix en cours (appel, noms lus en ligne…) doit être terminée avant « استعدوا » et les chiffres
-    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") pas(); }, 6000)); }, 15000);
+    seApresSilence(() => { if (seChrono.etat === "compte") seDire(ctx.d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => { if (seChrono.etat === "compte") seChrono.cpt = setTimeout(pas, 150); }, 4000)); }, 15000);
   }
   /* attend la fin de toute parole (voix de l'appareil, voix en ligne, voix intégrée), au plus « max » ms */
   function seApresSilence(fn, max) { const t0 = Date.now(); let calme = 0; (function v() { if (!seParle()) calme++; else calme = 0; if (calme >= 2 || Date.now() - t0 > max) return fn(); setTimeout(v, 150); })(); }
@@ -106546,7 +106708,7 @@ window.DISC = {
     clearTimeout(seChrono.cpt); seAfficherCompte(null);
     seChrono.etat = "match"; seChrono.minute = false; seChrono.dernier = null; seChrono.fin = Date.now() + ctx.d.cfg.duree * 60 * 1000;
     seSifflet(ctx.d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700);
-    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, 900);
+    if (ctx.d.cfg.compte !== false) setTimeout(() => { if (seChrono.etat === "match") seDireNombre(ctx.d, "انطلقوا!"); }, Math.max(350, 850 - seLat));
     seBoucle(ctx); renderSeance();
   }
   function sePause() { if (seChrono.etat !== "match" && seChrono.etat !== "transition") return; seChrono.avant = seChrono.etat; seChrono.reste = (seChrono.fin - Date.now()) / 1000; seChrono.etat = "pause"; clearInterval(seChrono.tick); renderSeance(); }
@@ -106719,7 +106881,7 @@ window.DISC = {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d;
-    try { const g0 = localStorage.getItem("seanceEPS::voix"); if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -106761,7 +106923,7 @@ window.DISC = {
       <div class="se-box"><b>Annonces sonores</b>
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
-        <label>Commentateur (voix) <select id="se-voixsel">${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${!vx && (seVoixChoisie === c[0] || (c[0] === "__integree" && !/^__(integree|google)/.test(seVoixChoisie))) ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google en ligne (noms compris)</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${vx && v.name === vx.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
+        <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — voix arabe du navigateur (comme avant)"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne du navigateur (ar-SA)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
         <p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
@@ -106869,7 +107031,7 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -108885,6 +109047,6 @@ var QICONS = {
 })();
 
 @@SCRIPTCLOSE7f3a@@>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 06-11-2026 · 12h00</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 06-11-2026 · 12h45</div>
 </body>
 </html>
