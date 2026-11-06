@@ -2,7 +2,24 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta name="robots" content="noindex">
-<script src="firebase-config.js"></script>
+<script>
+/* CONFIGURATION FIREBASE — projet « epsclasseur »
+   Ces valeurs ne sont pas secrètes : la sécurité vient des règles Firestore. */
+window.FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDFduXDORBWNubfXufwhdosSUQoCTUqlOI",
+  authDomain: "epsclasseur.firebaseapp.com",
+  projectId: "epsclasseur",
+  storageBucket: "epsclasseur.firebasestorage.app",
+  messagingSenderId: "1096907088430",
+  appId: "1:1096907088430:web:461423c67efbb3f6aa35bf"
+};
+/* Texte affiché aux professeurs sur l'écran d'abonnement (contact : à compléter si vous le souhaitez) */
+window.NUAGE_OPTIONS = {
+  sousTitre: "Espace professeur — accès par abonnement",
+  contact: "Mehdi Boukhmira · WhatsApp 06 98 11 43 64 · boukhmiramehdi@gmail.com"
+};
+
+</script>
 <script>
 /* ══════════════════════════════════════════════════════════════
    NUAGE EPS — abonnement + compte personnel + synchronisation
