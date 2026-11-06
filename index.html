@@ -23465,9 +23465,24 @@ window.XlsxLite = (function () {
     return out;
   }
   const seUrlVoix = (t, v) => "https://translate.google.com/translate_tts?ie=UTF-8&tl=ar&client=tw-ob&ttsspeed=" + Math.min(1, Math.max(0.5, v || 1)) + "&q=" + encodeURIComponent(t);
+  /* chiffres et annonces courtes préchargés : la voix Google part sans attendre Internet (compte à rebours en phase) */
+  const seAudioPre = {}; let sePreEchec = 0;
+  function sePrecharger(d) {
+    if (!d || seMode(d) !== "google") return;
+    const L = [["استعدوا! صافرة البداية بعد", +d.cfg.debit || 0.9]].concat([3, 2, 1, 5, 4].map(n => [SE_NB[n], 1])).concat([["انطلقوا!", 1]]).filter(x => !seAudioPre[seUrlVoix(x[0], x[1])]);
+    // l'un après l'autre, en silence (lecture muette = téléchargement réel), pour ne pas surcharger Google
+    const suiv = () => { const x = L.shift(); if (!x) return; const u = seUrlVoix(x[0], x[1]); if (seAudioPre[u]) return suiv();
+      let f = false; const fin = () => { if (f) return; f = true; try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; setTimeout(suiv, 250); };
+      const a = new Audio(); a.preload = "auto"; a.muted = true; seAudioPre[u] = a;
+      a.addEventListener("error", () => { if (++sePreEchec >= 2) { seGoogleKO = true; L.length = 0; } fin(); }, { once: true });
+      a.src = u; try { const pr = a.play(); if (pr && pr.then) pr.then(() => setTimeout(fin, 60), () => { a.load(); setTimeout(fin, 1500); }); } catch (e) { fin(); }
+      setTimeout(fin, 4000); };
+    suiv();
+  }
+  function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
-    const it = seFile.shift(), a = new Audio(seUrlVoix(it.t, it.v)); a.volume = 1; seAudioCour = a;
+    const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
     let fini = false, joue = false;
     const suite = () => { if (fini) return; fini = true; if (seAudioCour === a) seAudioCour = null; if (it.st) it.st(); if (it.cb) it.cb(); seJouer(); };
     // Google ne répond pas (bloqué, hors ligne, trop de demandes) : le commentateur intégré dit la phrase et tout ce qui suit
@@ -23873,7 +23888,7 @@ window.XlsxLite = (function () {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d;
+    seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
     try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
@@ -24024,7 +24039,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -24126,7 +24141,11 @@ window.XlsxLite = (function () {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
       if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
-      if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
+      if (t === "compte") { seCancel(); let n = 3;
+        const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700); setTimeout(() => seDireNombre(d, "انطلقوا!"), Math.max(350, 850 - seLat)); return; }
+          const k = n; n--; let t1 = Date.now();
+          seDireNombreSync(d, k, () => { t1 = Date.now(); seAfficherCompte(k); seBip(d.cfg.volume, 880, 0.18); }, () => setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0)))); };
+        seDire(d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => setTimeout(pas, 150), 4000)); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
     });
@@ -35687,9 +35706,24 @@ window.XlsxLite = (function () {
     return out;
   }
   const seUrlVoix = (t, v) => "https://translate.google.com/translate_tts?ie=UTF-8&tl=ar&client=tw-ob&ttsspeed=" + Math.min(1, Math.max(0.5, v || 1)) + "&q=" + encodeURIComponent(t);
+  /* chiffres et annonces courtes préchargés : la voix Google part sans attendre Internet (compte à rebours en phase) */
+  const seAudioPre = {}; let sePreEchec = 0;
+  function sePrecharger(d) {
+    if (!d || seMode(d) !== "google") return;
+    const L = [["استعدوا! صافرة البداية بعد", +d.cfg.debit || 0.9]].concat([3, 2, 1, 5, 4].map(n => [SE_NB[n], 1])).concat([["انطلقوا!", 1]]).filter(x => !seAudioPre[seUrlVoix(x[0], x[1])]);
+    // l'un après l'autre, en silence (lecture muette = téléchargement réel), pour ne pas surcharger Google
+    const suiv = () => { const x = L.shift(); if (!x) return; const u = seUrlVoix(x[0], x[1]); if (seAudioPre[u]) return suiv();
+      let f = false; const fin = () => { if (f) return; f = true; try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; setTimeout(suiv, 250); };
+      const a = new Audio(); a.preload = "auto"; a.muted = true; seAudioPre[u] = a;
+      a.addEventListener("error", () => { if (++sePreEchec >= 2) { seGoogleKO = true; L.length = 0; } fin(); }, { once: true });
+      a.src = u; try { const pr = a.play(); if (pr && pr.then) pr.then(() => setTimeout(fin, 60), () => { a.load(); setTimeout(fin, 1500); }); } catch (e) { fin(); }
+      setTimeout(fin, 4000); };
+    suiv();
+  }
+  function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
-    const it = seFile.shift(), a = new Audio(seUrlVoix(it.t, it.v)); a.volume = 1; seAudioCour = a;
+    const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
     let fini = false, joue = false;
     const suite = () => { if (fini) return; fini = true; if (seAudioCour === a) seAudioCour = null; if (it.st) it.st(); if (it.cb) it.cb(); seJouer(); };
     // Google ne répond pas (bloqué, hors ligne, trop de demandes) : le commentateur intégré dit la phrase et tout ce qui suit
@@ -36095,7 +36129,7 @@ window.XlsxLite = (function () {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d;
+    seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
     try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
@@ -36246,7 +36280,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -36348,7 +36382,11 @@ window.XlsxLite = (function () {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
       if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
-      if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
+      if (t === "compte") { seCancel(); let n = 3;
+        const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700); setTimeout(() => seDireNombre(d, "انطلقوا!"), Math.max(350, 850 - seLat)); return; }
+          const k = n; n--; let t1 = Date.now();
+          seDireNombreSync(d, k, () => { t1 = Date.now(); seAfficherCompte(k); seBip(d.cfg.volume, 880, 0.18); }, () => setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0)))); };
+        seDire(d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => setTimeout(pas, 150), 4000)); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
     });
@@ -47906,9 +47944,24 @@ window.XlsxLite = (function () {
     return out;
   }
   const seUrlVoix = (t, v) => "https://translate.google.com/translate_tts?ie=UTF-8&tl=ar&client=tw-ob&ttsspeed=" + Math.min(1, Math.max(0.5, v || 1)) + "&q=" + encodeURIComponent(t);
+  /* chiffres et annonces courtes préchargés : la voix Google part sans attendre Internet (compte à rebours en phase) */
+  const seAudioPre = {}; let sePreEchec = 0;
+  function sePrecharger(d) {
+    if (!d || seMode(d) !== "google") return;
+    const L = [["استعدوا! صافرة البداية بعد", +d.cfg.debit || 0.9]].concat([3, 2, 1, 5, 4].map(n => [SE_NB[n], 1])).concat([["انطلقوا!", 1]]).filter(x => !seAudioPre[seUrlVoix(x[0], x[1])]);
+    // l'un après l'autre, en silence (lecture muette = téléchargement réel), pour ne pas surcharger Google
+    const suiv = () => { const x = L.shift(); if (!x) return; const u = seUrlVoix(x[0], x[1]); if (seAudioPre[u]) return suiv();
+      let f = false; const fin = () => { if (f) return; f = true; try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; setTimeout(suiv, 250); };
+      const a = new Audio(); a.preload = "auto"; a.muted = true; seAudioPre[u] = a;
+      a.addEventListener("error", () => { if (++sePreEchec >= 2) { seGoogleKO = true; L.length = 0; } fin(); }, { once: true });
+      a.src = u; try { const pr = a.play(); if (pr && pr.then) pr.then(() => setTimeout(fin, 60), () => { a.load(); setTimeout(fin, 1500); }); } catch (e) { fin(); }
+      setTimeout(fin, 4000); };
+    suiv();
+  }
+  function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
-    const it = seFile.shift(), a = new Audio(seUrlVoix(it.t, it.v)); a.volume = 1; seAudioCour = a;
+    const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
     let fini = false, joue = false;
     const suite = () => { if (fini) return; fini = true; if (seAudioCour === a) seAudioCour = null; if (it.st) it.st(); if (it.cb) it.cb(); seJouer(); };
     // Google ne répond pas (bloqué, hors ligne, trop de demandes) : le commentateur intégré dit la phrase et tout ce qui suit
@@ -48314,7 +48367,7 @@ window.XlsxLite = (function () {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d;
+    seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
     try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
@@ -48465,7 +48518,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -48567,7 +48620,11 @@ window.XlsxLite = (function () {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
       if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
-      if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
+      if (t === "compte") { seCancel(); let n = 3;
+        const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700); setTimeout(() => seDireNombre(d, "انطلقوا!"), Math.max(350, 850 - seLat)); return; }
+          const k = n; n--; let t1 = Date.now();
+          seDireNombreSync(d, k, () => { t1 = Date.now(); seAfficherCompte(k); seBip(d.cfg.volume, 880, 0.18); }, () => setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0)))); };
+        seDire(d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => setTimeout(pas, 150), 4000)); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
     });
@@ -59971,9 +60028,24 @@ window.XlsxLite = (function () {
     return out;
   }
   const seUrlVoix = (t, v) => "https://translate.google.com/translate_tts?ie=UTF-8&tl=ar&client=tw-ob&ttsspeed=" + Math.min(1, Math.max(0.5, v || 1)) + "&q=" + encodeURIComponent(t);
+  /* chiffres et annonces courtes préchargés : la voix Google part sans attendre Internet (compte à rebours en phase) */
+  const seAudioPre = {}; let sePreEchec = 0;
+  function sePrecharger(d) {
+    if (!d || seMode(d) !== "google") return;
+    const L = [["استعدوا! صافرة البداية بعد", +d.cfg.debit || 0.9]].concat([3, 2, 1, 5, 4].map(n => [SE_NB[n], 1])).concat([["انطلقوا!", 1]]).filter(x => !seAudioPre[seUrlVoix(x[0], x[1])]);
+    // l'un après l'autre, en silence (lecture muette = téléchargement réel), pour ne pas surcharger Google
+    const suiv = () => { const x = L.shift(); if (!x) return; const u = seUrlVoix(x[0], x[1]); if (seAudioPre[u]) return suiv();
+      let f = false; const fin = () => { if (f) return; f = true; try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; setTimeout(suiv, 250); };
+      const a = new Audio(); a.preload = "auto"; a.muted = true; seAudioPre[u] = a;
+      a.addEventListener("error", () => { if (++sePreEchec >= 2) { seGoogleKO = true; L.length = 0; } fin(); }, { once: true });
+      a.src = u; try { const pr = a.play(); if (pr && pr.then) pr.then(() => setTimeout(fin, 60), () => { a.load(); setTimeout(fin, 1500); }); } catch (e) { fin(); }
+      setTimeout(fin, 4000); };
+    suiv();
+  }
+  function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
-    const it = seFile.shift(), a = new Audio(seUrlVoix(it.t, it.v)); a.volume = 1; seAudioCour = a;
+    const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
     let fini = false, joue = false;
     const suite = () => { if (fini) return; fini = true; if (seAudioCour === a) seAudioCour = null; if (it.st) it.st(); if (it.cb) it.cb(); seJouer(); };
     // Google ne répond pas (bloqué, hors ligne, trop de demandes) : le commentateur intégré dit la phrase et tout ce qui suit
@@ -60379,7 +60451,7 @@ window.XlsxLite = (function () {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d;
+    seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
     try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
@@ -60530,7 +60602,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -60632,7 +60704,11 @@ window.XlsxLite = (function () {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
       if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
-      if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
+      if (t === "compte") { seCancel(); let n = 3;
+        const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700); setTimeout(() => seDireNombre(d, "انطلقوا!"), Math.max(350, 850 - seLat)); return; }
+          const k = n; n--; let t1 = Date.now();
+          seDireNombreSync(d, k, () => { t1 = Date.now(); seAfficherCompte(k); seBip(d.cfg.volume, 880, 0.18); }, () => setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0)))); };
+        seDire(d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => setTimeout(pas, 150), 4000)); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
     });
@@ -73229,9 +73305,24 @@ window.OMRKIT = window.OMRKIT || (function () {
     return out;
   }
   const seUrlVoix = (t, v) => "https://translate.google.com/translate_tts?ie=UTF-8&tl=ar&client=tw-ob&ttsspeed=" + Math.min(1, Math.max(0.5, v || 1)) + "&q=" + encodeURIComponent(t);
+  /* chiffres et annonces courtes préchargés : la voix Google part sans attendre Internet (compte à rebours en phase) */
+  const seAudioPre = {}; let sePreEchec = 0;
+  function sePrecharger(d) {
+    if (!d || seMode(d) !== "google") return;
+    const L = [["استعدوا! صافرة البداية بعد", +d.cfg.debit || 0.9]].concat([3, 2, 1, 5, 4].map(n => [SE_NB[n], 1])).concat([["انطلقوا!", 1]]).filter(x => !seAudioPre[seUrlVoix(x[0], x[1])]);
+    // l'un après l'autre, en silence (lecture muette = téléchargement réel), pour ne pas surcharger Google
+    const suiv = () => { const x = L.shift(); if (!x) return; const u = seUrlVoix(x[0], x[1]); if (seAudioPre[u]) return suiv();
+      let f = false; const fin = () => { if (f) return; f = true; try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; setTimeout(suiv, 250); };
+      const a = new Audio(); a.preload = "auto"; a.muted = true; seAudioPre[u] = a;
+      a.addEventListener("error", () => { if (++sePreEchec >= 2) { seGoogleKO = true; L.length = 0; } fin(); }, { once: true });
+      a.src = u; try { const pr = a.play(); if (pr && pr.then) pr.then(() => setTimeout(fin, 60), () => { a.load(); setTimeout(fin, 1500); }); } catch (e) { fin(); }
+      setTimeout(fin, 4000); };
+    suiv();
+  }
+  function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
-    const it = seFile.shift(), a = new Audio(seUrlVoix(it.t, it.v)); a.volume = 1; seAudioCour = a;
+    const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
     let fini = false, joue = false;
     const suite = () => { if (fini) return; fini = true; if (seAudioCour === a) seAudioCour = null; if (it.st) it.st(); if (it.cb) it.cb(); seJouer(); };
     // Google ne répond pas (bloqué, hors ligne, trop de demandes) : le commentateur intégré dit la phrase et tout ce qui suit
@@ -73637,7 +73728,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d;
+    seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
     try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
@@ -73788,7 +73879,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -73890,7 +73981,11 @@ window.OMRKIT = window.OMRKIT || (function () {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
       if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
-      if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
+      if (t === "compte") { seCancel(); let n = 3;
+        const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700); setTimeout(() => seDireNombre(d, "انطلقوا!"), Math.max(350, 850 - seLat)); return; }
+          const k = n; n--; let t1 = Date.now();
+          seDireNombreSync(d, k, () => { t1 = Date.now(); seAfficherCompte(k); seBip(d.cfg.volume, 880, 0.18); }, () => setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0)))); };
+        seDire(d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => setTimeout(pas, 150), 4000)); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
     });
@@ -84623,9 +84718,24 @@ GrilleAPS({
     return out;
   }
   const seUrlVoix = (t, v) => "https://translate.google.com/translate_tts?ie=UTF-8&tl=ar&client=tw-ob&ttsspeed=" + Math.min(1, Math.max(0.5, v || 1)) + "&q=" + encodeURIComponent(t);
+  /* chiffres et annonces courtes préchargés : la voix Google part sans attendre Internet (compte à rebours en phase) */
+  const seAudioPre = {}; let sePreEchec = 0;
+  function sePrecharger(d) {
+    if (!d || seMode(d) !== "google") return;
+    const L = [["استعدوا! صافرة البداية بعد", +d.cfg.debit || 0.9]].concat([3, 2, 1, 5, 4].map(n => [SE_NB[n], 1])).concat([["انطلقوا!", 1]]).filter(x => !seAudioPre[seUrlVoix(x[0], x[1])]);
+    // l'un après l'autre, en silence (lecture muette = téléchargement réel), pour ne pas surcharger Google
+    const suiv = () => { const x = L.shift(); if (!x) return; const u = seUrlVoix(x[0], x[1]); if (seAudioPre[u]) return suiv();
+      let f = false; const fin = () => { if (f) return; f = true; try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; setTimeout(suiv, 250); };
+      const a = new Audio(); a.preload = "auto"; a.muted = true; seAudioPre[u] = a;
+      a.addEventListener("error", () => { if (++sePreEchec >= 2) { seGoogleKO = true; L.length = 0; } fin(); }, { once: true });
+      a.src = u; try { const pr = a.play(); if (pr && pr.then) pr.then(() => setTimeout(fin, 60), () => { a.load(); setTimeout(fin, 1500); }); } catch (e) { fin(); }
+      setTimeout(fin, 4000); };
+    suiv();
+  }
+  function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
-    const it = seFile.shift(), a = new Audio(seUrlVoix(it.t, it.v)); a.volume = 1; seAudioCour = a;
+    const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
     let fini = false, joue = false;
     const suite = () => { if (fini) return; fini = true; if (seAudioCour === a) seAudioCour = null; if (it.st) it.st(); if (it.cb) it.cb(); seJouer(); };
     // Google ne répond pas (bloqué, hors ligne, trop de demandes) : le commentateur intégré dit la phrase et tout ce qui suit
@@ -85031,7 +85141,7 @@ GrilleAPS({
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d;
+    seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
     try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
@@ -85182,7 +85292,7 @@ GrilleAPS({
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -85284,7 +85394,11 @@ GrilleAPS({
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
       if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
-      if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
+      if (t === "compte") { seCancel(); let n = 3;
+        const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700); setTimeout(() => seDireNombre(d, "انطلقوا!"), Math.max(350, 850 - seLat)); return; }
+          const k = n; n--; let t1 = Date.now();
+          seDireNombreSync(d, k, () => { t1 = Date.now(); seAfficherCompte(k); seBip(d.cfg.volume, 880, 0.18); }, () => setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0)))); };
+        seDire(d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => setTimeout(pas, 150), 4000)); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
     });
@@ -96788,9 +96902,24 @@ window.DISC = {
     return out;
   }
   const seUrlVoix = (t, v) => "https://translate.google.com/translate_tts?ie=UTF-8&tl=ar&client=tw-ob&ttsspeed=" + Math.min(1, Math.max(0.5, v || 1)) + "&q=" + encodeURIComponent(t);
+  /* chiffres et annonces courtes préchargés : la voix Google part sans attendre Internet (compte à rebours en phase) */
+  const seAudioPre = {}; let sePreEchec = 0;
+  function sePrecharger(d) {
+    if (!d || seMode(d) !== "google") return;
+    const L = [["استعدوا! صافرة البداية بعد", +d.cfg.debit || 0.9]].concat([3, 2, 1, 5, 4].map(n => [SE_NB[n], 1])).concat([["انطلقوا!", 1]]).filter(x => !seAudioPre[seUrlVoix(x[0], x[1])]);
+    // l'un après l'autre, en silence (lecture muette = téléchargement réel), pour ne pas surcharger Google
+    const suiv = () => { const x = L.shift(); if (!x) return; const u = seUrlVoix(x[0], x[1]); if (seAudioPre[u]) return suiv();
+      let f = false; const fin = () => { if (f) return; f = true; try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; setTimeout(suiv, 250); };
+      const a = new Audio(); a.preload = "auto"; a.muted = true; seAudioPre[u] = a;
+      a.addEventListener("error", () => { if (++sePreEchec >= 2) { seGoogleKO = true; L.length = 0; } fin(); }, { once: true });
+      a.src = u; try { const pr = a.play(); if (pr && pr.then) pr.then(() => setTimeout(fin, 60), () => { a.load(); setTimeout(fin, 1500); }); } catch (e) { fin(); }
+      setTimeout(fin, 4000); };
+    suiv();
+  }
+  function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
-    const it = seFile.shift(), a = new Audio(seUrlVoix(it.t, it.v)); a.volume = 1; seAudioCour = a;
+    const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
     let fini = false, joue = false;
     const suite = () => { if (fini) return; fini = true; if (seAudioCour === a) seAudioCour = null; if (it.st) it.st(); if (it.cb) it.cb(); seJouer(); };
     // Google ne répond pas (bloqué, hors ligne, trop de demandes) : le commentateur intégré dit la phrase et tout ce qui suit
@@ -97196,7 +97325,7 @@ window.DISC = {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d;
+    seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
     try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
@@ -97347,7 +97476,7 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -97449,7 +97578,11 @@ window.DISC = {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
       if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
-      if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
+      if (t === "compte") { seCancel(); let n = 3;
+        const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700); setTimeout(() => seDireNombre(d, "انطلقوا!"), Math.max(350, 850 - seLat)); return; }
+          const k = n; n--; let t1 = Date.now();
+          seDireNombreSync(d, k, () => { t1 = Date.now(); seAfficherCompte(k); seBip(d.cfg.volume, 880, 0.18); }, () => setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0)))); };
+        seDire(d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => setTimeout(pas, 150), 4000)); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
     });
@@ -101808,9 +101941,24 @@ window.DISC = {
     return out;
   }
   const seUrlVoix = (t, v) => "https://translate.google.com/translate_tts?ie=UTF-8&tl=ar&client=tw-ob&ttsspeed=" + Math.min(1, Math.max(0.5, v || 1)) + "&q=" + encodeURIComponent(t);
+  /* chiffres et annonces courtes préchargés : la voix Google part sans attendre Internet (compte à rebours en phase) */
+  const seAudioPre = {}; let sePreEchec = 0;
+  function sePrecharger(d) {
+    if (!d || seMode(d) !== "google") return;
+    const L = [["استعدوا! صافرة البداية بعد", +d.cfg.debit || 0.9]].concat([3, 2, 1, 5, 4].map(n => [SE_NB[n], 1])).concat([["انطلقوا!", 1]]).filter(x => !seAudioPre[seUrlVoix(x[0], x[1])]);
+    // l'un après l'autre, en silence (lecture muette = téléchargement réel), pour ne pas surcharger Google
+    const suiv = () => { const x = L.shift(); if (!x) return; const u = seUrlVoix(x[0], x[1]); if (seAudioPre[u]) return suiv();
+      let f = false; const fin = () => { if (f) return; f = true; try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; setTimeout(suiv, 250); };
+      const a = new Audio(); a.preload = "auto"; a.muted = true; seAudioPre[u] = a;
+      a.addEventListener("error", () => { if (++sePreEchec >= 2) { seGoogleKO = true; L.length = 0; } fin(); }, { once: true });
+      a.src = u; try { const pr = a.play(); if (pr && pr.then) pr.then(() => setTimeout(fin, 60), () => { a.load(); setTimeout(fin, 1500); }); } catch (e) { fin(); }
+      setTimeout(fin, 4000); };
+    suiv();
+  }
+  function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
-    const it = seFile.shift(), a = new Audio(seUrlVoix(it.t, it.v)); a.volume = 1; seAudioCour = a;
+    const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
     let fini = false, joue = false;
     const suite = () => { if (fini) return; fini = true; if (seAudioCour === a) seAudioCour = null; if (it.st) it.st(); if (it.cb) it.cb(); seJouer(); };
     // Google ne répond pas (bloqué, hors ligne, trop de demandes) : le commentateur intégré dit la phrase et tout ce qui suit
@@ -102216,7 +102364,7 @@ window.DISC = {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d;
+    seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
     try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
@@ -102367,7 +102515,7 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -102469,7 +102617,11 @@ window.DISC = {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
       if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
-      if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
+      if (t === "compte") { seCancel(); let n = 3;
+        const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700); setTimeout(() => seDireNombre(d, "انطلقوا!"), Math.max(350, 850 - seLat)); return; }
+          const k = n; n--; let t1 = Date.now();
+          seDireNombreSync(d, k, () => { t1 = Date.now(); seAfficherCompte(k); seBip(d.cfg.volume, 880, 0.18); }, () => setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0)))); };
+        seDire(d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => setTimeout(pas, 150), 4000)); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
     });
@@ -106652,9 +106804,24 @@ window.DISC = {
     return out;
   }
   const seUrlVoix = (t, v) => "https://translate.google.com/translate_tts?ie=UTF-8&tl=ar&client=tw-ob&ttsspeed=" + Math.min(1, Math.max(0.5, v || 1)) + "&q=" + encodeURIComponent(t);
+  /* chiffres et annonces courtes préchargés : la voix Google part sans attendre Internet (compte à rebours en phase) */
+  const seAudioPre = {}; let sePreEchec = 0;
+  function sePrecharger(d) {
+    if (!d || seMode(d) !== "google") return;
+    const L = [["استعدوا! صافرة البداية بعد", +d.cfg.debit || 0.9]].concat([3, 2, 1, 5, 4].map(n => [SE_NB[n], 1])).concat([["انطلقوا!", 1]]).filter(x => !seAudioPre[seUrlVoix(x[0], x[1])]);
+    // l'un après l'autre, en silence (lecture muette = téléchargement réel), pour ne pas surcharger Google
+    const suiv = () => { const x = L.shift(); if (!x) return; const u = seUrlVoix(x[0], x[1]); if (seAudioPre[u]) return suiv();
+      let f = false; const fin = () => { if (f) return; f = true; try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; setTimeout(suiv, 250); };
+      const a = new Audio(); a.preload = "auto"; a.muted = true; seAudioPre[u] = a;
+      a.addEventListener("error", () => { if (++sePreEchec >= 2) { seGoogleKO = true; L.length = 0; } fin(); }, { once: true });
+      a.src = u; try { const pr = a.play(); if (pr && pr.then) pr.then(() => setTimeout(fin, 60), () => { a.load(); setTimeout(fin, 1500); }); } catch (e) { fin(); }
+      setTimeout(fin, 4000); };
+    suiv();
+  }
+  function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
-    const it = seFile.shift(), a = new Audio(seUrlVoix(it.t, it.v)); a.volume = 1; seAudioCour = a;
+    const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
     let fini = false, joue = false;
     const suite = () => { if (fini) return; fini = true; if (seAudioCour === a) seAudioCour = null; if (it.st) it.st(); if (it.cb) it.cb(); seJouer(); };
     // Google ne répond pas (bloqué, hors ligne, trop de demandes) : le commentateur intégré dit la phrase et tout ce qui suit
@@ -107060,7 +107227,7 @@ window.DISC = {
     // compositions
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
-    seCapDe = capDe; seDcour = d;
+    seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
     try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
@@ -107211,7 +107378,7 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(false); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -107313,7 +107480,11 @@ window.DISC = {
       const t = b.dataset.test, m = ro.m.length ? ro.m : [[ids[0], ids[1]]], nx = (d.rot[seRot + 1] || ro).m;
       if (t === "sif") { seSifflet(d.cfg.volume, SE_SIF.debut); return; }
       if (t === "but") { seFoule(d.cfg.volume, "clameur"); setTimeout(() => seDire(d, seCommentaire(f, m[0][0], capDe(m[0][0]), 2, 1, 0, m[0])), 1300); return; }
-      if (t === "compte") { let n = 3; const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); return; } seAfficherCompte(n); seBip(d.cfg.volume, 880, 0.18); seDireNombre(d, n); n--; setTimeout(pas, 1000); }; pas(); return; }
+      if (t === "compte") { seCancel(); let n = 3;
+        const pas = () => { if (!n) { seAfficherCompte(null); seSifflet(d.cfg.volume, SE_SIF.debut); seAfficherCompte("▶"); setTimeout(() => seAfficherCompte(null), 700); setTimeout(() => seDireNombre(d, "انطلقوا!"), Math.max(350, 850 - seLat)); return; }
+          const k = n; n--; let t1 = Date.now();
+          seDireNombreSync(d, k, () => { t1 = Date.now(); seAfficherCompte(k); seBip(d.cfg.volume, 880, 0.18); }, () => setTimeout(pas, Math.max(n ? 60 : 300, 1000 - (Date.now() - t1) - (n ? seLat : 0)))); };
+        seDire(d, "استعدوا! صافرة البداية بعد", () => seApresSilence(() => setTimeout(pas, 150), 4000)); return; }
       if (!d.cfg.voix) { seToast("Activez la voix arabe", "error"); return; }
       seDire(d, t === "debut" ? seAr.debut(m) : t === "fin" ? seAr.fin() : t === "suivant" ? seAr.suivant(nx) : t === "ateliers" ? seAr.ateliers() : seAr.vainqueur(m[0][0]));
     });
@@ -109227,6 +109398,6 @@ var QICONS = {
 })();
 
 @@SCRIPTCLOSE7f3a@@>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 06-11-2026 · 13h45</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 06-11-2026 · 14h15</div>
 </body>
 </html>
