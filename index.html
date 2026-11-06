@@ -23889,7 +23889,7 @@ window.XlsxLite = (function () {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
-    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { const g0 = localStorage.getItem("cloud::seanceVoix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -24039,7 +24039,10 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
+      // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
+      if (!/^__/.test(val) && !seVoixListe().some(v => v.name === val) && !window.confirm("« " + val + " » n'est pas une voix arabe : elle lira les annonces avec un accent étranger.\n\nLa garder quand même ?")) { e.target.value = seVoixChoisie || "__navigateur"; return; }
+      seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = val; try { localStorage.setItem("cloud::seanceVoix", val); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -36130,7 +36133,7 @@ window.XlsxLite = (function () {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
-    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { const g0 = localStorage.getItem("cloud::seanceVoix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -36280,7 +36283,10 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
+      // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
+      if (!/^__/.test(val) && !seVoixListe().some(v => v.name === val) && !window.confirm("« " + val + " » n'est pas une voix arabe : elle lira les annonces avec un accent étranger.\n\nLa garder quand même ?")) { e.target.value = seVoixChoisie || "__navigateur"; return; }
+      seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = val; try { localStorage.setItem("cloud::seanceVoix", val); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -48368,7 +48374,7 @@ window.XlsxLite = (function () {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
-    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { const g0 = localStorage.getItem("cloud::seanceVoix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -48518,7 +48524,10 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
+      // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
+      if (!/^__/.test(val) && !seVoixListe().some(v => v.name === val) && !window.confirm("« " + val + " » n'est pas une voix arabe : elle lira les annonces avec un accent étranger.\n\nLa garder quand même ?")) { e.target.value = seVoixChoisie || "__navigateur"; return; }
+      seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = val; try { localStorage.setItem("cloud::seanceVoix", val); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -60452,7 +60461,7 @@ window.XlsxLite = (function () {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
-    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { const g0 = localStorage.getItem("cloud::seanceVoix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -60602,7 +60611,10 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
+      // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
+      if (!/^__/.test(val) && !seVoixListe().some(v => v.name === val) && !window.confirm("« " + val + " » n'est pas une voix arabe : elle lira les annonces avec un accent étranger.\n\nLa garder quand même ?")) { e.target.value = seVoixChoisie || "__navigateur"; return; }
+      seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = val; try { localStorage.setItem("cloud::seanceVoix", val); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -73729,7 +73741,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
-    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { const g0 = localStorage.getItem("cloud::seanceVoix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -73879,7 +73891,10 @@ window.OMRKIT = window.OMRKIT || (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
+      // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
+      if (!/^__/.test(val) && !seVoixListe().some(v => v.name === val) && !window.confirm("« " + val + " » n'est pas une voix arabe : elle lira les annonces avec un accent étranger.\n\nLa garder quand même ?")) { e.target.value = seVoixChoisie || "__navigateur"; return; }
+      seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = val; try { localStorage.setItem("cloud::seanceVoix", val); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -85142,7 +85157,7 @@ GrilleAPS({
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
-    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { const g0 = localStorage.getItem("cloud::seanceVoix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -85292,7 +85307,10 @@ GrilleAPS({
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
+      // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
+      if (!/^__/.test(val) && !seVoixListe().some(v => v.name === val) && !window.confirm("« " + val + " » n'est pas une voix arabe : elle lira les annonces avec un accent étranger.\n\nLa garder quand même ?")) { e.target.value = seVoixChoisie || "__navigateur"; return; }
+      seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = val; try { localStorage.setItem("cloud::seanceVoix", val); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -97326,7 +97344,7 @@ window.DISC = {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
-    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { const g0 = localStorage.getItem("cloud::seanceVoix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -97476,7 +97494,10 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
+      // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
+      if (!/^__/.test(val) && !seVoixListe().some(v => v.name === val) && !window.confirm("« " + val + " » n'est pas une voix arabe : elle lira les annonces avec un accent étranger.\n\nLa garder quand même ?")) { e.target.value = seVoixChoisie || "__navigateur"; return; }
+      seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = val; try { localStorage.setItem("cloud::seanceVoix", val); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -102365,7 +102386,7 @@ window.DISC = {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
-    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { const g0 = localStorage.getItem("cloud::seanceVoix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -102515,7 +102536,10 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
+      // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
+      if (!/^__/.test(val) && !seVoixListe().some(v => v.name === val) && !window.confirm("« " + val + " » n'est pas une voix arabe : elle lira les annonces avec un accent étranger.\n\nLa garder quand même ?")) { e.target.value = seVoixChoisie || "__navigateur"; return; }
+      seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = val; try { localStorage.setItem("cloud::seanceVoix", val); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -107228,7 +107252,7 @@ window.DISC = {
     d.cap = d.cap || {};
     const capDe = g => { const gr = G.groupes.find(x => x.id === g); if (!gr) return ""; return gr.eleves.indexOf(d.cap[g]) >= 0 ? d.cap[g] : (gr.eleves[0] || ""); };
     seCapDe = capDe; seDcour = d; try { sePrecharger(d); } catch (e) {}
-    try { if (!localStorage.getItem("seanceEPS::voixV2")) { localStorage.setItem("seanceEPS::voixV2", "1"); localStorage.setItem("seanceEPS::voix", "__navigateur"); } const g0 = localStorage.getItem("seanceEPS::voix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
+    try { const g0 = localStorage.getItem("cloud::seanceVoix") || "__navigateur"; if (g0) { seVoixChoisie = g0; d.cfg.voixNom = g0; } else if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; } catch (e) { if (d.cfg.voixNom) seVoixChoisie = d.cfg.voixNom; }
     const compo = `<div class="se-groupes">${G.groupes.map(g => `<div class="se-g" style="--c:${col(g.id)}"><div class="se-gt"><span class="se-pas">${g.id}</span> Groupe ${g.id} <small>${g.eleves.length} élèves</small></div><ol>${g.eleves.map(n => `<li class="${n === capDe(g.id) ? "se-capt" : ""}" data-cap="${esc(g.id)}" data-nom="${esc(n)}" title="Cliquer pour désigner le capitaine">${esc(n)}${n === capDe(g.id) ? ` <b class="se-c">C</b><span class="se-pr"><button type="button" data-ecoute="${esc(n)}" title="Écouter la prononciation"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button><button type="button" data-pr="${esc(n)}" title="Corriger la prononciation">✎</button></span><small class="se-pron" dir="rtl">${esc(seProno(d, n))}</small>` : ""}</li>`).join("")}</ol></div>`).join("")}</div>
       <p class="gr-aide"><b class="se-c">C</b> = capitaine appelé au micro avant chaque match — cliquez sur un élève pour le désigner capitaine ; <svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg> écouter son nom, ✎ corriger la prononciation (en arabe).</p>
       <p class="gr-aide">Source des groupes : <b>${esc(G.source)}</b>${G.tirage ? " " + tirageCtl("↻ Nouveau tirage") : " — toute modification des équipes y est reprise automatiquement."}</p>`;
@@ -107378,7 +107402,10 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
-    if (q("se-voixsel")) q("se-voixsel").onchange = e => { seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = e.target.value; try { localStorage.setItem("seanceEPS::voix", e.target.value); } catch (x) {} sauver(true); };
+    if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
+      // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
+      if (!/^__/.test(val) && !seVoixListe().some(v => v.name === val) && !window.confirm("« " + val + " » n'est pas une voix arabe : elle lira les annonces avec un accent étranger.\n\nLa garder quand même ?")) { e.target.value = seVoixChoisie || "__navigateur"; return; }
+      seNavKO = false; seGoogleKO = false; seVoixChoisie = d.cfg.voixNom = val; try { localStorage.setItem("cloud::seanceVoix", val); } catch (x) {} sauver(true); };
     q("se-debit").onchange = e => { d.cfg.debit = +e.target.value; sauver(false); };
     q("se-compte").onchange = e => { d.cfg.compte = e.target.checked; sauver(false); };
     if (q("se-stade")) q("se-stade").onchange = e => { d.cfg.stade = e.target.checked; sauver(false); };
@@ -109398,6 +109425,6 @@ var QICONS = {
 })();
 
 @@SCRIPTCLOSE7f3a@@>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 06-11-2026 · 14h15</div>
+<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 06-11-2026 · 14h45</div>
 </body>
 </html>
