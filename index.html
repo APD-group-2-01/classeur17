@@ -23482,6 +23482,34 @@ window.XlsxLite = (function () {
     suiv();
   }
   function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
+  /* audit de la voix : ce que l'appareil permet réellement (à capturer et envoyer en cas de problème) */
+  function seDiagnostic(d) {
+    const z = document.getElementById("se-diag-res"); if (!z) return;
+    const L = [], ajout = (ok, t) => L.push(`<li style="color:${ok === true ? "#047857" : ok === false ? "#B91C1C" : "#334155"}">${ok === true ? "✔" : ok === false ? "✘" : "•"} ${t}</li>`);
+    const rendu = fin => { z.innerHTML = `<ul style="margin:6px 0;padding:8px 10px 8px 22px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;font-size:.78rem;line-height:1.5">${L.join("")}${fin ? "" : "<li>… test de la voix Google en cours</li>"}</ul>`; };
+    let ver = ""; try { const e = (window.parent && window.parent.document.getElementById("eps-version")) || document.getElementById("eps-version"); ver = e ? e.textContent.trim() : ""; } catch (e) {}
+    ajout(null, "Version : <b>" + esc(ver || "Classeur EPS · version 06-11-2026 · 15h30") + "</b>");
+    ajout(null, "Adresse : " + esc(location.protocol === "blob:" || location.href === "about:srcdoc" ? (function () { try { return window.parent.location.href; } catch (e) { return location.href; } })() : location.href));
+    ajout(null, "Navigateur : " + esc((navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/g) || [navigator.userAgent]).join(" ")));
+    ajout(navigator.onLine !== false, "Internet : " + (navigator.onLine !== false ? "connecté" : "hors connexion"));
+    let T = []; try { T = speechSynthesis.getVoices() || []; } catch (e) {}
+    ajout(seVoixListe().length > 0 ? true : null, "Voix de l'appareil : " + T.length + ", dont " + seVoixListe().length + " en arabe" + (seVoixListe().length ? " (" + esc(seVoixListe().map(v => v.name).join(", ")) + ")" : ""));
+    ajout(!!seVoixData(), "Commentateur intégré Karim : " + (seVoixData() ? Object.keys(seVoixData()).length + " annonces enregistrées" : "absent"));
+    let st = ""; try { st = localStorage.getItem("cloud::seanceVoix") || "(aucun : automatique)"; } catch (e) { st = "illisible"; }
+    ajout(null, "Choix enregistré sur cet appareil : " + esc(st) + " — voix utilisée : <b>" + ({ google: "Google en ligne", integree: "Karim intégré", appareil: "voix de l'appareil" })[seMode(d)] + "</b>");
+    let pol = ""; try { const m = document.querySelector('meta[name="referrer"]'); pol = m ? m.content : "absente"; } catch (e) {}
+    ajout(pol === "no-referrer", "Protection de l'adresse envoyée à Google : " + esc(pol));
+    rendu(false);
+    // vrai test : demander « واحد » à Google et mesurer
+    const t0 = Date.now(), a = new Audio(); let fini = false;
+    const res = (ok, msg) => { if (fini) return; fini = true; try { a.pause(); } catch (e) {} ajout(ok, msg); if (ok) { seGoogleKO = false; sePreEchec = 0; } rendu(true); };
+    a.muted = true; a.preload = "auto";
+    a.onplaying = () => res(true, "Voix arabe Google : <b>fonctionne</b> (réponse en " + (Date.now() - t0) + " ms)");
+    a.onerror = () => res(false, "Voix arabe Google : <b>refusée ou bloquée</b> (code " + (a.error ? a.error.code : "?") + ") — le réseau (Wi-Fi de l'établissement, pare-feu, antivirus) ou Google bloque la voix. Solution : Microsoft Edge (voix arabes Hamed, Salma…) ou le commentateur Karim.");
+    a.src = seUrlVoix("واحد", 1) + "&_=" + Date.now();
+    try { const pr = a.play(); if (pr && pr.catch) pr.catch(e => { if (!fini) setTimeout(() => { if (!fini && a.readyState >= 2) res(true, "Voix arabe Google : <b>fonctionne</b> (téléchargée, " + (Date.now() - t0) + " ms)"); }, 1500); }); } catch (e) {}
+    setTimeout(() => res(false, "Voix arabe Google : <b>aucune réponse en 6 s</b> — Internet trop lent ou accès bloqué."), 6000);
+  }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
     const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
@@ -23934,7 +23962,7 @@ window.XlsxLite = (function () {
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
         <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — recommandé"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne (automatique)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
-        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""}</p><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
+        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""} <button type="button" class="gr-btn" id="se-diag" style="padding:2px 8px;font-size:.75rem">🔍 Diagnostic de la voix</button></p><div id="se-diag-res"></div><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
@@ -24041,6 +24069,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
+    if (q("se-diag")) q("se-diag").onclick = () => seDiagnostic(d);
     if (q("se-google-re")) q("se-google-re").onclick = () => { seGoogleKO = false; sePreEchec = 0; Object.keys(seAudioPre).forEach(k => delete seAudioPre[k]); renderSeance(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
       // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
@@ -35729,6 +35758,34 @@ window.XlsxLite = (function () {
     suiv();
   }
   function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
+  /* audit de la voix : ce que l'appareil permet réellement (à capturer et envoyer en cas de problème) */
+  function seDiagnostic(d) {
+    const z = document.getElementById("se-diag-res"); if (!z) return;
+    const L = [], ajout = (ok, t) => L.push(`<li style="color:${ok === true ? "#047857" : ok === false ? "#B91C1C" : "#334155"}">${ok === true ? "✔" : ok === false ? "✘" : "•"} ${t}</li>`);
+    const rendu = fin => { z.innerHTML = `<ul style="margin:6px 0;padding:8px 10px 8px 22px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;font-size:.78rem;line-height:1.5">${L.join("")}${fin ? "" : "<li>… test de la voix Google en cours</li>"}</ul>`; };
+    let ver = ""; try { const e = (window.parent && window.parent.document.getElementById("eps-version")) || document.getElementById("eps-version"); ver = e ? e.textContent.trim() : ""; } catch (e) {}
+    ajout(null, "Version : <b>" + esc(ver || "Classeur EPS · version 06-11-2026 · 15h30") + "</b>");
+    ajout(null, "Adresse : " + esc(location.protocol === "blob:" || location.href === "about:srcdoc" ? (function () { try { return window.parent.location.href; } catch (e) { return location.href; } })() : location.href));
+    ajout(null, "Navigateur : " + esc((navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/g) || [navigator.userAgent]).join(" ")));
+    ajout(navigator.onLine !== false, "Internet : " + (navigator.onLine !== false ? "connecté" : "hors connexion"));
+    let T = []; try { T = speechSynthesis.getVoices() || []; } catch (e) {}
+    ajout(seVoixListe().length > 0 ? true : null, "Voix de l'appareil : " + T.length + ", dont " + seVoixListe().length + " en arabe" + (seVoixListe().length ? " (" + esc(seVoixListe().map(v => v.name).join(", ")) + ")" : ""));
+    ajout(!!seVoixData(), "Commentateur intégré Karim : " + (seVoixData() ? Object.keys(seVoixData()).length + " annonces enregistrées" : "absent"));
+    let st = ""; try { st = localStorage.getItem("cloud::seanceVoix") || "(aucun : automatique)"; } catch (e) { st = "illisible"; }
+    ajout(null, "Choix enregistré sur cet appareil : " + esc(st) + " — voix utilisée : <b>" + ({ google: "Google en ligne", integree: "Karim intégré", appareil: "voix de l'appareil" })[seMode(d)] + "</b>");
+    let pol = ""; try { const m = document.querySelector('meta[name="referrer"]'); pol = m ? m.content : "absente"; } catch (e) {}
+    ajout(pol === "no-referrer", "Protection de l'adresse envoyée à Google : " + esc(pol));
+    rendu(false);
+    // vrai test : demander « واحد » à Google et mesurer
+    const t0 = Date.now(), a = new Audio(); let fini = false;
+    const res = (ok, msg) => { if (fini) return; fini = true; try { a.pause(); } catch (e) {} ajout(ok, msg); if (ok) { seGoogleKO = false; sePreEchec = 0; } rendu(true); };
+    a.muted = true; a.preload = "auto";
+    a.onplaying = () => res(true, "Voix arabe Google : <b>fonctionne</b> (réponse en " + (Date.now() - t0) + " ms)");
+    a.onerror = () => res(false, "Voix arabe Google : <b>refusée ou bloquée</b> (code " + (a.error ? a.error.code : "?") + ") — le réseau (Wi-Fi de l'établissement, pare-feu, antivirus) ou Google bloque la voix. Solution : Microsoft Edge (voix arabes Hamed, Salma…) ou le commentateur Karim.");
+    a.src = seUrlVoix("واحد", 1) + "&_=" + Date.now();
+    try { const pr = a.play(); if (pr && pr.catch) pr.catch(e => { if (!fini) setTimeout(() => { if (!fini && a.readyState >= 2) res(true, "Voix arabe Google : <b>fonctionne</b> (téléchargée, " + (Date.now() - t0) + " ms)"); }, 1500); }); } catch (e) {}
+    setTimeout(() => res(false, "Voix arabe Google : <b>aucune réponse en 6 s</b> — Internet trop lent ou accès bloqué."), 6000);
+  }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
     const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
@@ -36181,7 +36238,7 @@ window.XlsxLite = (function () {
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
         <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — recommandé"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne (automatique)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
-        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""}</p><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
+        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""} <button type="button" class="gr-btn" id="se-diag" style="padding:2px 8px;font-size:.75rem">🔍 Diagnostic de la voix</button></p><div id="se-diag-res"></div><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
@@ -36288,6 +36345,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
+    if (q("se-diag")) q("se-diag").onclick = () => seDiagnostic(d);
     if (q("se-google-re")) q("se-google-re").onclick = () => { seGoogleKO = false; sePreEchec = 0; Object.keys(seAudioPre).forEach(k => delete seAudioPre[k]); renderSeance(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
       // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
@@ -47973,6 +48031,34 @@ window.XlsxLite = (function () {
     suiv();
   }
   function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
+  /* audit de la voix : ce que l'appareil permet réellement (à capturer et envoyer en cas de problème) */
+  function seDiagnostic(d) {
+    const z = document.getElementById("se-diag-res"); if (!z) return;
+    const L = [], ajout = (ok, t) => L.push(`<li style="color:${ok === true ? "#047857" : ok === false ? "#B91C1C" : "#334155"}">${ok === true ? "✔" : ok === false ? "✘" : "•"} ${t}</li>`);
+    const rendu = fin => { z.innerHTML = `<ul style="margin:6px 0;padding:8px 10px 8px 22px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;font-size:.78rem;line-height:1.5">${L.join("")}${fin ? "" : "<li>… test de la voix Google en cours</li>"}</ul>`; };
+    let ver = ""; try { const e = (window.parent && window.parent.document.getElementById("eps-version")) || document.getElementById("eps-version"); ver = e ? e.textContent.trim() : ""; } catch (e) {}
+    ajout(null, "Version : <b>" + esc(ver || "Classeur EPS · version 06-11-2026 · 15h30") + "</b>");
+    ajout(null, "Adresse : " + esc(location.protocol === "blob:" || location.href === "about:srcdoc" ? (function () { try { return window.parent.location.href; } catch (e) { return location.href; } })() : location.href));
+    ajout(null, "Navigateur : " + esc((navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/g) || [navigator.userAgent]).join(" ")));
+    ajout(navigator.onLine !== false, "Internet : " + (navigator.onLine !== false ? "connecté" : "hors connexion"));
+    let T = []; try { T = speechSynthesis.getVoices() || []; } catch (e) {}
+    ajout(seVoixListe().length > 0 ? true : null, "Voix de l'appareil : " + T.length + ", dont " + seVoixListe().length + " en arabe" + (seVoixListe().length ? " (" + esc(seVoixListe().map(v => v.name).join(", ")) + ")" : ""));
+    ajout(!!seVoixData(), "Commentateur intégré Karim : " + (seVoixData() ? Object.keys(seVoixData()).length + " annonces enregistrées" : "absent"));
+    let st = ""; try { st = localStorage.getItem("cloud::seanceVoix") || "(aucun : automatique)"; } catch (e) { st = "illisible"; }
+    ajout(null, "Choix enregistré sur cet appareil : " + esc(st) + " — voix utilisée : <b>" + ({ google: "Google en ligne", integree: "Karim intégré", appareil: "voix de l'appareil" })[seMode(d)] + "</b>");
+    let pol = ""; try { const m = document.querySelector('meta[name="referrer"]'); pol = m ? m.content : "absente"; } catch (e) {}
+    ajout(pol === "no-referrer", "Protection de l'adresse envoyée à Google : " + esc(pol));
+    rendu(false);
+    // vrai test : demander « واحد » à Google et mesurer
+    const t0 = Date.now(), a = new Audio(); let fini = false;
+    const res = (ok, msg) => { if (fini) return; fini = true; try { a.pause(); } catch (e) {} ajout(ok, msg); if (ok) { seGoogleKO = false; sePreEchec = 0; } rendu(true); };
+    a.muted = true; a.preload = "auto";
+    a.onplaying = () => res(true, "Voix arabe Google : <b>fonctionne</b> (réponse en " + (Date.now() - t0) + " ms)");
+    a.onerror = () => res(false, "Voix arabe Google : <b>refusée ou bloquée</b> (code " + (a.error ? a.error.code : "?") + ") — le réseau (Wi-Fi de l'établissement, pare-feu, antivirus) ou Google bloque la voix. Solution : Microsoft Edge (voix arabes Hamed, Salma…) ou le commentateur Karim.");
+    a.src = seUrlVoix("واحد", 1) + "&_=" + Date.now();
+    try { const pr = a.play(); if (pr && pr.catch) pr.catch(e => { if (!fini) setTimeout(() => { if (!fini && a.readyState >= 2) res(true, "Voix arabe Google : <b>fonctionne</b> (téléchargée, " + (Date.now() - t0) + " ms)"); }, 1500); }); } catch (e) {}
+    setTimeout(() => res(false, "Voix arabe Google : <b>aucune réponse en 6 s</b> — Internet trop lent ou accès bloqué."), 6000);
+  }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
     const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
@@ -48425,7 +48511,7 @@ window.XlsxLite = (function () {
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
         <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — recommandé"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne (automatique)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
-        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""}</p><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
+        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""} <button type="button" class="gr-btn" id="se-diag" style="padding:2px 8px;font-size:.75rem">🔍 Diagnostic de la voix</button></p><div id="se-diag-res"></div><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
@@ -48532,6 +48618,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
+    if (q("se-diag")) q("se-diag").onclick = () => seDiagnostic(d);
     if (q("se-google-re")) q("se-google-re").onclick = () => { seGoogleKO = false; sePreEchec = 0; Object.keys(seAudioPre).forEach(k => delete seAudioPre[k]); renderSeance(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
       // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
@@ -60063,6 +60150,34 @@ window.XlsxLite = (function () {
     suiv();
   }
   function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
+  /* audit de la voix : ce que l'appareil permet réellement (à capturer et envoyer en cas de problème) */
+  function seDiagnostic(d) {
+    const z = document.getElementById("se-diag-res"); if (!z) return;
+    const L = [], ajout = (ok, t) => L.push(`<li style="color:${ok === true ? "#047857" : ok === false ? "#B91C1C" : "#334155"}">${ok === true ? "✔" : ok === false ? "✘" : "•"} ${t}</li>`);
+    const rendu = fin => { z.innerHTML = `<ul style="margin:6px 0;padding:8px 10px 8px 22px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;font-size:.78rem;line-height:1.5">${L.join("")}${fin ? "" : "<li>… test de la voix Google en cours</li>"}</ul>`; };
+    let ver = ""; try { const e = (window.parent && window.parent.document.getElementById("eps-version")) || document.getElementById("eps-version"); ver = e ? e.textContent.trim() : ""; } catch (e) {}
+    ajout(null, "Version : <b>" + esc(ver || "Classeur EPS · version 06-11-2026 · 15h30") + "</b>");
+    ajout(null, "Adresse : " + esc(location.protocol === "blob:" || location.href === "about:srcdoc" ? (function () { try { return window.parent.location.href; } catch (e) { return location.href; } })() : location.href));
+    ajout(null, "Navigateur : " + esc((navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/g) || [navigator.userAgent]).join(" ")));
+    ajout(navigator.onLine !== false, "Internet : " + (navigator.onLine !== false ? "connecté" : "hors connexion"));
+    let T = []; try { T = speechSynthesis.getVoices() || []; } catch (e) {}
+    ajout(seVoixListe().length > 0 ? true : null, "Voix de l'appareil : " + T.length + ", dont " + seVoixListe().length + " en arabe" + (seVoixListe().length ? " (" + esc(seVoixListe().map(v => v.name).join(", ")) + ")" : ""));
+    ajout(!!seVoixData(), "Commentateur intégré Karim : " + (seVoixData() ? Object.keys(seVoixData()).length + " annonces enregistrées" : "absent"));
+    let st = ""; try { st = localStorage.getItem("cloud::seanceVoix") || "(aucun : automatique)"; } catch (e) { st = "illisible"; }
+    ajout(null, "Choix enregistré sur cet appareil : " + esc(st) + " — voix utilisée : <b>" + ({ google: "Google en ligne", integree: "Karim intégré", appareil: "voix de l'appareil" })[seMode(d)] + "</b>");
+    let pol = ""; try { const m = document.querySelector('meta[name="referrer"]'); pol = m ? m.content : "absente"; } catch (e) {}
+    ajout(pol === "no-referrer", "Protection de l'adresse envoyée à Google : " + esc(pol));
+    rendu(false);
+    // vrai test : demander « واحد » à Google et mesurer
+    const t0 = Date.now(), a = new Audio(); let fini = false;
+    const res = (ok, msg) => { if (fini) return; fini = true; try { a.pause(); } catch (e) {} ajout(ok, msg); if (ok) { seGoogleKO = false; sePreEchec = 0; } rendu(true); };
+    a.muted = true; a.preload = "auto";
+    a.onplaying = () => res(true, "Voix arabe Google : <b>fonctionne</b> (réponse en " + (Date.now() - t0) + " ms)");
+    a.onerror = () => res(false, "Voix arabe Google : <b>refusée ou bloquée</b> (code " + (a.error ? a.error.code : "?") + ") — le réseau (Wi-Fi de l'établissement, pare-feu, antivirus) ou Google bloque la voix. Solution : Microsoft Edge (voix arabes Hamed, Salma…) ou le commentateur Karim.");
+    a.src = seUrlVoix("واحد", 1) + "&_=" + Date.now();
+    try { const pr = a.play(); if (pr && pr.catch) pr.catch(e => { if (!fini) setTimeout(() => { if (!fini && a.readyState >= 2) res(true, "Voix arabe Google : <b>fonctionne</b> (téléchargée, " + (Date.now() - t0) + " ms)"); }, 1500); }); } catch (e) {}
+    setTimeout(() => res(false, "Voix arabe Google : <b>aucune réponse en 6 s</b> — Internet trop lent ou accès bloqué."), 6000);
+  }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
     const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
@@ -60515,7 +60630,7 @@ window.XlsxLite = (function () {
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
         <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — recommandé"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne (automatique)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
-        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""}</p><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
+        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""} <button type="button" class="gr-btn" id="se-diag" style="padding:2px 8px;font-size:.75rem">🔍 Diagnostic de la voix</button></p><div id="se-diag-res"></div><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
@@ -60622,6 +60737,7 @@ window.XlsxLite = (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
+    if (q("se-diag")) q("se-diag").onclick = () => seDiagnostic(d);
     if (q("se-google-re")) q("se-google-re").onclick = () => { seGoogleKO = false; sePreEchec = 0; Object.keys(seAudioPre).forEach(k => delete seAudioPre[k]); renderSeance(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
       // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
@@ -73346,6 +73462,34 @@ window.OMRKIT = window.OMRKIT || (function () {
     suiv();
   }
   function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
+  /* audit de la voix : ce que l'appareil permet réellement (à capturer et envoyer en cas de problème) */
+  function seDiagnostic(d) {
+    const z = document.getElementById("se-diag-res"); if (!z) return;
+    const L = [], ajout = (ok, t) => L.push(`<li style="color:${ok === true ? "#047857" : ok === false ? "#B91C1C" : "#334155"}">${ok === true ? "✔" : ok === false ? "✘" : "•"} ${t}</li>`);
+    const rendu = fin => { z.innerHTML = `<ul style="margin:6px 0;padding:8px 10px 8px 22px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;font-size:.78rem;line-height:1.5">${L.join("")}${fin ? "" : "<li>… test de la voix Google en cours</li>"}</ul>`; };
+    let ver = ""; try { const e = (window.parent && window.parent.document.getElementById("eps-version")) || document.getElementById("eps-version"); ver = e ? e.textContent.trim() : ""; } catch (e) {}
+    ajout(null, "Version : <b>" + esc(ver || "Classeur EPS · version 06-11-2026 · 15h30") + "</b>");
+    ajout(null, "Adresse : " + esc(location.protocol === "blob:" || location.href === "about:srcdoc" ? (function () { try { return window.parent.location.href; } catch (e) { return location.href; } })() : location.href));
+    ajout(null, "Navigateur : " + esc((navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/g) || [navigator.userAgent]).join(" ")));
+    ajout(navigator.onLine !== false, "Internet : " + (navigator.onLine !== false ? "connecté" : "hors connexion"));
+    let T = []; try { T = speechSynthesis.getVoices() || []; } catch (e) {}
+    ajout(seVoixListe().length > 0 ? true : null, "Voix de l'appareil : " + T.length + ", dont " + seVoixListe().length + " en arabe" + (seVoixListe().length ? " (" + esc(seVoixListe().map(v => v.name).join(", ")) + ")" : ""));
+    ajout(!!seVoixData(), "Commentateur intégré Karim : " + (seVoixData() ? Object.keys(seVoixData()).length + " annonces enregistrées" : "absent"));
+    let st = ""; try { st = localStorage.getItem("cloud::seanceVoix") || "(aucun : automatique)"; } catch (e) { st = "illisible"; }
+    ajout(null, "Choix enregistré sur cet appareil : " + esc(st) + " — voix utilisée : <b>" + ({ google: "Google en ligne", integree: "Karim intégré", appareil: "voix de l'appareil" })[seMode(d)] + "</b>");
+    let pol = ""; try { const m = document.querySelector('meta[name="referrer"]'); pol = m ? m.content : "absente"; } catch (e) {}
+    ajout(pol === "no-referrer", "Protection de l'adresse envoyée à Google : " + esc(pol));
+    rendu(false);
+    // vrai test : demander « واحد » à Google et mesurer
+    const t0 = Date.now(), a = new Audio(); let fini = false;
+    const res = (ok, msg) => { if (fini) return; fini = true; try { a.pause(); } catch (e) {} ajout(ok, msg); if (ok) { seGoogleKO = false; sePreEchec = 0; } rendu(true); };
+    a.muted = true; a.preload = "auto";
+    a.onplaying = () => res(true, "Voix arabe Google : <b>fonctionne</b> (réponse en " + (Date.now() - t0) + " ms)");
+    a.onerror = () => res(false, "Voix arabe Google : <b>refusée ou bloquée</b> (code " + (a.error ? a.error.code : "?") + ") — le réseau (Wi-Fi de l'établissement, pare-feu, antivirus) ou Google bloque la voix. Solution : Microsoft Edge (voix arabes Hamed, Salma…) ou le commentateur Karim.");
+    a.src = seUrlVoix("واحد", 1) + "&_=" + Date.now();
+    try { const pr = a.play(); if (pr && pr.catch) pr.catch(e => { if (!fini) setTimeout(() => { if (!fini && a.readyState >= 2) res(true, "Voix arabe Google : <b>fonctionne</b> (téléchargée, " + (Date.now() - t0) + " ms)"); }, 1500); }); } catch (e) {}
+    setTimeout(() => res(false, "Voix arabe Google : <b>aucune réponse en 6 s</b> — Internet trop lent ou accès bloqué."), 6000);
+  }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
     const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
@@ -73798,7 +73942,7 @@ window.OMRKIT = window.OMRKIT || (function () {
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
         <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — recommandé"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne (automatique)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
-        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""}</p><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
+        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""} <button type="button" class="gr-btn" id="se-diag" style="padding:2px 8px;font-size:.75rem">🔍 Diagnostic de la voix</button></p><div id="se-diag-res"></div><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
@@ -73905,6 +74049,7 @@ window.OMRKIT = window.OMRKIT || (function () {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
+    if (q("se-diag")) q("se-diag").onclick = () => seDiagnostic(d);
     if (q("se-google-re")) q("se-google-re").onclick = () => { seGoogleKO = false; sePreEchec = 0; Object.keys(seAudioPre).forEach(k => delete seAudioPre[k]); renderSeance(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
       // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
@@ -84765,6 +84910,34 @@ GrilleAPS({
     suiv();
   }
   function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
+  /* audit de la voix : ce que l'appareil permet réellement (à capturer et envoyer en cas de problème) */
+  function seDiagnostic(d) {
+    const z = document.getElementById("se-diag-res"); if (!z) return;
+    const L = [], ajout = (ok, t) => L.push(`<li style="color:${ok === true ? "#047857" : ok === false ? "#B91C1C" : "#334155"}">${ok === true ? "✔" : ok === false ? "✘" : "•"} ${t}</li>`);
+    const rendu = fin => { z.innerHTML = `<ul style="margin:6px 0;padding:8px 10px 8px 22px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;font-size:.78rem;line-height:1.5">${L.join("")}${fin ? "" : "<li>… test de la voix Google en cours</li>"}</ul>`; };
+    let ver = ""; try { const e = (window.parent && window.parent.document.getElementById("eps-version")) || document.getElementById("eps-version"); ver = e ? e.textContent.trim() : ""; } catch (e) {}
+    ajout(null, "Version : <b>" + esc(ver || "Classeur EPS · version 06-11-2026 · 15h30") + "</b>");
+    ajout(null, "Adresse : " + esc(location.protocol === "blob:" || location.href === "about:srcdoc" ? (function () { try { return window.parent.location.href; } catch (e) { return location.href; } })() : location.href));
+    ajout(null, "Navigateur : " + esc((navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/g) || [navigator.userAgent]).join(" ")));
+    ajout(navigator.onLine !== false, "Internet : " + (navigator.onLine !== false ? "connecté" : "hors connexion"));
+    let T = []; try { T = speechSynthesis.getVoices() || []; } catch (e) {}
+    ajout(seVoixListe().length > 0 ? true : null, "Voix de l'appareil : " + T.length + ", dont " + seVoixListe().length + " en arabe" + (seVoixListe().length ? " (" + esc(seVoixListe().map(v => v.name).join(", ")) + ")" : ""));
+    ajout(!!seVoixData(), "Commentateur intégré Karim : " + (seVoixData() ? Object.keys(seVoixData()).length + " annonces enregistrées" : "absent"));
+    let st = ""; try { st = localStorage.getItem("cloud::seanceVoix") || "(aucun : automatique)"; } catch (e) { st = "illisible"; }
+    ajout(null, "Choix enregistré sur cet appareil : " + esc(st) + " — voix utilisée : <b>" + ({ google: "Google en ligne", integree: "Karim intégré", appareil: "voix de l'appareil" })[seMode(d)] + "</b>");
+    let pol = ""; try { const m = document.querySelector('meta[name="referrer"]'); pol = m ? m.content : "absente"; } catch (e) {}
+    ajout(pol === "no-referrer", "Protection de l'adresse envoyée à Google : " + esc(pol));
+    rendu(false);
+    // vrai test : demander « واحد » à Google et mesurer
+    const t0 = Date.now(), a = new Audio(); let fini = false;
+    const res = (ok, msg) => { if (fini) return; fini = true; try { a.pause(); } catch (e) {} ajout(ok, msg); if (ok) { seGoogleKO = false; sePreEchec = 0; } rendu(true); };
+    a.muted = true; a.preload = "auto";
+    a.onplaying = () => res(true, "Voix arabe Google : <b>fonctionne</b> (réponse en " + (Date.now() - t0) + " ms)");
+    a.onerror = () => res(false, "Voix arabe Google : <b>refusée ou bloquée</b> (code " + (a.error ? a.error.code : "?") + ") — le réseau (Wi-Fi de l'établissement, pare-feu, antivirus) ou Google bloque la voix. Solution : Microsoft Edge (voix arabes Hamed, Salma…) ou le commentateur Karim.");
+    a.src = seUrlVoix("واحد", 1) + "&_=" + Date.now();
+    try { const pr = a.play(); if (pr && pr.catch) pr.catch(e => { if (!fini) setTimeout(() => { if (!fini && a.readyState >= 2) res(true, "Voix arabe Google : <b>fonctionne</b> (téléchargée, " + (Date.now() - t0) + " ms)"); }, 1500); }); } catch (e) {}
+    setTimeout(() => res(false, "Voix arabe Google : <b>aucune réponse en 6 s</b> — Internet trop lent ou accès bloqué."), 6000);
+  }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
     const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
@@ -85217,7 +85390,7 @@ GrilleAPS({
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
         <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — recommandé"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne (automatique)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
-        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""}</p><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
+        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""} <button type="button" class="gr-btn" id="se-diag" style="padding:2px 8px;font-size:.75rem">🔍 Diagnostic de la voix</button></p><div id="se-diag-res"></div><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
@@ -85324,6 +85497,7 @@ GrilleAPS({
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
+    if (q("se-diag")) q("se-diag").onclick = () => seDiagnostic(d);
     if (q("se-google-re")) q("se-google-re").onclick = () => { seGoogleKO = false; sePreEchec = 0; Object.keys(seAudioPre).forEach(k => delete seAudioPre[k]); renderSeance(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
       // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
@@ -96955,6 +97129,34 @@ window.DISC = {
     suiv();
   }
   function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
+  /* audit de la voix : ce que l'appareil permet réellement (à capturer et envoyer en cas de problème) */
+  function seDiagnostic(d) {
+    const z = document.getElementById("se-diag-res"); if (!z) return;
+    const L = [], ajout = (ok, t) => L.push(`<li style="color:${ok === true ? "#047857" : ok === false ? "#B91C1C" : "#334155"}">${ok === true ? "✔" : ok === false ? "✘" : "•"} ${t}</li>`);
+    const rendu = fin => { z.innerHTML = `<ul style="margin:6px 0;padding:8px 10px 8px 22px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;font-size:.78rem;line-height:1.5">${L.join("")}${fin ? "" : "<li>… test de la voix Google en cours</li>"}</ul>`; };
+    let ver = ""; try { const e = (window.parent && window.parent.document.getElementById("eps-version")) || document.getElementById("eps-version"); ver = e ? e.textContent.trim() : ""; } catch (e) {}
+    ajout(null, "Version : <b>" + esc(ver || "Classeur EPS · version 06-11-2026 · 15h30") + "</b>");
+    ajout(null, "Adresse : " + esc(location.protocol === "blob:" || location.href === "about:srcdoc" ? (function () { try { return window.parent.location.href; } catch (e) { return location.href; } })() : location.href));
+    ajout(null, "Navigateur : " + esc((navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/g) || [navigator.userAgent]).join(" ")));
+    ajout(navigator.onLine !== false, "Internet : " + (navigator.onLine !== false ? "connecté" : "hors connexion"));
+    let T = []; try { T = speechSynthesis.getVoices() || []; } catch (e) {}
+    ajout(seVoixListe().length > 0 ? true : null, "Voix de l'appareil : " + T.length + ", dont " + seVoixListe().length + " en arabe" + (seVoixListe().length ? " (" + esc(seVoixListe().map(v => v.name).join(", ")) + ")" : ""));
+    ajout(!!seVoixData(), "Commentateur intégré Karim : " + (seVoixData() ? Object.keys(seVoixData()).length + " annonces enregistrées" : "absent"));
+    let st = ""; try { st = localStorage.getItem("cloud::seanceVoix") || "(aucun : automatique)"; } catch (e) { st = "illisible"; }
+    ajout(null, "Choix enregistré sur cet appareil : " + esc(st) + " — voix utilisée : <b>" + ({ google: "Google en ligne", integree: "Karim intégré", appareil: "voix de l'appareil" })[seMode(d)] + "</b>");
+    let pol = ""; try { const m = document.querySelector('meta[name="referrer"]'); pol = m ? m.content : "absente"; } catch (e) {}
+    ajout(pol === "no-referrer", "Protection de l'adresse envoyée à Google : " + esc(pol));
+    rendu(false);
+    // vrai test : demander « واحد » à Google et mesurer
+    const t0 = Date.now(), a = new Audio(); let fini = false;
+    const res = (ok, msg) => { if (fini) return; fini = true; try { a.pause(); } catch (e) {} ajout(ok, msg); if (ok) { seGoogleKO = false; sePreEchec = 0; } rendu(true); };
+    a.muted = true; a.preload = "auto";
+    a.onplaying = () => res(true, "Voix arabe Google : <b>fonctionne</b> (réponse en " + (Date.now() - t0) + " ms)");
+    a.onerror = () => res(false, "Voix arabe Google : <b>refusée ou bloquée</b> (code " + (a.error ? a.error.code : "?") + ") — le réseau (Wi-Fi de l'établissement, pare-feu, antivirus) ou Google bloque la voix. Solution : Microsoft Edge (voix arabes Hamed, Salma…) ou le commentateur Karim.");
+    a.src = seUrlVoix("واحد", 1) + "&_=" + Date.now();
+    try { const pr = a.play(); if (pr && pr.catch) pr.catch(e => { if (!fini) setTimeout(() => { if (!fini && a.readyState >= 2) res(true, "Voix arabe Google : <b>fonctionne</b> (téléchargée, " + (Date.now() - t0) + " ms)"); }, 1500); }); } catch (e) {}
+    setTimeout(() => res(false, "Voix arabe Google : <b>aucune réponse en 6 s</b> — Internet trop lent ou accès bloqué."), 6000);
+  }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
     const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
@@ -97407,7 +97609,7 @@ window.DISC = {
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
         <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — recommandé"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne (automatique)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
-        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""}</p><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
+        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""} <button type="button" class="gr-btn" id="se-diag" style="padding:2px 8px;font-size:.75rem">🔍 Diagnostic de la voix</button></p><div id="se-diag-res"></div><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
@@ -97514,6 +97716,7 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
+    if (q("se-diag")) q("se-diag").onclick = () => seDiagnostic(d);
     if (q("se-google-re")) q("se-google-re").onclick = () => { seGoogleKO = false; sePreEchec = 0; Object.keys(seAudioPre).forEach(k => delete seAudioPre[k]); renderSeance(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
       // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
@@ -102000,6 +102203,34 @@ window.DISC = {
     suiv();
   }
   function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
+  /* audit de la voix : ce que l'appareil permet réellement (à capturer et envoyer en cas de problème) */
+  function seDiagnostic(d) {
+    const z = document.getElementById("se-diag-res"); if (!z) return;
+    const L = [], ajout = (ok, t) => L.push(`<li style="color:${ok === true ? "#047857" : ok === false ? "#B91C1C" : "#334155"}">${ok === true ? "✔" : ok === false ? "✘" : "•"} ${t}</li>`);
+    const rendu = fin => { z.innerHTML = `<ul style="margin:6px 0;padding:8px 10px 8px 22px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;font-size:.78rem;line-height:1.5">${L.join("")}${fin ? "" : "<li>… test de la voix Google en cours</li>"}</ul>`; };
+    let ver = ""; try { const e = (window.parent && window.parent.document.getElementById("eps-version")) || document.getElementById("eps-version"); ver = e ? e.textContent.trim() : ""; } catch (e) {}
+    ajout(null, "Version : <b>" + esc(ver || "Classeur EPS · version 06-11-2026 · 15h30") + "</b>");
+    ajout(null, "Adresse : " + esc(location.protocol === "blob:" || location.href === "about:srcdoc" ? (function () { try { return window.parent.location.href; } catch (e) { return location.href; } })() : location.href));
+    ajout(null, "Navigateur : " + esc((navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/g) || [navigator.userAgent]).join(" ")));
+    ajout(navigator.onLine !== false, "Internet : " + (navigator.onLine !== false ? "connecté" : "hors connexion"));
+    let T = []; try { T = speechSynthesis.getVoices() || []; } catch (e) {}
+    ajout(seVoixListe().length > 0 ? true : null, "Voix de l'appareil : " + T.length + ", dont " + seVoixListe().length + " en arabe" + (seVoixListe().length ? " (" + esc(seVoixListe().map(v => v.name).join(", ")) + ")" : ""));
+    ajout(!!seVoixData(), "Commentateur intégré Karim : " + (seVoixData() ? Object.keys(seVoixData()).length + " annonces enregistrées" : "absent"));
+    let st = ""; try { st = localStorage.getItem("cloud::seanceVoix") || "(aucun : automatique)"; } catch (e) { st = "illisible"; }
+    ajout(null, "Choix enregistré sur cet appareil : " + esc(st) + " — voix utilisée : <b>" + ({ google: "Google en ligne", integree: "Karim intégré", appareil: "voix de l'appareil" })[seMode(d)] + "</b>");
+    let pol = ""; try { const m = document.querySelector('meta[name="referrer"]'); pol = m ? m.content : "absente"; } catch (e) {}
+    ajout(pol === "no-referrer", "Protection de l'adresse envoyée à Google : " + esc(pol));
+    rendu(false);
+    // vrai test : demander « واحد » à Google et mesurer
+    const t0 = Date.now(), a = new Audio(); let fini = false;
+    const res = (ok, msg) => { if (fini) return; fini = true; try { a.pause(); } catch (e) {} ajout(ok, msg); if (ok) { seGoogleKO = false; sePreEchec = 0; } rendu(true); };
+    a.muted = true; a.preload = "auto";
+    a.onplaying = () => res(true, "Voix arabe Google : <b>fonctionne</b> (réponse en " + (Date.now() - t0) + " ms)");
+    a.onerror = () => res(false, "Voix arabe Google : <b>refusée ou bloquée</b> (code " + (a.error ? a.error.code : "?") + ") — le réseau (Wi-Fi de l'établissement, pare-feu, antivirus) ou Google bloque la voix. Solution : Microsoft Edge (voix arabes Hamed, Salma…) ou le commentateur Karim.");
+    a.src = seUrlVoix("واحد", 1) + "&_=" + Date.now();
+    try { const pr = a.play(); if (pr && pr.catch) pr.catch(e => { if (!fini) setTimeout(() => { if (!fini && a.readyState >= 2) res(true, "Voix arabe Google : <b>fonctionne</b> (téléchargée, " + (Date.now() - t0) + " ms)"); }, 1500); }); } catch (e) {}
+    setTimeout(() => res(false, "Voix arabe Google : <b>aucune réponse en 6 s</b> — Internet trop lent ou accès bloqué."), 6000);
+  }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
     const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
@@ -102452,7 +102683,7 @@ window.DISC = {
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
         <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — recommandé"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne (automatique)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
-        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""}</p><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
+        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""} <button type="button" class="gr-btn" id="se-diag" style="padding:2px 8px;font-size:.75rem">🔍 Diagnostic de la voix</button></p><div id="se-diag-res"></div><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
@@ -102559,6 +102790,7 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
+    if (q("se-diag")) q("se-diag").onclick = () => seDiagnostic(d);
     if (q("se-google-re")) q("se-google-re").onclick = () => { seGoogleKO = false; sePreEchec = 0; Object.keys(seAudioPre).forEach(k => delete seAudioPre[k]); renderSeance(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
       // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
@@ -106869,6 +107101,34 @@ window.DISC = {
     suiv();
   }
   function seAudioDe(t, v) { const u = seUrlVoix(t, v), a = seAudioPre[u]; if (a && a.readyState >= 2 && !a.error) { try { a.pause(); a.currentTime = 0; } catch (e) {} a.muted = false; a.onplaying = a.onended = a.onerror = null; return a; } return new Audio(u); }
+  /* audit de la voix : ce que l'appareil permet réellement (à capturer et envoyer en cas de problème) */
+  function seDiagnostic(d) {
+    const z = document.getElementById("se-diag-res"); if (!z) return;
+    const L = [], ajout = (ok, t) => L.push(`<li style="color:${ok === true ? "#047857" : ok === false ? "#B91C1C" : "#334155"}">${ok === true ? "✔" : ok === false ? "✘" : "•"} ${t}</li>`);
+    const rendu = fin => { z.innerHTML = `<ul style="margin:6px 0;padding:8px 10px 8px 22px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;font-size:.78rem;line-height:1.5">${L.join("")}${fin ? "" : "<li>… test de la voix Google en cours</li>"}</ul>`; };
+    let ver = ""; try { const e = (window.parent && window.parent.document.getElementById("eps-version")) || document.getElementById("eps-version"); ver = e ? e.textContent.trim() : ""; } catch (e) {}
+    ajout(null, "Version : <b>" + esc(ver || "Classeur EPS · version 06-11-2026 · 15h30") + "</b>");
+    ajout(null, "Adresse : " + esc(location.protocol === "blob:" || location.href === "about:srcdoc" ? (function () { try { return window.parent.location.href; } catch (e) { return location.href; } })() : location.href));
+    ajout(null, "Navigateur : " + esc((navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/g) || [navigator.userAgent]).join(" ")));
+    ajout(navigator.onLine !== false, "Internet : " + (navigator.onLine !== false ? "connecté" : "hors connexion"));
+    let T = []; try { T = speechSynthesis.getVoices() || []; } catch (e) {}
+    ajout(seVoixListe().length > 0 ? true : null, "Voix de l'appareil : " + T.length + ", dont " + seVoixListe().length + " en arabe" + (seVoixListe().length ? " (" + esc(seVoixListe().map(v => v.name).join(", ")) + ")" : ""));
+    ajout(!!seVoixData(), "Commentateur intégré Karim : " + (seVoixData() ? Object.keys(seVoixData()).length + " annonces enregistrées" : "absent"));
+    let st = ""; try { st = localStorage.getItem("cloud::seanceVoix") || "(aucun : automatique)"; } catch (e) { st = "illisible"; }
+    ajout(null, "Choix enregistré sur cet appareil : " + esc(st) + " — voix utilisée : <b>" + ({ google: "Google en ligne", integree: "Karim intégré", appareil: "voix de l'appareil" })[seMode(d)] + "</b>");
+    let pol = ""; try { const m = document.querySelector('meta[name="referrer"]'); pol = m ? m.content : "absente"; } catch (e) {}
+    ajout(pol === "no-referrer", "Protection de l'adresse envoyée à Google : " + esc(pol));
+    rendu(false);
+    // vrai test : demander « واحد » à Google et mesurer
+    const t0 = Date.now(), a = new Audio(); let fini = false;
+    const res = (ok, msg) => { if (fini) return; fini = true; try { a.pause(); } catch (e) {} ajout(ok, msg); if (ok) { seGoogleKO = false; sePreEchec = 0; } rendu(true); };
+    a.muted = true; a.preload = "auto";
+    a.onplaying = () => res(true, "Voix arabe Google : <b>fonctionne</b> (réponse en " + (Date.now() - t0) + " ms)");
+    a.onerror = () => res(false, "Voix arabe Google : <b>refusée ou bloquée</b> (code " + (a.error ? a.error.code : "?") + ") — le réseau (Wi-Fi de l'établissement, pare-feu, antivirus) ou Google bloque la voix. Solution : Microsoft Edge (voix arabes Hamed, Salma…) ou le commentateur Karim.");
+    a.src = seUrlVoix("واحد", 1) + "&_=" + Date.now();
+    try { const pr = a.play(); if (pr && pr.catch) pr.catch(e => { if (!fini) setTimeout(() => { if (!fini && a.readyState >= 2) res(true, "Voix arabe Google : <b>fonctionne</b> (téléchargée, " + (Date.now() - t0) + " ms)"); }, 1500); }); } catch (e) {}
+    setTimeout(() => res(false, "Voix arabe Google : <b>aucune réponse en 6 s</b> — Internet trop lent ou accès bloqué."), 6000);
+  }
   function seJouer() {
     if (seAudioCour || !seFile.length) return;
     const it = seFile.shift(), a = seAudioDe(it.t, it.v); a.volume = 1; seAudioCour = a;
@@ -107321,7 +107581,7 @@ window.DISC = {
         <label><input type="checkbox" id="se-voix" ${d.cfg.voix ? "checked" : ""}> Voix arabe</label>
         <label>Volume sifflet / bips <input type="range" id="se-vol" min="0" max="1" step="0.05" value="${d.cfg.volume}"></label>
         <label>Commentateur (voix) <select id="se-voixsel"><optgroup label="En ligne — recommandé"><option value="__navigateur"${seVoixChoisie === "__navigateur" || !seVoixChoisie ? " selected" : ""}>Voix arabe en ligne (automatique)</option></optgroup>${seVoixData() ? `<optgroup label="Intégrés à la plateforme (sans Internet)">${SE_COMM.map(c => `<option value="${c[0]}"${seVoixChoisie === c[0] ? " selected" : ""}>${c[1]}</option>`).join("")}</optgroup>` : ""}<optgroup label="En ligne (Internet)"><option value="__google"${seVoixChoisie === "__google" ? " selected" : ""}>Voix Google Traduction en ligne</option></optgroup>${seVoixListe().length ? `<optgroup label="Voix arabes de cet appareil">${seVoixListe().map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""}${(() => { let T = []; try { const ar = seVoixListe().map(v => v.name); T = (speechSynthesis.getVoices() || []).filter(v => ar.indexOf(v.name) < 0); } catch (e) {} return T.length ? `<optgroup label="Autres voix de l'appareil (${T.length}) — prononcent mal l'arabe">${T.map(v => `<option value="${esc(v.name)}"${seVoixChoisie === v.name ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("")}</optgroup>` : ""; })()}</select></label>
-        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""}</p><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
+        <p class="gr-aide" id="se-voix-etat" style="margin:0 0 4px">Voix utilisée maintenant : <b>${(() => { const m = seMode(d), v = seVoixAr(); return m === "google" ? "voix arabe Google en ligne" : m === "integree" ? "commentateur intégré Karim (sans Internet)" : (v ? esc(v.name) : "voix par défaut du navigateur"); })()}</b>${seGoogleKO && /^__(navigateur|google)/.test(seVoixChoisie || "__navigateur") ? ' — la voix Google n\'a pas répondu. <button type="button" class="gr-btn" id="se-google-re" style="padding:2px 8px;font-size:.75rem">↻ Réessayer la voix en ligne</button>' : ""} <button type="button" class="gr-btn" id="se-diag" style="padding:2px 8px;font-size:.75rem">🔍 Diagnostic de la voix</button></p><div id="se-diag-res"></div><p class="gr-aide" style="margin:0 0 4px">Cet appareil propose ${seVoixToutes()} voix, dont <b>${seVoixListe().length} en arabe</b>${seVoixListe().length ? "" : " : Chrome sur ordinateur n'en a aucune ; Microsoft Edge en propose plusieurs (Hamed, Salma, Jamal, Mouna…), le téléphone aussi après installation de la langue arabe"}.</p>
         <label>Débit de la voix <select id="se-debit">${[[0.75, "lent"], [0.85, "posé"], [0.9, "normal"], [1, "rapide"]].map(x => `<option value="${x[0]}"${(+d.cfg.debit || 0.9) === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select></label>
         <label><input type="checkbox" id="se-foule" ${d.cfg.foule !== false ? "checked" : ""}> Réaction des spectateurs (clameur au but, applaudissements au vainqueur)</label>
         <label><input type="checkbox" id="se-comm" ${d.cfg.comm !== false ? "checked" : ""}> Commentateur (معلق) : annonce du buteur et du score</label>
@@ -107428,6 +107688,7 @@ window.DISC = {
     q("se-vol").onchange = e => { d.cfg.volume = +e.target.value; sauver(false); };
     if (q("se-enligne")) q("se-enligne").onchange = e => { d.cfg.voixEnLigne = e.target.checked; sauver(); };
     if (q("se-voix-re")) q("se-voix-re").onclick = () => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} if (typeof seAttendreVoix === "function") seAttendreVoix(); };
+    if (q("se-diag")) q("se-diag").onclick = () => seDiagnostic(d);
     if (q("se-google-re")) q("se-google-re").onclick = () => { seGoogleKO = false; sePreEchec = 0; Object.keys(seAudioPre).forEach(k => delete seAudioPre[k]); renderSeance(); };
     if (q("se-voixsel")) q("se-voixsel").onchange = e => { const val = e.target.value;
       // voix d'une autre langue : elle ne sait pas lire l'arabe → confirmation
@@ -109449,9 +109710,9 @@ var QICONS = {
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
-})();
+}<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 06-11-2026 · 15h30</div>
+)();
 
 @@SCRIPTCLOSE7f3a@@>
-<div id="eps-version" style="position:fixed;left:50%;transform:translateX(-50%);bottom:4px;font:600 11px system-ui,sans-serif;color:#94a3b8;z-index:1;pointer-events:none">Classeur EPS · version 06-11-2026 · 15h00</div>
 </body>
 </html>
